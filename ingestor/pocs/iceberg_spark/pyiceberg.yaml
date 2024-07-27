@@ -1,0 +1,3 @@
+catalog:
+  default:
+    uri: http://localhost:8081/ws/
