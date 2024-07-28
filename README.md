@@ -39,6 +39,8 @@ As tabela a seguir apresenta os possíveis parâmetros de configurações basead
 
 ---
 
+
+
 bin/pulsar-admin sources create  --source-config-file  /pulsar/lake_house.json
 bin/pulsar-admin sources get --tenant public --namespace default --name delta_source
 bin/pulsar-client consume -s test-sub -n 0 delta_source

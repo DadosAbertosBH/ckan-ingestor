@@ -1,7 +1,5 @@
-import duckdb
 from deltalake import DeltaTable, write_deltalake
 import dataset_fetcher
-from hashlib import sha256
 import os
 
 s3_endpoint = os.environ.get("AWS_ENDPOINT", "http://localhost:9000")
@@ -20,11 +18,6 @@ storage_options={
         "AWS_S3_ALLOW_UNSAFE_RENAME": "true"
     }
 
-con = duckdb.connect(
-    config={"custom_extension_repository": "http://nightly-extensions.duckdb.org"}
-)
-con.install_extension("uc_catalog")
-con.load_extension("uc_catalog")
 
 df = dataset_fetcher.fetch(ckan_url)
 
