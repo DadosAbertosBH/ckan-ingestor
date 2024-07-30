@@ -6,9 +6,9 @@ Esse projeto é uma aplicação python que importa todos os conjuntos de dados (
 
 ## Estrtutura do projeto
 
-* <b>ingestor</b> Código 
+* <b>ingestor</b> Código fonte da aplicação
 * <b>infra</b> terraform script para fazer o deploy do código
-* <b>ci</b> templates de configuração da esteira do `gitlab`
+* <b>templates</b> templates de configuração da esteira do `gitlab`
 
 ## Instruções de configuração 
 
