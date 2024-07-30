@@ -1,8 +1,3 @@
-variable "s3_endpoint" {
-  type      = string
-  sensitive = false
-}
-
 variable "s3_access_key" {
   type      = string
   sensitive = true
