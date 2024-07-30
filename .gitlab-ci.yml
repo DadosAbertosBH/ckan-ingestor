@@ -25,7 +25,7 @@ deploy-ingestor:
   trigger:
     strategy: depend  
     include:
-      - local: /templates/validate-plan-apply.yml
+      - local: /ci/templates/validate-plan-apply.yml
         inputs:
           version: 0.18.0
           opentofu_version: 1.7.1
