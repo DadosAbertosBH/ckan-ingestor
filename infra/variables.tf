@@ -13,7 +13,7 @@ variable "s3_secret_key" {
   sensitive = true
 }
 
-variable "aws_endpoint" {
+variable "s3_endpoint" {
   type      = string
   sensitive = false
 }

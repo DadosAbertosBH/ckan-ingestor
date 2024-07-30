@@ -31,7 +31,7 @@ resource "kubernetes_cron_job" "ckan_ingestor" {
               image = "registry.gitlab.com/pedalin/ckan-ingestor:6da9a799"
               env {
                 name  = "AWS_ENDPOINT"
-                value = var.aws_endpoint
+                value = var.s3_endpoint
               }
               env {
                 name  = "AWS_ACCESS_KEY_ID"
