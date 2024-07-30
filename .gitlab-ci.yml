@@ -29,5 +29,6 @@ deploy-ingestor:
           stage_build: build
           stage_deploy: deploy
           runner_env: $TARGET_ENV  
+          runner_tag: $TARGET_ENV
   rules:
     - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
