@@ -18,4 +18,9 @@ variable "s3_region" {
   sensitive = false
 }
 
+variable "image" {
+  type      = string
+  sensitive = false
+}
+
 

@@ -4,7 +4,7 @@ resource "kubernetes_cron_job_v1" "ckan_ingestor" {
     namespace = "default"
   }
   spec {
-    concurrency_policy        = "Replace"
+    concurrency_policy        = "Forbid"
     failed_jobs_history_limit = 5
     #                                  ┌───────────── minute (0 - 59)
     #                                  │ ┌───────────── hour (0 - 23)
@@ -27,8 +27,8 @@ resource "kubernetes_cron_job_v1" "ckan_ingestor" {
           metadata {}
           spec {
             container {
-              name  = "hello"
-              image = "registry.gitlab.com/pedalin/ckan-ingestor:6da9a799"
+              name  = "app"
+              image = var.image
               env {
                 name  = "AWS_ACCESS_KEY_ID"
                 value = var.s3_access_key
