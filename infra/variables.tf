@@ -20,4 +20,3 @@ variable "s3_region" {
 
 
 
-
