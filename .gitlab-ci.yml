@@ -5,9 +5,14 @@ services:
 build:
   stage: build
   script:
+    - mkdir -vp ~/.docker/cli-plugins/
+    - wget  https://github.com/docker/buildx/releases/download/v0.9.1/buildx-v0.9.1.linux-amd64 -O ~/.docker/cli-plugins/docker-buildx
+    - chmod a+x ~/.docker/cli-plugins/docker-buildx
+    - docker context create jitsu
+    - docker buildx create jitsu --use
     - cd ingestor
     - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
-    - docker build --push -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
+    - docker buildx build --platform linux/amd64,linux/arm64 --push -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
 
 deploy-ingestor:
   stage: deploy
