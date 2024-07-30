@@ -21,7 +21,7 @@ storage_options={
 
 df = dataset_fetcher.fetch(ckan_url)
 
-table_path = f"s3a://{bucket}/test"
+table_path = f"s3a://{bucket}/ckan"
 
 try:    
     dt = DeltaTable(table_path, storage_options=storage_options)
