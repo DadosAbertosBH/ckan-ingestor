@@ -63,7 +63,7 @@ else
       --header "Authorization: Bearer ${TOKEN}" \
       ${APISERVER}/apis/batch/v1/namespaces/"${NAMESPACE}"/cronjobs/"${DEPLOYMENT_NAME}"
   )
-  IMAGE=$(echo "$RESPONSE" | jq -e -r ".spec.template.spec.containers[] | select(.name==\"$CONTAINER_NAME\") | .image") || exit_code=$?
+  IMAGE=$(echo "$RESPONSE" | jq -e -r ".spec.jobTemplate.spec.template.spec.containers[] | select(.name==\"$CONTAINER_NAME\") | .image") || exit_code=$?
 
   if [ $exit_code -ne 0 ]; then
     echo -e "${TXT_RED}Tag not found${TXT_CLEAR}" >&2
