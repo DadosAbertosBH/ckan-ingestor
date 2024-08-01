@@ -98,6 +98,8 @@ spec:
   image:
     name: '$[[ inputs.image_registry_base ]]/$[[ inputs.image_name ]]:$[[ inputs.version ]]-opentofu$[[ inputs.opentofu_version ]]'
   script:
+    - pwd
+    - ls
     - export TF_VAR_image=$(sh ./find_image_tag.sh)
     - gitlab-tofu plan
     - gitlab-tofu plan-json
