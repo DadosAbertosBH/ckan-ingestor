@@ -1,6 +1,6 @@
 resource "kubernetes_cron_job_v1" "ckan_ingestor" {
   metadata {
-    name      = "ckan-injestor"
+    name      = "ckan-ingestor"
     namespace = "default"
   }
   spec {
