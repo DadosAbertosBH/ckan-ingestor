@@ -13,7 +13,10 @@ build:
     - cd ingestor
     - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
     - docker buildx build --platform linux/amd64,linux/arm64 --push -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
-
+  rules:
+    - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
+      changes:
+        - ingestor/**/*  
 deploy-ingestor:
   stage: deploy
   variables:
@@ -21,11 +24,10 @@ deploy-ingestor:
     TF_ROOT:  "infra"
     TF_STATE_NAME:  "ingestor"
     TARGET_BRANCH: main
-    TF_VAR_image: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
   trigger:
     strategy: depend  
     include:
-      - local: /ci/templates/validate-plan-apply.yml
+      - local: /templates/validate-plan-apply.yml
         inputs:
           version: 0.18.0
           opentofu_version: 1.7.1
