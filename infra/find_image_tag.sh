@@ -52,7 +52,7 @@ else
   # Reference the internal certificate authority (CA)
   CACERT=${SERVICEACCOUNT}/ca.crt
 
-  # echo 'url = ' ${APISERVER}/apis/batch/v1/namespaces/"${NAMESPACE}"/cronjobs/"${DEPLOYMENT_NAME}" >&2
+  echo 'url = ' ${APISERVER}/apis/batch/v1/namespaces/"${NAMESPACE}"/cronjobs/"${DEPLOYMENT_NAME}" >&2
 
   RESPONSE=$(
     curl \
