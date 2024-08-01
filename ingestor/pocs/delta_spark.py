@@ -1,7 +1,8 @@
 import pyspark
 import pyspark.pandas as ps
 from delta import *
-import dataset_fetcher
+from delta.tables import *
+import dataset_fetcher 
 
 minioUrl = "http://localhost:9000"
 connectionTimeOut = "5000"
@@ -11,7 +12,6 @@ sparkUrl = "local"
 builder = pyspark.sql.SparkSession.builder.appName("MyApp") \
     .master(sparkUrl) \
     .config("spark.sql.execution.arrow.pyspark.enabled", "true")  \
-    .config("hive.metastore.uris", "thrift://localhost:9083") \
     .config("spark.executor.extraJavaOptions", "-Dio.netty.tryReflectionSetAccessible=true") \
     .config("spark.driver.extraJavaOptions", "-Dio.netty.tryReflectionSetAccessible=true") \
     .config("spark.hadoop.fs.s3a.access.key", "admin") \
@@ -23,7 +23,6 @@ builder = pyspark.sql.SparkSession.builder.appName("MyApp") \
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-    .enableHiveSupport() 
 
 spark = configure_spark_with_delta_pip(builder, 
                                        extra_packages=[
@@ -33,13 +32,15 @@ spark = configure_spark_with_delta_pip(builder,
                                         ]) \
     .getOrCreate()
 
-tableName = "dataseta"
+tableName = "ckan"
 tablePath = f"s3a://warehouse/{tableName}"
 
 df = dataset_fetcher.fetch("https://dados.pbh.gov.br/")
 sparkdf = ps.from_pandas(df.to_pandas()).to_spark()
 
-if not spark.catalog.tableExists(tableName):
+deltaTable = DeltaTable.forPath(spark, tablePath)
+
+if not spark.catalog.tableExists(tablePath):
     print("Delta table not found")
 
     spark.sql(f"""CREATE TABLE if not exists {tableName} USING DELTA LOCATION '{tablePath}'

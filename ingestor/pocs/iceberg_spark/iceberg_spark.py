@@ -23,7 +23,7 @@ builder = pyspark.sql.SparkSession.builder.appName("MyApp") \
     .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \
     .config("spark.sql.catalog.demo", "org.apache.iceberg.spark.SparkCatalog") \
     .config("spark.sql.catalog.demo.type", "rest") \
-    .config("spark.sql.catalog.demo.uri", "http://rest:8181") \
+    .config("spark.sql.catalog.demo.uri", "http://polaris:8181") \
     .config("spark.sql.catalog.demo.io-impl", "org.apache.iceberg.aws.s3.S3FileIO") \
     .config("spark.sql.catalog.demo.warehouse", "s3://warehouse/wh") \
     .config("spark.sql.catalog.sandbox.s3.endpoint", "http://minio:9000") \

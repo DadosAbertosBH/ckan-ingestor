@@ -17,9 +17,9 @@ Esse projeto é uma aplicação python que importa todos os conjuntos de dados (
 2. Install `venv`  
    `pip install virtualenv`
 3. Create the `venv`  
-   `python3 -m venv env`
+   `python3 -m venv .venv`
 4. Active the `venv`  
-   `source env/bin/activate`
+   `source .venv/bin/activate`
 5. Install python dependencies  
    `pip install -r requirements.txt`
 
@@ -33,7 +33,7 @@ As tabela a seguir apresenta os possíveis parâmetros de configurações basead
 | AWS_ACCESS_KEY_ID     | admin                       |
 | AWS_SECRET_ACCESS_KEY | password                    |
 | AWS_REGION            | us-west-1                   |
-| S3_BUCKET             | public-datasets             |
+| S3_BUCKET             | warehouse                   |
 
 ## Rodando localmente
 

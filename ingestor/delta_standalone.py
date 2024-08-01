@@ -7,7 +7,7 @@ s3_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID", "admin")
 s3_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "password")
 s3_region = os.environ.get("AWS_REGION", "us-west-1")
 ckan_url = os.environ.get("CKAN_URL", "https://dados.pbh.gov.br/")
-bucket = os.environ.get("S3_BUCKET", "public-datasets")
+bucket = os.environ.get("S3_BUCKET", "warehouse")
 
 storage_options={
         "AWS_ALLOW_HTTP": "true", 

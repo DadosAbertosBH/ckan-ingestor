@@ -12,7 +12,7 @@
         "queueSize": 1,
         "fatchHistoryData": true,
         "startSnapshotVersion": -1,
-        "tablePath": "s3a://warehouse/test",
+        "tablePath": "s3a://warehouse/ckan",
         "hadoop.fs.s3a.aws.credentials.provider": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
         "hadoop.fs.s3a.access.key" : "admin",
         "hadoop.fs.s3a.secret.key" : "password",
