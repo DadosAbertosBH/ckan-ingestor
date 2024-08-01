@@ -1,9 +1,15 @@
+data "aws_iam_policy" "s3_full_access" {
+  name = "AmazonS3FullAccess"
+}
+
 resource "aws_iam_user" "s3_iceberg_bucket_admin" {
   name = "s3_iceberg_bucket_admin"
 }
 
-data "aws_iam_policy" "s3_full_access" {
-  name = "AmazonS3FullAccess"
+resource "aws_iam_user_policy" "s3_admin_manage_bucket" {
+  name   = "admin-manage-bucket"
+  user   = aws_iam_user.s3_iceberg_bucket_admin.name
+  policy = data.aws_iam_policy.s3_full_access
 }
 
 resource "aws_iam_role" "s3_admin" {
