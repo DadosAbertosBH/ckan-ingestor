@@ -21,5 +21,5 @@ resource "aws_iam_role" "s3_admin" {
       },
     ]
   })
-  managed_policy_arns = [data.aws_iam_policy.s3_full_access]
+  managed_policy_arns = [data.aws_iam_policy.s3_full_access.arn]
 }
