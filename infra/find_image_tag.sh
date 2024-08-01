@@ -59,7 +59,7 @@ else
       --fail \
       --cacert ${CACERT} \
       --header "Authorization: Bearer ${TOKEN}" \
-      ${APISERVER}/apis/apps/v1/namespaces/"${NAMESPACE}"/cronjobs  /"${DEPLOYMENT_NAME}"
+      ${APISERVER}/apis/apps/v1/namespaces/"${NAMESPACE}"/cronjobs/"${DEPLOYMENT_NAME}"
   )
   IMAGE=$(echo "$RESPONSE" | jq -e -r ".spec.template.spec.containers[] | select(.name==\"$CONTAINER_NAME\") | .image") || exit_code=$?
 
