@@ -7,7 +7,7 @@ resource "aws_iam_access_key" "s3_iceberg_bucket_admin" {
 }
 
 resource "aws_s3_bucket" "public" {
-  bucket = "public"
+  bucket = "pedalin-public"
 }
 
 resource "aws_iam_policy" "public_bucket_full_access" {
