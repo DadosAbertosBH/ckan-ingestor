@@ -29,7 +29,7 @@ As tabela a seguir apresenta os possíveis parâmetros de configurações basead
 
 | Variável de ambiente  | Valor padrão                |
 |-----------------------| ----------------------------|
-| AWS_ENDPOINT          | http://localhost:9000       |
+| AWS_ENDPOINT_URL      | http://localhost:9000       |
 | AWS_ACCESS_KEY_ID     | admin                       |
 | AWS_SECRET_ACCESS_KEY | password                    |
 | AWS_REGION            | us-west-1                   |

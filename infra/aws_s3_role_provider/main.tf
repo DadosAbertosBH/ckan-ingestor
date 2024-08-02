@@ -1,16 +1,45 @@
-data "aws_iam_policy" "s3_full_access" {
-  name = "AmazonS3FullAccess"
-}
-
 resource "aws_iam_user" "s3_iceberg_bucket_admin" {
   name = "s3_iceberg_bucket_admin"
+}
+
+resource "aws_iam_access_key" "s3_iceberg_bucket_admin" {
+  user = aws_iam_user.s3_iceberg_bucket_admin.name
+}
+
+resource "aws_s3_bucket" "public" {
+  bucket = "public"
+}
+
+resource "aws_iam_policy" "public_bucket_full_access" {
+  name = "policy-381966"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action   = ["s3:ListBucket"]
+        Effect   = "Allow"
+        Resource = [aws_s3_bucket.public.arn]
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject"
+        ],
+        Resource = ["${aws_s3_bucket.public.arn}/*"]
+      }
+    ]
+  })
 }
 
 resource "aws_iam_user_policy" "s3_admin_manage_bucket" {
   name   = "admin-manage-bucket"
   user   = aws_iam_user.s3_iceberg_bucket_admin.name
-  policy = data.aws_iam_policy.s3_full_access.policy
+  policy = aws_iam_policy.s3_full_access.policy
 }
+
 
 resource "aws_iam_role" "s3_admin" {
   name = "s3_admin"
@@ -30,6 +59,3 @@ resource "aws_iam_role" "s3_admin" {
   managed_policy_arns = [data.aws_iam_policy.s3_full_access.arn]
 }
 
-resource "aws_iam_access_key" "s3_iceberg_bucket_admin" {
-  user = aws_iam_user.s3_iceberg_bucket_admin.name
-}

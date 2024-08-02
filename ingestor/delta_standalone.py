@@ -2,7 +2,7 @@ from deltalake import DeltaTable, write_deltalake
 import dataset_fetcher
 import os
 
-s3_endpoint = os.environ.get("AWS_ENDPOINT", "http://localhost:9000")
+s3_endpoint = os.environ.get("AWS_ENDPOINT_URL", "http://localhost:9000")
 s3_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID", "admin")
 s3_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "password")
 s3_region = os.environ.get("AWS_REGION", "us-west-1")
@@ -11,7 +11,7 @@ bucket = os.environ.get("S3_BUCKET", "warehouse")
 
 storage_options={
         "AWS_ALLOW_HTTP": "true", 
-        "AWS_ENDPOINT": s3_endpoint,
+        "AWS_ENDPOINT_URL": s3_endpoint,
         "AWS_ACCESS_KEY_ID": s3_access_key_id,
         "AWS_SECRET_ACCESS_KEY": s3_secret_access_key,
         "AWS_REGION": s3_region,
