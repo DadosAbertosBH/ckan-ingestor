@@ -1,8 +1,8 @@
+import dataset_fetcher
 import pyspark
 import pyspark.pandas as ps
 from delta import *
 from delta.tables import *
-import dataset_fetcher 
 
 minioUrl = "http://localhost:9000"
 connectionTimeOut = "5000"

@@ -1,6 +1,5 @@
 import pyspark
 from delta import *
-from pyspark.sql.functions import *
 
 minioUrl = "http://localhost:9000"
 connectionTimeOut = "5000"

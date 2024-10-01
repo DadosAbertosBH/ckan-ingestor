@@ -4,4 +4,4 @@ __pycache__
 *.tfvars
 .terraform
 .terraform.lock.hcl
-ingestor/.env
+_old/ingestor/.env

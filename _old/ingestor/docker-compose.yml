@@ -1,0 +1,198 @@
+services:
+
+  # pulsar:
+  #   image: registry.gitlab.com/pedalin/pulsar-docker-image:pulsar-pedalin-3.3.0
+  #   container_name: pulsar
+  #   command: ['bin/pulsar', 'standalone']
+  #   user: root
+  #   ports:
+  #     - 4181:4181
+  #   environment:
+  #     PULSAR_MEM: '-Xms1g -Xmx1g -XX:MaxDirectMemorySize=2g'
+  #     PULSAR_STANDALONE_USE_ZOOKEEPER: 1
+  #   networks:
+  #     iceberg_net:
+  #   volumes:
+  #     - ./pulsar/bookeeper.conf:/pulsar/conf/bookeeper.conf
+  #     # - ./pulsar/functions_worker.yml:/pulsar/conf/functions_worker.yml
+  #     - ./pulsar/lake_house.json:/pulsar/lake_house.json
+
+  # postgres:
+  #   image: postgres:14.10
+  #   volumes:
+  #     - ./polaris/init_db.sql:/docker-entrypoint-initdb.d/01-init_db.sql
+  #   environment:
+  #     POSTGRES_PASSWORD: "Postgres2022!"
+  #   networks:
+  #     iceberg_net:      
+  #   ports:
+  #     - "5432:5432"      
+  
+  # trino:
+  #   image: trinodb/trino
+  #   container_name: trino
+  #   networks:
+  #     iceberg_net:
+  #   depends_on:
+  #     - rest
+  #     - minio
+  #   volumes:
+  #     - ./trino/iceberg.properties:/etc/trino/catalog/iceberg.properties
+  #   environment:
+  #     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-admin}
+  #     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-password}
+  #     - AWS_REGION=us-east-1 
+
+  xtable:
+    image: registry.gitlab.com/pedalin/xtable-docker-image:5bf38428      
+    container_name: xtable
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-admin}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-password}
+      - AWS_REGION=us-east-1 
+      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-http://minio:9000}
+    networks:
+      iceberg_net:
+    depends_on:
+      - rest
+      - minio
+    volumes:
+      - ./xtable:/xtable
+    command: ["--datasetConfig", "/xtable/config.yml", "--hadoopConfig", "/xtable/core-site.xml", "--icebergCatalogConfig", "/xtable/catalog.yml"]
+
+  rest:
+    image: tabulario/iceberg-rest
+    networks:
+      iceberg_net:
+    ports:
+      - 8181:8181
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-admin}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-password}
+      - AWS_REGION=us-east-1 
+      - CATALOG_WAREHOUSE=s3://warehouse/
+      - CATALOG_IO__IMPL=org.apache.iceberg.aws.s3.S3FileIO
+      - CATALOG_S3_ENDPOINT=http://minio:9000
+
+  nessie:
+    image: ghcr.io/projectnessie/nessie
+    container_name: nessie
+    environment:
+      - QUARKUS_HTTP_ACCESS_LOG_PATTERN=%h %l %u %t "%r" %s %b %m %{ALL_REQUEST_HEADERS}
+      - nessie.server.authentication.enabled=true
+      - quarkus.oidc.auth-server-url=http://keycloak:8080/realms/iceberg
+      - quarkus.oidc.client-id=client1
+      - quarkus.oidc.token.issuer=http://127.0.0.1:8080/realms/iceberg    
+      - nessie.catalog.default-warehouse=warehouse
+      - nessie.catalog.warehouses.warehouse.location=s3://warehouse/
+      - nessie.catalog.service.s3.default-options.default-options.request-signing-enabled=true
+      - nessie.catalog.service.s3.default-options.region=us-east-1
+      - nessie.catalog.service.s3.default-options.path-style-access=true
+      - nessie.catalog.service.s3.default-options.access-key.name=admin
+      - nessie.catalog.service.s3.default-options.access-key.secret=password
+      # MinIO endpoint for Nessie server
+      - nessie.catalog.service.s3.default-options.endpoint=http://minio:9000/    
+      # - client1: can access all namespaces
+      - nessie.server.authorization.rules.client1=role=='service-account-client1'
+    networks:
+      iceberg_net:
+    ports:
+      - 19120:19120      
+
+  dremio:
+    platform: linux/x86_64
+    image: dremio/dremio-oss:latest
+    ports:
+      - 9047:9047
+      - 31010:31010
+      - 32010:32010
+    container_name: dremio
+    environment:
+      - DREMIO_JAVA_SERVER_EXTRA_OPTS=-Dpaths.dist=file:///opt/dremio/data/dist
+    networks:
+      iceberg_net:
+
+  # polaris:
+  #   image: polaris-eclipselink
+  #   environment:
+  #     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-admin}
+  #     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-password}
+  #     - AWS_REGION=us-east-1    
+  #   command: 
+  #     - "java"
+  #     - "-cp"
+  #     - "./*:conf/" 
+  #     - "io.polaris.service.PolarisApplication" 
+  #     - "server"
+  #     - "polaris-server.yml"
+  #   networks:
+  #     iceberg_net:
+  #   ports:
+  #     - 8182:8181
+  #   volumes:
+  #   - ./polaris/polaris-server.yml:/app/polaris-server.yml
+  #   - ./polaris/h2-2.3.230.jar:/app/h2-2.3.230.jar
+  #   - ./polaris/persistence.xml:/app/local-persistence.xml
+  #   # - ./tmp/eclipseLink:/tmp/eclipseLink/    
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=password
+      - MINIO_DOMAIN=minio
+    networks:
+      iceberg_net:
+        aliases:
+          - warehouse.minio
+    ports:
+      - 9001:9001
+      - 9000:9000
+    command: ["server", "/data", "--console-address", ":9001"]
+  mc:
+    depends_on:
+      - minio
+    image: minio/mc
+    container_name: mc
+    networks:
+      iceberg_net:
+    environment:
+      - AWS_ACCESS_KEY_ID=admin
+      - AWS_SECRET_ACCESS_KEY=password
+      - AWS_REGION=us-east-1
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc config host add minio http://minio:9000 admin password) do echo '...waiting...' && sleep 1; done;
+      /usr/bin/mc rm -r --force minio/warehouse;
+      /usr/bin/mc mb minio/warehouse/;
+      /usr/bin/mc policy set public minio/warehouse/;
+      tail -f /dev/null
+      "
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0.2
+    ports:
+      - "8080:8080"
+      - "9010:9000"
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    volumes:
+      - ./keycloak/iceberg-realm.json:/opt/keycloak/data/import/iceberg-realm.json
+    command: [
+      "start-dev",
+      "--features=token-exchange",
+      "--import-realm",
+      "--health-enabled=true"
+    ]
+    networks:
+      iceberg_net:  
+    healthcheck:
+      test: "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'"
+      interval: 5s
+      timeout: 2s
+      retries: 15  
+
+networks:
+  iceberg_net:        

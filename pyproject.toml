@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "ckan-ingestor"
+version = "0.1.0"
+description = ""
+authors = ["guilhermecastro <guilherme.castro@protonmail.com>"]
+readme = "README.md"
+packages = [{include = "ckan_ingestor"}]
+
+[tool.poetry.dependencies]
+python = "^3.11.9"
+deltalake = "^0.20.1"
+ckanapi = "^4.8"
+pyarrow = "^17.0.0"
+pytest = "^8.3.3"
+pydantic-settings = "^2.5.2"
+
+
+[tool.poetry.group.dev.dependencies]
+mock = "^5.1.0"
+pytest = "^8.3.2"
+testcontainers = {extras = ["minio"], version = "^4.8.1"}
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -14,8 +14,8 @@ Esse projeto é uma aplicação python que importa todos os conjuntos de dados (
 
 1. Entre na pasta com o código da aplicação
    `cd ingestor`
-2. Install `venv`  
-   `pip install virtualenv`
+2. Instalar o [poetry](https://python-poetry.org/docs/)
+   `pipx install poetry`
 3. Create the `venv`  
    `python3 -m venv .venv`
 4. Active the `venv`  
@@ -34,6 +34,12 @@ As tabela a seguir apresenta os possíveis parâmetros de configurações basead
 | AWS_SECRET_ACCESS_KEY | password                    |
 | AWS_REGION            | us-west-1                   |
 | S3_BUCKET             | warehouse                   |
+
+Dica: Você pode criar um arquivo `.env` e usar o seguinte comando para carregar as variáveis de ambiente:
+
+`set -a && source .env && set +a`  
+
+O docker compose reconhece variáveis de ambiente nesses arquivos. 
 
 ## Rodando localmente
 

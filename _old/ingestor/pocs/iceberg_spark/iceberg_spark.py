@@ -1,8 +1,7 @@
-import pyspark
-from pyspark.sql.types import *
-from pyspark.sql.functions import *
-from ckanapi import RemoteCKAN
 import os
+
+import pyspark
+from ckanapi import RemoteCKAN
 
 dadosBh = RemoteCKAN("https://dados.pbh.gov.br/")
 packages = dadosBh.action.package_search(rows=10000)["results"]
