@@ -49,14 +49,7 @@ class DeltaCkanIngestor:
     def ingest(self):
         resources = self.datasets["resources"].combine_chunks().flatten()
         # noinspection PyArgumentList
-        tables = pa.Table.from_struct_array(resources).drop_columns(
-            [
-                "cache_last_updated",
-                "cache_url",
-                "mimetype_inner",
-                "resource_type",
-            ]
-        )
+        tables = pa.Table.from_struct_array(resources)
         datasets = self.datasets.drop_columns("resources")
 
         self.merge_table(f"s3a://{self.bucket}/ckan/datasets", datasets, "metadata_modified")

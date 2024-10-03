@@ -1,11 +1,8 @@
-import os
-
 import pytest
-from pyarrow import json
 from testcontainers.minio import MinioContainer
 
-from ckan_ingestor.config.s3_settings import S3Settings, S3_ENDPOINT_PROPERTY_NAME
 from ckan_ingestor.delta_ckan_ingestor import DeltaCkanIngestor
+from tests.fixtures.datasets import full_dataset
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -27,22 +24,6 @@ def setup(request):
         pass
     request.addfinalizer(remove_container)
     minio.get_client().make_bucket("warehouse")
-
-
-@pytest.fixture
-def full_dataset():
-    dataset = json.read_json("fixtures/full_dataset.jsonl")
-    dataset = dataset.drop_columns(
-        [
-            "relationships_as_subject",
-            "relationships_as_object",
-            "tags",
-            "extras",
-            "groups",
-            "license_url"
-        ]
-    )
-    return dataset
 
 
 def test_full_insert(full_dataset):
