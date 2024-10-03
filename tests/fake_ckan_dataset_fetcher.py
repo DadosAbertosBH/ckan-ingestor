@@ -9,5 +9,5 @@ class FakeCkanDatasetFetcher(DatasetFetcher):
     def __init__(self, dataset: pa.Table):
         self.dataset = dataset
 
-    def fetch(self):
+    def do_fetch(self):
         return self.dataset

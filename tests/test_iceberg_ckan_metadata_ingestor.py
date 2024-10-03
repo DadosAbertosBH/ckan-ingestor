@@ -6,6 +6,7 @@ from testcontainers.minio import MinioContainer
 
 from ckan_ingestor.config.s3_settings import S3Settings, S3_ENDPOINT_PROPERTY_NAME
 from ckan_ingestor.delta_ckan_ingestor import DeltaCkanIngestor
+from ckan_ingestor.iceberg_ingestor import IcebergCkanIngestor
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -46,5 +47,5 @@ def full_dataset():
 
 
 def test_full_insert(full_dataset):
-    subject = DeltaCkanIngestor(full_dataset)
+    subject = IcebergCkanIngestor(full_dataset)
     print(subject.ingest())

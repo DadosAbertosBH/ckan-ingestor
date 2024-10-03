@@ -1,0 +1,27 @@
+{
+    "tenant":"public",
+    "namespace":"default",
+    "name":"delta_source",
+    "parallelism":1,
+    "topicName": "delta_source",
+    "processingGuarantees":"ATLEAST_ONCE",
+    "archive": "/pulsar/connectors/pulsar-io-lakehouse-3.3.0.5-cloud.nar",
+    "configs":{
+        "type":"delta",
+        "checkpointInterval": 10,
+        "queueSize": 1,
+        "fatchHistoryData": true,
+        "startSnapshotVersion": -1,
+        "tablePath": "s3a://warehouse/ckan",
+        "hadoop.fs.s3a.aws.credentials.provider": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
+        "hadoop.fs.s3a.access.key" : "admin",
+        "hadoop.fs.s3a.secret.key" : "password",
+        "hadoop.fs.s3a.connection.ssl.enabled" : false,
+        "hadoop.fs.s3a.endpoint" :  "http://minio:9000",
+        "hadoop.fs.s3a.path.style.access" : true,
+        "hadoop.fs.s3a.connection.timeout" : 10,
+        "parquetParseThreads": 1,
+        "maxReadBytesSizeOneRound": 134217728,
+        "maxReadRowCountOneRound": 100000
+    }
+}

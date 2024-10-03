@@ -1,0 +1,8 @@
+catalogImpl: org.apache.iceberg.rest.RESTCatalog
+catalogName: public
+catalogOptions: # all other options are passed through in a map
+  uri: http://polaris:8181/api/catalog 
+  credential: '79ad0cb44b1c3d6a:c3861fd349ce18d5e2b1fc083a242b95'
+  scope: PRINCIPAL_ROLE:ALL
+  token-refresh-enabled: true
+  warehouse: public

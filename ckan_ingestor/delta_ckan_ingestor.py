@@ -13,9 +13,9 @@ class DeltaCkanIngestor:
         "delta.enableChangeDataFeed": "true"
     }
 
-    def __init__(self, dataset: pa.Table):
+    def __init__(self, datasets: pa.Table):
         s3_settings = S3Settings()
-        self.datasets = dataset
+        self.datasets = datasets
         self.bucket = s3_settings.bucket
         self.storage_options = {
             "AWS_ALLOW_HTTP": "true",
