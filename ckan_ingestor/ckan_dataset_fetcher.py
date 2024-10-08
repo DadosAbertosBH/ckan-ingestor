@@ -1,6 +1,6 @@
-from ckanapi import RemoteCKAN
-from pyarrow import Table
-import pyarrow as pa
+import pyarrow
+import http.client
+import json
 
 from ckan_ingestor.dataset_fetcher import DatasetFetcher
 
@@ -12,19 +12,19 @@ class CkanDatasetFetcher(DatasetFetcher):
         super().__init__()
         self.url = url
 
-    def fetch(self) -> pa.Table:
-        dados_bh = RemoteCKAN(self.url)
-        packages = dados_bh.action.package_search(rows=10000)["results"]
+    def do_fetch(self) -> pyarrow.Table:
+        packages = self.__fetch_request("package_search?rows=10000")["result"]["results"]
+        return packages
 
-        # noinspection PyArgumentList
-        df = Table.from_pylist(packages)
-        datasets = df.drop_columns(
-            [
-                "relationships_as_subject",
-                "relationships_as_object",
-                "tags",
-                "extras",
-                "license_url"
-            ]
-        )
-        return datasets
+    @staticmethod
+    def __fetch_request(action: str):
+        conn = http.client.HTTPSConnection("dados.pbh.gov.br")
+        payload = ''
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:130.0) Gecko/20100101 Firefox/130.0',
+            'Content-Type': 'application/json'
+        }
+        conn.request("GET", f"/api/action/{action}", payload, headers)
+        res = conn.getresponse()
+        data = json.loads(res.read())
+        return data

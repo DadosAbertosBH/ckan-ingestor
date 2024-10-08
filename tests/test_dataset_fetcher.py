@@ -1,8 +1,14 @@
 import pyarrow as pa
 
+from ckan_ingestor.ckan_dataset_fetcher import CkanDatasetFetcher
 from tests.fake_ckan_dataset_fetcher import FakeCkanDatasetFetcher
 from tests.fixtures.datasets import raw_full_dataset
 
+
+def test_fetch():
+    subject = CkanDatasetFetcher(url="https://dados.pbh.gov.br/")
+    x = subject.fetch()
+    x.schema
 
 def test_null_list_are_dropped(raw_full_dataset: pa.Table):
     original_schema = raw_full_dataset.schema

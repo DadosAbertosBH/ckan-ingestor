@@ -34,8 +34,6 @@ class IcebergCkanIngestor:
 
         try:
             table = self.catalog.load_table("default.datasets")
-            table.overwrite(self.packages)
-            return
             start_time = time.time()
             current_data = table.scan(
                 selected_fields=("id", "metadata_modified"),

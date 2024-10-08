@@ -6,13 +6,13 @@ import pyarrow as pa
 
 class DatasetFetcher(ABC):
 
-    @abstractmethod
-    def do_fetch(self) -> pyarrow.Table:
-        pass
-
     def fetch(self) -> pyarrow.Table:
         dataset = self.do_fetch()
         return self.sanitize_schema(dataset)
+
+    @abstractmethod
+    def do_fetch(self) -> pyarrow.Table:
+        pass
 
     def sanitize_schema(self, dataset: pyarrow.Table) -> pyarrow.Table:
         schema = dataset.schema

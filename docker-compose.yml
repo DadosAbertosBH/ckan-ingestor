@@ -41,7 +41,7 @@ services:
   server:
     image: quay.io/lakekeeper/catalog:latest
     environment:
-      - ICEBERG_REST__BASE_URI=http://localhost:8080
+      - ICEBERG_REST__BASE_URI=http://10.5.0.4:8080
       - ICEBERG_REST__PG_ENCRYPTION_KEY=This-is-NOT-Secure!
       - ICEBERG_REST__PG_DATABASE_URL_READ=postgresql://postgres:postgres@db:5432/postgres
       - ICEBERG_REST__PG_DATABASE_URL_WRITE=postgresql://postgres:postgres@db:5432/postgres
@@ -62,6 +62,7 @@ services:
         condition: service_healthy
     networks:
       iceberg_net:
+        ipv4_address: 10.5.0.4
     ports:
       - "8080:8080"
 
@@ -119,6 +120,25 @@ services:
       retries: 2
     networks:
       iceberg_net:
+
+  trino:
+    image: trinodb/trino:latest
+    environment:
+      - CATALOG_MANAGEMENT=dynamic
+    healthcheck:
+      test: [ "CMD", "curl", "-I", "http://localhost:8080/v1/status" ]
+      interval: 2s
+      timeout: 10s
+      retries: 2
+    ports:
+      - '9999:8080'
+    depends_on:
+      server:
+        condition: service_healthy
+    volumes:
+      - ./docker-volumes/trino/iceberg.properties:/etc/trino/catalog/iceberg.properties
+    networks:
+      - iceberg_net
 
 networks:
   iceberg_net:
