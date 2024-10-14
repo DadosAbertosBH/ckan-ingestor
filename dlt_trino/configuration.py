@@ -12,7 +12,7 @@ import dataclasses
 class TrinoCredentials(ConnectionStringCredentials):
     drivername: Final[str] = dataclasses.field(default="trino", init=False, repr=False,  # type: ignore
                                                compare=False)
-    database: str = None
+    catalog: str = None
     username: str = None
     password: TSecretValue = None
     host: str = None

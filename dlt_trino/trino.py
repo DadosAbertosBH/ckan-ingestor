@@ -42,7 +42,7 @@ class TrinoClient(SqlJobClientWithStagingDataset, SupportsStagingDestination):
 
     def _get_column_def_sql(self, c: TColumnSchema, table: PreparedTableSchema = None) -> str:
         return (
-            f"{self.sql_client.escape_ddl_identifier(c['name'])} {self.type_mapper.to_destination_type(c, table)}"
+            f"{self.sql_client.escape_column_name(c['name'])} {self.type_mapper.to_destination_type(c, table)}"
         )
 
     def should_truncate_table_before_load_on_staging_destination(self, table_name: str) -> bool:

@@ -7,8 +7,8 @@ from tests.fixtures.datasets import raw_full_dataset
 
 def test_fetch():
     subject = CkanDatasetFetcher(url="https://dados.pbh.gov.br/")
-    x = subject.fetch()
-    x.schema
+    subject.fetch()
+
 
 def test_null_list_are_dropped(raw_full_dataset: pa.Table):
     original_schema = raw_full_dataset.schema

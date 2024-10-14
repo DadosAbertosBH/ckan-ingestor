@@ -8,5 +8,5 @@ def test_first_load() -> None:
     pipeline = dlt.pipeline(
         "github_events", destination=trino(), dataset_name="test"
     )
-    data = github_repo_events("apache", "airflow", access_token="")
+    data = github_repo_events("dlt-hub", "dlt", access_token="")
     print(pipeline.run(data))
