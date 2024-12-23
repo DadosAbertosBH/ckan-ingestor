@@ -1,0 +1,33 @@
+{
+  "config": {
+    "propertyList": [
+      {
+        "name": "fs.s3a.aws.credentials.provider",
+        "value": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
+      }
+    ],
+    "secretPropertyList": [
+      {
+        "name": "fs.s3a.access.key",
+        "value": "$DREMIO_EXISTING_VALUE$"
+      },
+      {
+        "name": "fs.s3a.secret.key",
+        "value": "$DREMIO_EXISTING_VALUE$"
+      }
+    ],
+    "enableAsync": true,
+    "isCachingEnabled": true,
+    "maxCacheSpacePct": 100,
+    "restEndpointUri": "https://phy87032.snowflakecomputing.com/polaris/api/catalog",
+    "allowedNamespaces": [
+            "sales",
+            "finance"
+        ],
+    "isRecursiveAllowedNamespaces": true,
+    "polarisCatalogWarehouse": "polaris-catalog",
+    "polarisClientId": "ImN1IMc4SvYjkB63X3aj0P8w7H86",
+    "polarisClientSecret": "$DREMIO_EXISTING_VALUE$",
+    "polarisScope": "PRINCIPAL_ROLE:ALL"
+  }
+}

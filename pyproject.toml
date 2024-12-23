@@ -8,14 +8,15 @@ packages = [{include = "ckan_ingestor"}]
 
 [tool.poetry.dependencies]
 python = ">=3.11.9,<3.13"
-deltalake = "^0.20.1"
+deltalake = "^0.22.0"
 ckanapi = "^4.8"
-pyarrow = "^17.0.0"
+pyarrow = "^18.0.0"
 pytest = "^8.3.3"
-pydantic-settings = "^2.5.2"
-pyiceberg = "^0.7.1"
-dlt = {extras = ["github"], version = "^1.1.0"}
-trino = "^0.330.0"
+pydantic-settings = "^2.6.1"
+pyiceberg = "^0.8.0"
+dlt = {extras = ["s3"], version = "^1.5.0"}
+trino = {extras = ["sqlalchemy"], version = "^0.330.0"}
+alembic = "^1.14.0"
 
 
 [tool.poetry.group.dev.dependencies]

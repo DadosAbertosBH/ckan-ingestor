@@ -1,0 +1,35 @@
+{
+  "name":"rest",
+  "type":"RESTCATALOG",
+  "config": {
+    "propertyList": [
+      {
+        "name": "fs.s3a.aws.credentials.provider",
+        "value": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
+      },
+      {
+        "name" : "warehouse",
+        "value" : "demo"
+      }
+    ],
+    "secretPropertyList": [
+      {
+        "name": "fs.s3a.access.key",
+        "value": "$DREMIO_EXISTING_VALUE$"
+      },
+      {
+        "name": "fs.s3a.secret.key",
+        "value": "$DREMIO_EXISTING_VALUE$"
+      }
+    ],
+    "enableAsync": true,
+    "isCachingEnabled": true,
+    "maxCacheSpacePct": 100,
+    "restEndpointUri": "http://10.5.0.4:8080/catalog",
+    "allowedNamespaces": [
+            "sales",
+            "finance"
+        ],
+    "isRecursiveAllowedNamespaces": true
+  }
+}

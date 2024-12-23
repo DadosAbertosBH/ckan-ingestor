@@ -39,7 +39,7 @@ services:
       iceberg_net:
 
   server:
-    image: quay.io/lakekeeper/catalog:latest
+    image: quay.io/lakekeeper/catalog:v0.4.3
     environment:
       - ICEBERG_REST__BASE_URI=http://10.5.0.4:8080
       - ICEBERG_REST__PG_ENCRYPTION_KEY=This-is-NOT-Secure!
@@ -120,6 +120,52 @@ services:
       retries: 2
     networks:
       iceberg_net:
+
+  mongo:
+    image: mongo
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+
+  nessie:
+    image: ghcr.io/projectnessie/nessie:0.100.2
+    healthcheck:
+      test: "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /q/health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'"
+      interval: 5s
+      timeout: 2s
+      retries: 15
+    depends_on:
+      - mongo
+      - minio
+    ports:
+     - "19120:19120"
+    environment:
+      - nessie.version.store.type=MONGODB
+      - quarkus.mongodb.database=nessie
+      - quarkus.mongodb.connection-string=mongodb://root:password@mongo:27017
+      - nessie.catalog.default-warehouse=warehouse
+      - nessie.catalog.warehouses.warehouse.location=s3://warehouse/
+      - nessie.catalog.service.s3.default-options.region=us-east-1
+      - nessie.catalog.service.s3.default-options.path-style-access=true
+      - nessie.catalog.service.s3.default-options.access-key=urn:nessie-secret:quarkus:my-secrets.s3-default
+      - my-secrets.s3-default.name=admin
+      - my-secrets.s3-default.secret=password
+      # MinIO endpoint for Nessie server
+      - nessie.catalog.service.s3.default-options.endpoint=http://10.5.0.3:9000/
+      # MinIO endpoint for clients (on the Podman/Docker host)
+      - nessie.catalog.service.s3.default-options.external-endpoint=http://127.0.0.1:9002/
+    # Authorization settings.
+    # In this example, Nessie is configured with 3 clients and 3 rules:
+    # - client1: can access all namespaces
+    # - client2: can access all namespaces except 'sales'
+    # - client3: can access all namespaces except 'eng'
+#    - nessie.server.authorization.enabled=false
+#    - nessie.server.authorization.rules.client1=role=='service-account-client1'
+#    - nessie.server.authorization.rules.client2=role=='service-account-client2' && !path.startsWith('sales')
+#    - nessie.server.authorization.rules.client3=role=='service-account-client3' && !path.startsWith('eng')
+
 
   trino:
     image: trinodb/trino:latest

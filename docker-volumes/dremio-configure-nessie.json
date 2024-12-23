@@ -1,0 +1,47 @@
+{
+   "name":"nessie",
+   "config":{
+      "nessieEndpoint":"http://nessie:19120/api/v2",
+      "nessieAuthType":"NONE",
+      "storageProvider":"AWS",
+      "awsRootPath":"warehouse",
+      "credentialType":"ACCESS_KEY",
+      "awsAccessKey":"admin",
+      "awsAccessSecret":"$DREMIO_EXISTING_VALUE$",
+      "azureAuthenticationType":"ACCESS_KEY",
+      "googleAuthenticationType":"SERVICE_ACCOUNT_KEYS",
+      "propertyList":[
+         {
+            "name":"fs.s3a.path.style.access",
+            "value":"true"
+         },
+         {
+            "name":"fs.s3a.endpoint",
+            "value":"http://10.5.0.3:9000"
+         },
+         {
+            "name":"dremio.s3.compat",
+            "value":"true"
+         }
+      ],
+      "secure":false,
+      "asyncEnabled":true,
+      "isCachingEnabled":true,
+      "maxCacheSpacePct":100
+   },
+   "allowCrossSourceSelection":false,
+   "disableMetadataValidityCheck":false,
+   "accelerationRefreshPeriod":3600000,
+   "accelerationGracePeriod":10800000,
+   "accelerationNeverExpire":false,
+   "accelerationNeverRefresh":false,
+   "type":"NESSIE",
+   "accessControlList":{
+      "userControls":[
+
+      ],
+      "roleControls":[
+
+      ]
+   }
+}
