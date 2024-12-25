@@ -1,2 +1,5 @@
+[extract]
+workers=4
+
 [runtime]
 dlthub_telemetry = true

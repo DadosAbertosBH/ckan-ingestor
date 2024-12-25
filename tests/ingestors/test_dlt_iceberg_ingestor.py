@@ -1,5 +1,8 @@
 import os
 from unittest.mock import patch
+
+import duckdb
+
 from tests.fixtures.datasets import full_dataset
 
 import dlt
@@ -17,5 +20,19 @@ def test_full_insert(minio_url, full_dataset: pyarrow.Table):
             "ckan_packages",
             destination="filesystem"
         )
-        pipeline.run(dlt_ckan.ckan_source.ckan(ckan_url = "http://example.com"))
-        print("Hi")
+        load_info = pipeline.run(dlt_ckan.ckan_source.ckan(ckan_url = "http://example.com"))
+        conn =  duckdb.connect()
+        conn.query(f"""
+            CREATE SECRET s1 (
+                TYPE S3,
+                PROVIDER config,
+                KEY_ID 'admin',
+                SECRET 'password',
+                REGION 'us-central-1',
+                ENDPOINT '{minio_url[7:]}',
+                USE_SSL false
+            ); 
+        """)
+        packges = conn.query("select * from delta_scan('s3://warehouse/ckan_packages_dataset/ckan_package')").arrow()
+        resource = conn.query("select * from delta_scan('s3://warehouse/ckan_packages_dataset/ckan_package')").arrow()
+        print(load_info)
