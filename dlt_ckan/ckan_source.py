@@ -6,6 +6,8 @@ import requests
 
 from ckan_ingestor.ckan_dataset_fetcher import CkanDatasetFetcher
 
+def _normalize_id(id: str):
+    return id.replace("-", "_")
 
 def _get_field_schema(field):
     field_name = field["id"]
@@ -40,6 +42,7 @@ def ckan(ckan_url=dlt.config.value):
         name="ckan_resource",
         write_disposition="merge",
         primary_key="id",
+        table_format="delta",
         columns={"last_modified": {"dedup_sort": "desc"}}
     )
     def ckan_resource():
@@ -53,16 +56,16 @@ def ckan(ckan_url=dlt.config.value):
         parallelized=True,
         write_disposition="replace",
         standalone=True,
-        name=lambda r: str(r["item"]["id"]),
+        table_format="delta",
+        name=lambda r: _normalize_id(r["item"]["id"]),
     )
-    def ckan_table(item):
-        id_str = str(item['id'])
-        latest_sync_str = source_state.get(f"${id_str}_latest_sync", "1900-01-01T00:00:00.000000")
-        last_modified_str = str(item["last_modified"])
+    def ckan_data(item):
+        id_str = item['id']
+        latest_sync_str = source_state.get(f"{id_str}_latest_sync", "1900-01-01T00:00:00.000000")
         latest_sync = datetime.fromisoformat(latest_sync_str)
-        last_modified = datetime.fromisoformat(last_modified_str)
+        last_modified = datetime.fromisoformat(item["last_modified"])
         if latest_sync <= last_modified:
-            if str(item["format"]) == "CSV":
+            if item["datastore_active"]:
                 # url = str(item["url"])
                 url = f"https://dados.pbh.gov.br/datastore/dump/{str(item['id'])}?format=json"
                 json = requests.get(url, headers={
@@ -73,15 +76,8 @@ def ckan(ckan_url=dlt.config.value):
                 records = json["records"]
                 table = pyarrow.Table.from_pylist(records, schema=schema)
                 yield table
-        source_state[f"${id_str}_latest_sync"] = last_modified_str
-
+        source_state[f"{id_str}_latest_sync"] = item["last_modified"]
 
     for r in resources:
-        yield ckan_table(r)
-    # for tag in packages['tags'].flatten():
-    #     yield dlt.resource(tag,
-    #                        name="ckan_tag",
-    #                        write_disposition="merge",
-    #                        primary_key="id",
-    #                        columns={"last_modified": {"dedup_sort": "desc"}}
-    #                        )
+        yield ckan_data(r.as_py())
+

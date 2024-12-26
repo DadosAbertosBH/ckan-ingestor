@@ -1,3 +1,9 @@
+[schema]
+naming="direct"
+
+[destination.filesystem]
+enable_dataset_name_normalization=false
+
 [extract]
 workers=4
 
