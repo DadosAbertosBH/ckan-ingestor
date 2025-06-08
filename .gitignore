@@ -5,3 +5,6 @@ __pycache__
 .terraform
 .terraform.lock.hcl
 _old/ingestor/.env
+*.parquet
+*.ducklake
+*.wal

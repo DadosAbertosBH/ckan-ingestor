@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Optional
 
 from pydantic import HttpUrl, AfterValidator
 from pydantic_settings import (
@@ -15,8 +15,12 @@ class S3Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix='s3_')
 
-    endpoint: HttpUrlString = "http://localhost:9000"
+    protocol: str = "s3"
+    endpoint: str = "s3.amazonaws.com"
     access_key_id: str = "admin"
     secret_access_key: str = "password"
     region: str = "us-west-1"
     bucket: str = "warehouse"
+    url_style: str = "vhost"
+    use_ssl: bool = True
+    account_id: Optional[str] = None

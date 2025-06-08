@@ -5,7 +5,7 @@
       <sourceFolder url="file://$MODULE_DIR$/ckan-ingestor" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/venv" />
     </content>
-    <orderEntry type="jdk" jdkName="Poetry (raspadinha)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Poetry (ckan-ingestor)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="TestRunnerService">

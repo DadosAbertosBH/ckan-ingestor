@@ -17,8 +17,9 @@ pyiceberg = "^0.8.0"
 dlt = {extras = ["s3"], version = "^1.5.0"}
 trino = {extras = ["sqlalchemy"], version = "^0.330.0"}
 alembic = "^1.14.0"
-duckdb = "^1.1.3"
+duckdb = "^1.3.0"
 sqlglot = "^26.0.1"
+testcontainers = {extras = ["postgres"], version = "^4.10.0"}
 
 
 [tool.poetry.group.dev.dependencies]

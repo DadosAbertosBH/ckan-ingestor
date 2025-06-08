@@ -13,5 +13,16 @@ def raw_full_dataset() -> pyarrow.Table:
 
 @pytest.fixture
 def full_dataset() -> pyarrow.Table:
+    """
+    Dataset with two rows
+    """
     dataset = json.read_json("fixtures/full_dataset.jsonl")
+    return FakeCkanDatasetFetcher(dataset).fetch()
+
+@pytest.fixture
+def dataset_with_update() -> pyarrow.Table:
+    """
+    Same dataset as full_dataset, but with an update in a row.
+    """
+    dataset = json.read_json("fixtures/full_dataset_update.jsonl")
     return FakeCkanDatasetFetcher(dataset).fetch()

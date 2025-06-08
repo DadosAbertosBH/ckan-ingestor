@@ -12,16 +12,16 @@ def ckan(ckan_url=dlt.config.value):
     packages = fetcher.fetch()
 
     @dlt.resource(
-        name="ckan_package",
+        name="ckan_dataset",
         write_disposition={"disposition": "merge", "strategy": "upsert"},
         primary_key="id",
         table_format="delta",
         columns={"metadata_modified": {"dedup_sort": "desc"}}
     )
-    def ckan_package():
+    def ckan_dataset():
         yield packages
 
-    yield ckan_package
+    yield ckan_dataset
 
     resources = packages["resources"].combine_chunks().flatten()
 

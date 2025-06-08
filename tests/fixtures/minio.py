@@ -21,4 +21,4 @@ def minio_url(request):
     request.addfinalizer(remove_container)
     minio.get_client().make_bucket("warehouse")
 
-    return f"http://{host_ip}:{exposed_port}"
+    return f"{host_ip}:{exposed_port}"
