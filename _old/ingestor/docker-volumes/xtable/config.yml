@@ -1,8 +1,0 @@
-sourceFormat: DELTA
-targetFormats:
-  - ICEBERG
-datasets:
-  -
-    tableBasePath: s3a://pedalin-public/ckan
-    tableName: ckan
-    namespace: pedalin

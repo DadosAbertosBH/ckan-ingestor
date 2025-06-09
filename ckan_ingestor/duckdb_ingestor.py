@@ -1,11 +1,13 @@
 import time
 
 import duckdb
+import pyarrow
 import pyarrow as pa
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 
 CKAN_DATASET_TABLE = "ckan_dataset"
+CKAN_RESOURCE_TABLE = "ckan_resource"
 
 class DuckdbCkanIngestor:
     packages: pa.Table
@@ -66,34 +68,37 @@ class DuckdbCkanIngestor:
     def ingest(self):
         resources = self.packages["resources"].combine_chunks().flatten()
         # noinspection PyArgumentList
-        _tables = pa.Table.from_struct_array(resources)
-        new_packages = self.packages.drop_columns("resources")
+        ckan_resources = pa.Table.from_struct_array(resources)
+        ckan_datasets = self.packages.drop_columns("resources")
         self.conn.execute("BEGIN TRANSACTION;")
-        if self.table_exists(CKAN_DATASET_TABLE):
+        self.merge_dataset(ckan_datasets, CKAN_DATASET_TABLE, "metadata_modified")
+        self.merge_dataset(ckan_resources, CKAN_RESOURCE_TABLE, "last_modified")
+        self.conn.execute("COMMIT;")
+
+    def merge_dataset(self, new_packages: pyarrow.Table, table_name:str, update_at_column: str):
+        if self.table_exists(table_name):
             start_time = time.time()
+
             print("New dataset size:", new_packages.num_rows)
-
             deleted_count = self.conn.execute(f"""
-                    DELETE FROM {CKAN_DATASET_TABLE}
-                    WHERE id IN (SELECT new_packages.id FROM new_packages
-                        ASOF JOIN {CKAN_DATASET_TABLE} current_packages
-                        ON (new_packages.id = current_packages.id AND 
-                            new_packages.metadata_modified > current_packages.metadata_modified)
-                    )
-                """).arrow()["Count"][0].as_py()
+                        DELETE FROM {table_name}
+                        WHERE id IN (SELECT new_packages.id FROM new_packages
+                            ASOF JOIN {table_name} current_packages
+                            ON (new_packages.id = current_packages.id AND 
+                                new_packages.{update_at_column} > current_packages.{update_at_column})
+                        )
+                    """).arrow()["Count"][0].as_py()
             print("Datasets to update:", deleted_count)
-
             total_inserted = self.conn.execute(f"""
-                    INSERT INTO {CKAN_DATASET_TABLE}
-                    SELECT * from new_packages
-                    ANTI JOIN {CKAN_DATASET_TABLE}
-                    USING (id)
-                """).arrow()["Count"][0].as_py()
-            print("New datasets to inserted:", total_inserted - deleted_count)
+                        INSERT INTO {table_name}
+                        SELECT * from new_packages
+                        ANTI JOIN {table_name}
+                        USING (id)
+                    """).arrow()["Count"][0].as_py()
+            print("New rows to inserted:", total_inserted - deleted_count)
 
             print("---Merged dataset in %s seconds ---" % (time.time() - start_time))
         else:
             self.conn.execute(f"""
-                    CREATE TABLE {CKAN_DATASET_TABLE} AS select * from new_packages
+                    CREATE TABLE {table_name} AS select * from new_packages
                 """)
-        self.conn.execute("COMMIT;")

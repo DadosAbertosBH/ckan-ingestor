@@ -1,4 +1,3 @@
-import pyarrow
 import http.client
 import json
 
@@ -12,12 +11,12 @@ class CkanDatasetFetcher(DatasetFetcher):
         super().__init__()
         self.url = url
 
-    def do_fetch(self) -> pyarrow.Table:
+    def do_fetch(self) -> list[dict[str, any]]:
         packages = self.__fetch_request("package_search?rows=10000")["result"]["results"]
         return packages
 
     @staticmethod
-    def __fetch_request(action: str):
+    def __fetch_request(action: str) -> dict[str, any]:
         conn = http.client.HTTPSConnection("dados.pbh.gov.br")
         payload = ''
         headers = {
