@@ -10,5 +10,5 @@ class DucklakeSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix='ducklake_', env_nested_delimiter='__')
 
     database: str = "public"
-    catalog_uri: str = "postgres:dbname=ducklake_catalog host=localhost"
+    catalog_uri: str = ":memory:" # "postgres:dbname=ducklake_catalog host=localhost"
     data_path: S3Settings = S3Settings()

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="Black">
-    <option name="sdkName" value="Python 3.12 (raspadinha)" />
+    <option name="sdkName" value="uv (ckan-ingestor)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Poetry (ckan-ingestor)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="uv (ckan-ingestor)" project-jdk-type="Python SDK" />
 </project>

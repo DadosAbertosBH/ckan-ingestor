@@ -1,3 +1,4 @@
+import pyarrow
 import pyarrow as pa
 
 from ckan_ingestor.dataset_fetcher import DatasetFetcher
@@ -6,8 +7,8 @@ from ckan_ingestor.dataset_fetcher import DatasetFetcher
 class FakeCkanDatasetFetcher(DatasetFetcher):
     dataset: pa.Table
 
-    def __init__(self, dataset: list[dict[str, any]]):
+    def __init__(self, dataset: pyarrow.Table):
         self.dataset = dataset
 
-    def do_fetch(self):
+    def fetch(self):
         return self.dataset
