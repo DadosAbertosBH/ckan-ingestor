@@ -143,13 +143,20 @@ def test_ingest_invalid_json_fallback_to_csv(ducklake_ingestor):
         deletes=0,
     )
 
+    value = subject.conn.execute(f'select x from "{INVALID_INPUT_JSON_ID}"').fetchone()[0]
+    assert 'from_csv' == value
+
 def _assert_expected_table_state(conn, table_name, expected_rows, expected_columns, inserts=0, deletes=0):
     assert conn.table(table_name).arrow().shape == (
         expected_rows,
         expected_columns
     )
-
-    changes = conn.execute(f"FROM table_changes('{table_name}', now(), now());").arrow()
+    max_snapshot = conn.execute(" SELECT MAX(snapshot_id) FROM  snapshots()").fetchone()[0]
+    max_table_snapshot =conn.execute(f"""
+            SELECT MAX(snapshot_id) FROM table_changes('{table_name}', 0, {max_snapshot})
+        
+    """).fetchone()[0]
+    changes = conn.execute(f"FROM table_changes('{table_name}', {max_table_snapshot}, {max_table_snapshot});").arrow()
     assert changes.filter(pc.field("change_type") == "insert").num_rows == inserts
     assert changes.filter(pc.field("change_type") == "delete").num_rows == deletes
 

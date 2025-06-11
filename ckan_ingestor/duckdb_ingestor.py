@@ -118,10 +118,11 @@ class DuckdbCkanIngestor:
         if not self.table_exists(table_name):
             return False
 
+        max_snapshot = self.conn.execute(" SELECT MAX(snapshot_id) FROM  snapshots()").fetchone()[0]
         snapshot_time = self.conn.execute(f"""
             SELECT snapshot_time FROM snapshots()
             WHERE snapshot_id in (
-                SELECT snapshot_id FROM table_changes('{table_name}', now(), now())
+                SELECT MAX(snapshot_id) FROM table_changes('{table_name}', 0, {max_snapshot})
             )
         """).fetchone()[0]
 
@@ -134,17 +135,21 @@ class DuckdbCkanIngestor:
         # await  asyncio.gather(*tasks)
 
     def ingest_ckan_data(self, ckan_resource: dict[str: any], attempt_formats=None):
+        print(f"Working on {ckan_resource['id']}")
+
         if attempt_formats is None:
             attempt_formats = []
-        # print(f"Working on {ckan_resource['id']}")
 
-        if ckan_resource["datastore_active"] and "JSON" not in attempt_formats:
+        if ckan_resource["datastore_active"] and "DATA_STORE" not in attempt_formats:
             url = f"{self.datastore_url}/{ckan_resource['id']}?format=json"
-            attempt_formats.append("JSON")
-            read_function = f"read_json('{url}', maximum_object_size=2_147_483_648)"
+            attempt_formats.append("DATA_STORE")
+            query = f"SELECT unnest(records) FROM read_json('{url}', maximum_object_size=2_147_483_648)"
         elif ckan_resource["format"] == "CSV" and "CSV" not in attempt_formats:
             attempt_formats.append("CSV")
-            read_function = f"read_csv('{ckan_resource['url']}', sample_size=-1)"
+            query = f"SELECT * FROM read_csv('{ckan_resource['url']}', sample_size=-1)"
+        elif ckan_resource["format"] == "JSON" and "JSON" not in attempt_formats:
+            attempt_formats.append("JSON")
+            query = f"SELECT * FROM read_json('{ckan_resource['url']}', maximum_object_size=2_147_483_648)"
         else:
             print(f"Resource {ckan_resource['id']} from resource {ckan_resource['name']} "
                   f"have a unsupported format {ckan_resource['format']}")
@@ -153,11 +158,16 @@ class DuckdbCkanIngestor:
         if not self.table_is_up_to_date(ckan_resource["id"], ckan_resource["last_modified"]):
             print(f"updating {ckan_resource['id']} from resource {ckan_resource['name']}")
             try:
-                self.conn.query(f'CREATE OR REPLACE TABLE "{ckan_resource["id"]}" AS SELECT * FROM {read_function}')
-            except duckdb.InvalidInputException as e:
+                self.conn.execute(f'CREATE OR REPLACE TABLE "{ckan_resource["id"]}" AS {query}')
+            except duckdb.InvalidInputException:
                 print(
                     f"Failed to parser {ckan_resource['id']} from resource {ckan_resource['name']} "
-                    f"using formats {attempt_formats}")
+                    f"using formats {attempt_formats} query = {query}")
+                self.ingest_ckan_data(ckan_resource, attempt_formats)
+            except duckdb.IOException:
+                print(
+                    f"Failed to get {ckan_resource['id']} from resource {ckan_resource['name']} "
+                    f"using formats {attempt_formats} query = {query}")
                 self.ingest_ckan_data(ckan_resource, attempt_formats)
         else:
             print(f"Table {ckan_resource['id']} from resource {ckan_resource['name']} is up to date")
