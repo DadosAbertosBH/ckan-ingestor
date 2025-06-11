@@ -4,17 +4,18 @@ from unittest.mock import patch
 import pyarrow
 import pyarrow.compute as pc
 import pytest
+import requests
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 from ckan_ingestor.duckdb_ingestor import DuckdbCkanIngestor, CKAN_DATASET_TABLE, CKAN_RESOURCE_TABLE
-from tests.fixtures.datasets import initial_dataset, dataset_with_update, dataset_with_new_row
+from tests.fixtures.datasets import initial_dataset, dataset_with_update, dataset_with_new_row, dataset_with_pdf
 from tests.fixtures.minio import minio_url
 from tests.fixtures.ckan_mock import ckman_mock_url, INVALID_INPUT_JSON_ID
 
 EXPECTED_DATASET_ROWS_SIZE = 1
 EXPECTED_DATASET_ROWS_WITH_INSERT_SIZE = 2
 EXPECTED_RESOURCE_ROWS_SIZE = 1
-
+PDF_RESOURCE_ID = "5a172c1c-b329-4f84-bc11-5c2fc99849e5"
 
 @pytest.fixture
 def ducklake_ingestor(ckman_mock_url, minio_url, initial_dataset):
@@ -115,6 +116,15 @@ def test_insert_new_row_dataset(ducklake_ingestor, dataset_with_new_row):
         deletes=0,
     )
 
+def test_s3_ingestor(ducklake_ingestor, dataset_with_pdf):
+    subject = ducklake_ingestor
+    # Run pipeline again and assert that one row is updated
+    subject.packages = dataset_with_pdf
+    subject.ingest()
+
+    url = subject.conn.sql(f"select url from \"{PDF_RESOURCE_ID}\"").fetchone()[0]
+    response = requests.get(url)
+    response.raise_for_status() # raise if error
 
 def test_ingest_invalid_json_fallback_to_csv(ducklake_ingestor):
     subject = ducklake_ingestor

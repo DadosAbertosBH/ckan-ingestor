@@ -1,3 +1,4 @@
+import json
 import os.path
 from io import BytesIO
 
@@ -15,7 +16,7 @@ class S3PdfIngestor:
 
     def __init__(self, s3_settings = S3Settings()):
         protocol = "https" if s3_settings.use_ssl else "http"
-        self.public_url = f"{protocol}://{s3_settings.endpoint}/{s3_settings.bucket}/"
+        self.public_url = f"{protocol}://{s3_settings.endpoint}/{s3_settings.bucket}"
         self.bucket = s3_settings.bucket
         self.minio = Minio(
             endpoint=s3_settings.endpoint,
@@ -23,6 +24,24 @@ class S3PdfIngestor:
             secret_key=s3_settings.secret_access_key,
             secure=s3_settings.use_ssl
         )
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"AWS": "*"},
+                    "Action": [
+                        "s3:GetObject",
+                        "s3:PutObject",
+                        "s3:DeleteObject",
+                        "s3:ListMultipartUploadParts",
+                        "s3:AbortMultipartUpload",
+                    ],
+                    "Resource": f"arn:aws:s3:::{self.bucket}/pdfs/*",
+                },
+            ],
+        }
+        self.minio.set_bucket_policy(self.bucket, json.dumps(policy))
 
 
     def ingest(self, dataset_id:str, pdf_url: str):
@@ -42,4 +61,4 @@ class S3PdfIngestor:
             content_type='application/pdf'
         )
 
-        return os.path.join(self.public_url, object_name)
+        return self.public_url + object_name

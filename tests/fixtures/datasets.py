@@ -41,3 +41,7 @@ def dataset_with_new_row() -> pyarrow.Table:
     Same dataset as initial_dataset, but with an update in a row.
     """
     return read_json("dataset_with_new_row.json")
+
+@pytest.fixture
+def dataset_with_pdf() -> pyarrow.Table:
+    return read_json("dataset_with_pdf_resource.json")
