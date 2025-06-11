@@ -1,12 +1,13 @@
+import logging
 from datetime import datetime
 
 import duckdb
 import pyarrow
 import pyarrow as pa
 import pytz
-from minio import Minio
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
+from ckan_ingestor.s3_pdf_ingestor import S3PdfIngestor
 
 CKAN_DATASET_TABLE = "ckan_dataset"
 CKAN_RESOURCE_TABLE = "ckan_resource"
@@ -15,17 +16,20 @@ CKAN_RESOURCE_TABLE = "ckan_resource"
 class DuckdbCkanIngestor:
     packages: pa.Table
     conn: duckdb
+    pdf_ingestor: S3PdfIngestor
 
-    def __init__(self, dataset: pa.Table, datastore_url='https://dados.pbh.gov.br/datastore/dump/'):
-        self.settings = DucklakeSettings()
+    logger = logging.getLogger(__name__)
+
+    def __init__(
+            self,
+            dataset: pa.Table,
+            datastore_url='https://dados.pbh.gov.br/datastore/dump/',
+            settings = DucklakeSettings()
+    ):
+        self.settings = settings
         self.datastore_url = datastore_url
         self.packages = dataset
-        self.minio = Minio(
-            "your-minio-endpoint:9000",  # Replace with your MinIO server address
-            access_key="your-access-key",  # Replace with your access key
-            secret_key="your-secret-key",  # Replace with your secret key
-            secure=False,  # Set to True if using HTTPS
-        )
+        self.pdf_ingestor = S3PdfIngestor(settings.data_path)
         self.conn = self._connect()
 
     def _connect(self) -> duckdb.DuckDBPyConnection:
@@ -89,26 +93,28 @@ class DuckdbCkanIngestor:
 
     def merge_dataset(self, new_packages: pyarrow.Table, table_name: str, update_at_column: str):
         if self.table_exists(table_name):
-            print(f"{table_name} new dataset size:", new_packages.num_rows)
+            current_packages = self.conn.table(table_name).arrow()
+            new_packages = self._merge_schema(new_packages, current_packages)
+            self.logger.info(f"{table_name} new dataset size:", new_packages.num_rows)
             deleted_count = self.conn.execute(f"""
                         DELETE FROM {table_name}
                         WHERE id IN (SELECT new_packages.id FROM new_packages
-                            ASOF JOIN {table_name} current_packages
+                            ASOF JOIN current_packages
                             ON (new_packages.id = current_packages.id AND 
                                 new_packages.{update_at_column} > current_packages.{update_at_column})
                         )
                     """).arrow()["Count"][0].as_py()
-            print(f"{table_name} rows to deleted:", deleted_count)
+            self.logger.info(f"{table_name} rows to deleted:", deleted_count)
             total_inserted = self.conn.execute(f"""
                         INSERT INTO {table_name}
                         SELECT * from new_packages
                         ANTI JOIN {table_name}
                         USING (id)
                     """).arrow()["Count"][0].as_py()
-            print(f"{table_name} rows inserted:", total_inserted)
+            self.logger.info(f"{table_name} rows inserted:", total_inserted)
 
         else:
-            print(f"{table_name} created")
+            self.logger.info(f"{table_name} created")
             self.conn.execute(f"""
                     CREATE TABLE {table_name} AS select * from new_packages
                 """)
@@ -135,7 +141,7 @@ class DuckdbCkanIngestor:
         # await  asyncio.gather(*tasks)
 
     def ingest_ckan_data(self, ckan_resource: dict[str: any], attempt_formats=None):
-        print(f"Working on {ckan_resource['id']}")
+        self.logger.info(f"Working on {ckan_resource['id']}")
 
         if attempt_formats is None:
             attempt_formats = []
@@ -150,26 +156,41 @@ class DuckdbCkanIngestor:
         elif ckan_resource["format"] == "JSON" and "JSON" not in attempt_formats:
             attempt_formats.append("JSON")
             query = f"SELECT * FROM read_json('{ckan_resource['url']}', maximum_object_size=2_147_483_648)"
+        elif ckan_resource["format"] == "PDF" and "PDF" not in attempt_formats:
+            attempt_formats.append("PDF")
+            download_url = self.pdf_ingestor.ingest(ckan_resource['id'], ckan_resource['url'])
+            query = f"SELECT '{download_url}' as url"
         else:
-            print(f"Resource {ckan_resource['id']} from resource {ckan_resource['name']} "
-                  f"have a unsupported format {ckan_resource['format']}")
+            self.logger.error(f"Resource {ckan_resource['id']} from resource {ckan_resource['name']} "
+                              f"have a unsupported format {ckan_resource['format']}")
             return
 
         if not self.table_is_up_to_date(ckan_resource["id"], ckan_resource["last_modified"]):
-            print(f"updating {ckan_resource['id']} from resource {ckan_resource['name']}")
+            self.logger.debug(f"updating {ckan_resource['id']} from resource {ckan_resource['name']}")
             try:
                 self.conn.execute(f'CREATE OR REPLACE TABLE "{ckan_resource["id"]}" AS {query}')
             except duckdb.InvalidInputException:
-                print(
+                self.logger.warning(
                     f"Failed to parser {ckan_resource['id']} from resource {ckan_resource['name']} "
                     f"using formats {attempt_formats} query = {query}")
                 self.ingest_ckan_data(ckan_resource, attempt_formats)
             except duckdb.IOException:
-                print(
+                self.logger.warning(
                     f"Failed to get {ckan_resource['id']} from resource {ckan_resource['name']} "
                     f"using formats {attempt_formats} query = {query}")
                 self.ingest_ckan_data(ckan_resource, attempt_formats)
         else:
-            print(f"Table {ckan_resource['id']} from resource {ckan_resource['name']} is up to date")
+            self.logger.debug(f"Table {ckan_resource['id']} from resource {ckan_resource['name']} is up to date")
 
-        # print(f"Finished working on {ckan_resource['id']}")
+        self.logger.debug(f"Finished working on {ckan_resource['id']}")
+
+    @staticmethod
+    def _merge_schema(new_packages, current_packages):
+        merged_schema = pyarrow.unify_schemas(
+            [new_packages.schema, current_packages.schema],
+            promote_options="permissive"
+        )
+        missing_fields = [f for f in merged_schema if f.name not in new_packages.column_names]
+        for field in missing_fields:
+            new_packages = new_packages.append_column(field, pyarrow.nulls(new_packages.num_rows, field.type))
+        return new_packages.cast(merged_schema)
