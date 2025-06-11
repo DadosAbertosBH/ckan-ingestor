@@ -1,3 +1,4 @@
+import logging
 import os
 
 from ckan_dataset_fetcher import CkanDatasetFetcher
@@ -20,4 +21,5 @@ ingestor = DuckdbCkanIngestor(
     datastore_url= os.path.join(ckan_url, "datastore/dump"),
     settings=settings
 )
+ingestor.logger.setLevel(logging.DEBUG)
 ingestor.ingest()

@@ -26,6 +26,10 @@ class DuckdbCkanIngestor:
             datastore_url='https://dados.pbh.gov.br/datastore/dump/',
             settings = DucklakeSettings()
     ):
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
         self.settings = settings
         self.datastore_url = datastore_url
         self.packages = dataset
@@ -142,12 +146,12 @@ class DuckdbCkanIngestor:
 
     def ingest_ckan_data(self, ckan_resource: dict[str: any], attempt_formats=None):
         self.logger.info(f"Working on {ckan_resource['id']}")
-
+        resource_id = ckan_resource['id']
         if attempt_formats is None:
             attempt_formats = []
 
         if ckan_resource["datastore_active"] and "DATA_STORE" not in attempt_formats:
-            url = f"{self.datastore_url}/{ckan_resource['id']}?format=json"
+            url = f"{self.datastore_url}/{resource_id}?format=json"
             attempt_formats.append("DATA_STORE")
             query = f"SELECT unnest(records) FROM read_json('{url}', maximum_object_size=2_147_483_648)"
         elif ckan_resource["format"] == "CSV" and "CSV" not in attempt_formats:
@@ -158,10 +162,10 @@ class DuckdbCkanIngestor:
             query = f"SELECT * FROM read_json('{ckan_resource['url']}', maximum_object_size=2_147_483_648)"
         elif ckan_resource["format"] == "PDF" and "PDF" not in attempt_formats:
             attempt_formats.append("PDF")
-            download_url = self.pdf_ingestor.ingest(ckan_resource['id'], ckan_resource['url'])
+            download_url = self.pdf_ingestor.ingest(resource_id, ckan_resource['url'])
             query = f"SELECT '{download_url}' as url"
         else:
-            self.logger.error(f"Resource {ckan_resource['id']} from resource {ckan_resource['name']} "
+            self.logger.error(f"Resource {resource_id} from resource {ckan_resource['name']} "
                               f"have a unsupported format {ckan_resource['format']}")
             return
 
