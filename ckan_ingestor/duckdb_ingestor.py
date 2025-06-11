@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime
 
 import duckdb
@@ -80,14 +79,13 @@ class DuckdbCkanIngestor:
         # noinspection PyArgumentList
         ckan_resources = pa.Table.from_struct_array(resources)
         ckan_datasets = self.packages.drop_columns("resources")
-        self.conn.execute("BEGIN TRANSACTION;")
+        self.conn.begin()
         self.merge_dataset(ckan_datasets, CKAN_DATASET_TABLE, "metadata_modified")
         self.merge_dataset(ckan_resources, CKAN_RESOURCE_TABLE, "last_modified")
+        self.conn.commit()
 
         self.ingest_ckan_data_async(ckan_resources)
         # asyncio.run(self.ingest_ckan_data_async(ckan_resources))
-
-        self.conn.execute("COMMIT;")
 
     def merge_dataset(self, new_packages: pyarrow.Table, table_name: str, update_at_column: str):
         if self.table_exists(table_name):
@@ -155,7 +153,7 @@ class DuckdbCkanIngestor:
         if not self.table_is_up_to_date(ckan_resource["id"], ckan_resource["last_modified"]):
             print(f"updating {ckan_resource['id']} from resource {ckan_resource['name']}")
             try:
-                self.conn.execute(f'CREATE OR REPLACE TABLE "{ckan_resource["id"]}" AS SELECT * FROM {read_function}')
+                self.conn.query(f'CREATE OR REPLACE TABLE "{ckan_resource["id"]}" AS SELECT * FROM {read_function}')
             except duckdb.InvalidInputException as e:
                 print(
                     f"Failed to parser {ckan_resource['id']} from resource {ckan_resource['name']} "
@@ -163,4 +161,5 @@ class DuckdbCkanIngestor:
                 self.ingest_ckan_data(ckan_resource, attempt_formats)
         else:
             print(f"Table {ckan_resource['id']} from resource {ckan_resource['name']} is up to date")
+
         # print(f"Finished working on {ckan_resource['id']}")

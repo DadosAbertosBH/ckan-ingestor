@@ -14,7 +14,7 @@ from tests.fixtures.minio import minio_url
 def test_full_insert(minio_url, initial_dataset: pyarrow.Table):
     with patch("ckan_ingestor.ckan_dataset_fetcher.CkanDatasetFetcher.fetch", return_value=initial_dataset):
         dlt.config["destination.filesystem.bucket_url"] = "s3://warehouse"
-        dlt.secrets["destination.filesystem.credentials.endpoint_url"] = f"http://{minio_url}"
+        dlt.secrets["destination.filesystem.credentials.endpoint_url"] = f"http://{ckman_mock}"
         dlt.secrets["destination.filesystem.credentials.aws_access_key_id"] = "admin"
         dlt.secrets["destination.filesystem.credentials.aws_secret_access_key"] = "password"
         os.environ["AWS_S3_ALLOW_UNSAFE_RENAME"] = "true"

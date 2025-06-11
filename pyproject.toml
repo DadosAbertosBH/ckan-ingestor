@@ -16,6 +16,8 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "flask>=3.1.1",
+    "flask-cors>=6.0.0",
     "mock>=5.1.0,<6",
     "pytest>=8.3.2,<9",
     "testcontainers[minio, postgres]>=4.10.0,<5",
