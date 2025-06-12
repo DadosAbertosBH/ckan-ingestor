@@ -5,8 +5,10 @@ import duckdb
 import pyarrow
 import pyarrow as pa
 import pytz
+from typing_extensions import override
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
+from ckan_ingestor.csv_reader import DuckDbCsvReader
 from ckan_ingestor.duckdb_connection_factory import from_settings
 from ckan_ingestor.s3_pdf_ingestor import S3PdfIngestor
 
@@ -14,10 +16,9 @@ CKAN_DATASET_TABLE = "ckan_dataset"
 CKAN_RESOURCE_TABLE = "ckan_resource"
 
 class DuckdbCkanIngestor:
-    packages: pa.Table
     conn: duckdb
     pdf_ingestor: S3PdfIngestor
-
+    csv_reader: DuckDbCsvReader
     logger = logging.getLogger(__name__)
 
     def __init__(
@@ -32,6 +33,7 @@ class DuckdbCkanIngestor:
         self.logger.addHandler(handler)
         self.datastore_url = datastore_url
         self.pdf_ingestor = pdf_ingestor
+        self.csv_reader = DuckDbCsvReader(conn)
         self.conn = conn
 
     @classmethod
@@ -126,8 +128,9 @@ class DuckdbCkanIngestor:
             attempt_formats.append("DATA_STORE")
             query = f"SELECT unnest(records) FROM read_json('{url}', maximum_object_size=2_147_483_648)"
         elif ckan_resource["format"] == "CSV" and "CSV" not in attempt_formats:
-            attempt_formats.append("CSV")
-            query = f"SELECT * FROM read_csv('{ckan_resource['url']}', sample_size=-1)"
+            csv_table = self.csv_reader.read(ckan_resource['url'])
+            self.conn.register("csv_table", csv_table)
+            query = f"SELECT * FROM csv_table"
         elif ckan_resource["format"] == "JSON" and "JSON" not in attempt_formats:
             attempt_formats.append("JSON")
             query = f"SELECT * FROM read_json('{ckan_resource['url']}', maximum_object_size=2_147_483_648)"
