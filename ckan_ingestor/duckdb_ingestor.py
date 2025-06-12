@@ -6,7 +6,6 @@ import pyarrow
 import pyarrow as pa
 import pytz
 import requests
-from typing_extensions import override
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 from ckan_ingestor.csv_reader import DuckDbCsvReader
@@ -15,6 +14,7 @@ from ckan_ingestor.s3_pdf_ingestor import S3PdfIngestor
 
 CKAN_DATASET_TABLE = "ckan_dataset"
 CKAN_RESOURCE_TABLE = "ckan_resource"
+
 
 class DuckdbCkanIngestor:
     conn: duckdb
@@ -171,7 +171,9 @@ class DuckdbCkanIngestor:
         return new_packages.cast(merged_schema)
 
     def read_from_datastore(self, url: str) -> pyarrow.Table:
-        response = requests.get(url)
+        response = requests.get(url, headers={
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0"
+        })
         response.raise_for_status()
         data = response.json()
         row_data = data["records"]
