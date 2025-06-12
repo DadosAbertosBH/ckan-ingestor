@@ -5,6 +5,7 @@ import duckdb
 import pyarrow
 import pyarrow as pa
 import pytz
+import requests
 from typing_extensions import override
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
@@ -123,39 +124,35 @@ class DuckdbCkanIngestor:
         if attempt_formats is None:
             attempt_formats = []
 
-        if ckan_resource["datastore_active"] and "DATA_STORE" not in attempt_formats:
-            url = f"{self.datastore_url}/{resource_id}?format=json"
-            attempt_formats.append("DATA_STORE")
-            query = f"SELECT unnest(records) FROM read_json('{url}', maximum_object_size=2_147_483_648)"
-        elif ckan_resource["format"] == "CSV" and "CSV" not in attempt_formats:
-            csv_table = self.csv_reader.read(ckan_resource['url'])
-            self.conn.register("csv_table", csv_table)
-            query = f"SELECT * FROM csv_table"
-        elif ckan_resource["format"] == "JSON" and "JSON" not in attempt_formats:
-            attempt_formats.append("JSON")
-            query = f"SELECT * FROM read_json('{ckan_resource['url']}', maximum_object_size=2_147_483_648)"
-        elif ckan_resource["format"] == "PDF" and "PDF" not in attempt_formats:
-            attempt_formats.append("PDF")
-            download_url = self.pdf_ingestor.ingest(resource_id, ckan_resource['url'])
-            query = f"SELECT '{download_url}' as url"
-        else:
-            self.logger.error(f"Resource {resource_id} from resource {ckan_resource['name']} "
-                              f"have a unsupported format {ckan_resource['format']}")
-            return
-
         if not self.table_is_up_to_date(ckan_resource["id"], ckan_resource["last_modified"]):
-            self.logger.debug(f"updating {ckan_resource['id']} from resource {ckan_resource['name']}")
             try:
+                self.logger.debug(f"updating {ckan_resource['id']} from resource {ckan_resource['name']}")
+                if ckan_resource["datastore_active"] and "DATA_STORE" not in attempt_formats:
+                    url = f"{self.datastore_url}/{resource_id}?format=json"
+                    attempt_formats.append("DATA_STORE")
+                    datastore_table = self.read_from_datastore(url)
+                    self.conn.register("datastore_table", datastore_table)
+                    query = f"SELECT * FROM datastore_table"
+                elif ckan_resource["format"] == "CSV" and "CSV" not in attempt_formats:
+                    csv_table = self.csv_reader.read(ckan_resource['url'])
+                    self.conn.register("csv_table", csv_table)
+                    query = f"SELECT * FROM csv_table"
+                elif ckan_resource["format"] == "JSON" and "JSON" not in attempt_formats:
+                    attempt_formats.append("JSON")
+                    query = f"SELECT * FROM read_json('{ckan_resource['url']}', maximum_object_size=2_147_483_648)"
+                elif ckan_resource["format"] == "PDF" and "PDF" not in attempt_formats:
+                    attempt_formats.append("PDF")
+                    download_url = self.pdf_ingestor.ingest(resource_id, ckan_resource['url'])
+                    query = f"SELECT '{download_url}' as url"
+                else:
+                    self.logger.error(f"Resource {resource_id} from resource {ckan_resource['name']} "
+                                      f"have a unsupported format {ckan_resource['format']}")
+                    return
                 self.conn.execute(f'CREATE OR REPLACE TABLE "{ckan_resource["id"]}" AS {query}')
-            except duckdb.InvalidInputException as e:
+            except (duckdb.InvalidInputException, duckdb.IOException, requests.exceptions.JSONDecodeError) as e:
                 self.logger.warning(
                     f"Failed to parser {resource_id} from resource {ckan_resource['name']} error = {e}"
-                    f"using formats {attempt_formats} query = {query}")
-                self.ingest_ckan_data(ckan_resource, attempt_formats)
-            except duckdb.IOException:
-                self.logger.warning(
-                    f"Failed to get {ckan_resource['id']} from resource {ckan_resource['name']} "
-                    f"using formats {attempt_formats} query = {query}")
+                    f"using formats {attempt_formats}")
                 self.ingest_ckan_data(ckan_resource, attempt_formats)
         else:
             self.logger.debug(f"Table {ckan_resource['id']} from resource {ckan_resource['name']} is up to date")
@@ -172,3 +169,13 @@ class DuckdbCkanIngestor:
         for field in missing_fields:
             new_packages = new_packages.append_column(field, pyarrow.nulls(new_packages.num_rows, field.type))
         return new_packages.cast(merged_schema)
+
+    def read_from_datastore(self, url: str) -> pyarrow.Table:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        row_data = data["records"]
+        column_names = [field['id'] for field in data['fields']]
+        column_data = list(zip(*row_data))
+        arrays = [pyarrow.array(col) for col in column_data]
+        return pyarrow.Table.from_arrays(arrays, names=column_names)
