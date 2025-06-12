@@ -1,16 +1,18 @@
 import os
-from unittest.mock import patch
 
+import duckdb
 import pyarrow
 import pyarrow.compute as pc
 import pytest
 import requests
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
+from ckan_ingestor.duckdb_connection_factory import from_settings
 from ckan_ingestor.duckdb_ingestor import DuckdbCkanIngestor, CKAN_DATASET_TABLE, CKAN_RESOURCE_TABLE
+from ckan_ingestor.s3_pdf_ingestor import S3PdfIngestor
+from tests.fixtures.ckan_mock import ckman_mock_url, INVALID_INPUT_JSON_ID
 from tests.fixtures.datasets import initial_dataset, dataset_with_update, dataset_with_new_row, dataset_with_pdf
 from tests.fixtures.minio import minio_url
-from tests.fixtures.ckan_mock import ckman_mock_url, INVALID_INPUT_JSON_ID
 
 EXPECTED_DATASET_ROWS_SIZE = 1
 EXPECTED_DATASET_ROWS_WITH_INSERT_SIZE = 2
@@ -18,23 +20,26 @@ EXPECTED_RESOURCE_ROWS_SIZE = 1
 PDF_RESOURCE_ID = "5a172c1c-b329-4f84-bc11-5c2fc99849e5"
 
 @pytest.fixture
-def ducklake_ingestor(ckman_mock_url, minio_url, initial_dataset):
+def in_memory_duckdb_conn(minio_url) -> duckdb.DuckDBPyConnection:
     os.environ["DUCKLAKE_DATABASE"] = ":memory:"
     os.environ["DUCKLAKE_CATALOG_URI"] = ":memory:"
     os.environ["DUCKLAKE_DATA_PATH__ENDPOINT"] = minio_url
     os.environ["DUCKLAKE_DATA_PATH__URL_STYLE"] = "path"
     os.environ["DUCKLAKE_DATA_PATH__USE_SSL"] = "false"
+    return from_settings(DucklakeSettings())
 
-    with patch("ckan_ingestor.ckan_dataset_fetcher.CkanDatasetFetcher.fetch", return_value=initial_dataset):
-        subject = DuckdbCkanIngestor(initial_dataset,
-                                     datastore_url=f"{ckman_mock_url}/datastore",
-                                     settings=DucklakeSettings())
-        subject.ingest()
-        return subject
+@pytest.fixture
+def ingestor(in_memory_duckdb_conn: duckdb.DuckDBPyConnection, ckman_mock_url):
+    subject = DuckdbCkanIngestor(
+        conn=in_memory_duckdb_conn,
+        datastore_url=f"{ckman_mock_url}/datastore",
+        pdf_ingestor=S3PdfIngestor(DucklakeSettings().data_path))
+    return subject
 
+def test_same_dataset_does_not_generate_changes(ingestor: DuckdbCkanIngestor, initial_dataset: pyarrow.Table):
+    subject = ingestor
+    subject.ingest(initial_dataset)
 
-def test_same_dataset_does_not_generate_changes(ducklake_ingestor, initial_dataset):
-    subject = ducklake_ingestor
     _assert_expected_table_state(
         subject.conn,
         CKAN_DATASET_TABLE,
@@ -53,7 +58,7 @@ def test_same_dataset_does_not_generate_changes(ducklake_ingestor, initial_datas
     current_snapshot = subject.conn.execute("SELECT * FROM snapshots();").arrow()
 
     # Run pipeline again and assert that no new rows are inserted
-    subject.ingest()
+    subject.ingest(initial_dataset)
 
     _assert_expected_table_state(
         subject.conn,
@@ -75,11 +80,11 @@ def test_same_dataset_does_not_generate_changes(ducklake_ingestor, initial_datas
     assert snapshots.num_rows == current_snapshot.num_rows
 
 
-def test_update_dataset(ducklake_ingestor, dataset_with_update):
-    subject = ducklake_ingestor
-    # Run pipeline again and assert that one row is updated
-    subject.packages = dataset_with_update
-    subject.ingest()
+def test_update_dataset(ingestor, initial_dataset, dataset_with_update):
+    subject = ingestor
+    subject.ingest(initial_dataset)
+    subject.ingest(dataset_with_update)
+
     _assert_expected_table_state(
         subject.conn,
         CKAN_DATASET_TABLE,
@@ -96,11 +101,12 @@ def test_update_dataset(ducklake_ingestor, dataset_with_update):
     )
 
 
-def test_insert_new_row_dataset(ducklake_ingestor, dataset_with_new_row):
-    subject = ducklake_ingestor
+def test_insert_new_row_dataset(ingestor, initial_dataset, dataset_with_new_row):
+    subject = ingestor
     # Run pipeline again and assert that one row is updated
-    subject.packages = dataset_with_new_row
-    subject.ingest()
+    subject.ingest(initial_dataset)
+    subject.ingest(dataset_with_new_row)
+
     _assert_expected_table_state(
         subject.conn,
         CKAN_DATASET_TABLE,
@@ -116,18 +122,19 @@ def test_insert_new_row_dataset(ducklake_ingestor, dataset_with_new_row):
         deletes=0,
     )
 
-def test_s3_ingestor(ducklake_ingestor, dataset_with_pdf):
-    subject = ducklake_ingestor
-    # Run pipeline again and assert that one row is updated
-    subject.packages = dataset_with_pdf
-    subject.ingest()
+
+def test_s3_ingestor(ingestor: DuckdbCkanIngestor, dataset_with_pdf):
+    subject = ingestor
+    subject.ingest(dataset_with_pdf)
 
     url = subject.conn.sql(f"select url from \"{PDF_RESOURCE_ID}\"").fetchone()[0]
     response = requests.get(url)
-    response.raise_for_status() # raise if error
+    response.raise_for_status()  # raise if error
 
-def test_ingest_invalid_json_fallback_to_csv(ducklake_ingestor):
-    subject = ducklake_ingestor
+
+def test_ingest_invalid_json_fallback_to_csv(ingestor: DuckdbCkanIngestor):
+    subject = ingestor
+    # noinspection PyArgumentList
     resources = pyarrow.Table.from_pylist([{
         "id": INVALID_INPUT_JSON_ID,
         "last_modified": "2021-06-11T19:00:31.375068",

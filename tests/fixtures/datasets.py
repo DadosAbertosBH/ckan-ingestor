@@ -10,10 +10,11 @@ def read_json(filename: str) -> pyarrow.Table:
     """
     Returns the directory of the current module.
     """
-    module_directory =  os.path.dirname(os.path.abspath(__file__))
+    module_directory = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(module_directory, filename)) as f:
         with duckdb.connect(":memory:") as conn:
             return conn.execute(f"select * from read_json('{f.name}')").arrow()
+
 
 @pytest.fixture
 def raw_initial_dataset() -> pyarrow.Table:
@@ -26,6 +27,7 @@ def initial_dataset() -> pyarrow.Table:
     Dataset with two rows
     """
     return read_json("initial_dataset.json")
+
 
 @pytest.fixture
 def dataset_with_update() -> pyarrow.Table:
@@ -42,6 +44,13 @@ def dataset_with_new_row() -> pyarrow.Table:
     """
     return read_json("dataset_with_new_row.json")
 
+
 @pytest.fixture
 def dataset_with_pdf() -> pyarrow.Table:
     return read_json("dataset_with_pdf_resource.json")
+
+@pytest.fixture
+def latin_encoded_csv_file() -> str:
+    module_directory = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(module_directory, "csv_with_latin_encode.csv")) as f:
+        return f.name

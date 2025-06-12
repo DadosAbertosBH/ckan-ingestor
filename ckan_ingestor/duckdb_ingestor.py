@@ -7,11 +7,11 @@ import pyarrow as pa
 import pytz
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
+from ckan_ingestor.duckdb_connection_factory import from_settings
 from ckan_ingestor.s3_pdf_ingestor import S3PdfIngestor
 
 CKAN_DATASET_TABLE = "ckan_dataset"
 CKAN_RESOURCE_TABLE = "ckan_resource"
-
 
 class DuckdbCkanIngestor:
     packages: pa.Table
@@ -22,58 +22,29 @@ class DuckdbCkanIngestor:
 
     def __init__(
             self,
-            dataset: pa.Table,
-            datastore_url='https://dados.pbh.gov.br/datastore/dump/',
-            settings = DucklakeSettings()
+            conn: duckdb.DuckDBPyConnection,
+            pdf_ingestor: S3PdfIngestor,
+            datastore_url: str,
     ):
         handler = logging.StreamHandler()
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
-        self.settings = settings
         self.datastore_url = datastore_url
-        self.packages = dataset
-        self.pdf_ingestor = S3PdfIngestor(settings.data_path)
-        self.conn = self._connect()
+        self.pdf_ingestor = pdf_ingestor
+        self.conn = conn
 
-    def _connect(self) -> duckdb.DuckDBPyConnection:
-        """Return a duckdb connection with required extensions."""
-        conn = duckdb.connect(self.settings.database)
-        conn.install_extension("ducklake")
-        conn.load_extension("ducklake")
-        conn.execute("INSTALL postgres; LOAD postgres;")
-        conn.execute("INSTALL httpfs; LOAD httpfs;")
-        conn.execute("SET pg_debug_show_queries=false;")
-
-        account_id = "" if self.settings.data_path.account_id is None \
-            else f",'ACCOUNT_ID '{self.settings.data_path.account_id}'"
-
-        stmt = f"""
-                CREATE OR REPLACE SECRET secret (
-                    TYPE '{self.settings.data_path.protocol}',
-                    ENDPOINT '{self.settings.data_path.endpoint}',
-                    KEY_ID '{self.settings.data_path.access_key_id}',
-                    SECRET '{self.settings.data_path.secret_access_key}',
-                    USE_SSL '{self.settings.data_path.use_ssl}',
-                    URL_STYLE '{self.settings.data_path.url_style}'
-                    {account_id}
-                );
-            """
-
-        conn.execute(stmt)
-
-        stmt = (
-            "ATTACH 'ducklake:{conn}' AS lake (DATA_PATH '{data_path_protocol}://{data_path_bucket}');"
-
-        ).format(
-            conn=self.settings.catalog_uri,
-            data_path_protocol=self.settings.data_path.protocol,
-            data_path_bucket=self.settings.data_path.bucket,
+    @classmethod
+    def from_settings(
+            cls,
+            datastore_url='https://dados.pbh.gov.br/datastore/dump/',
+            settings: DucklakeSettings = DucklakeSettings()
+    ):
+        return cls(
+            datastore_url=datastore_url,
+            conn=from_settings(settings=settings),
+            pdf_ingestor=S3PdfIngestor(settings.data_path)
         )
-
-        conn.execute(stmt)
-        conn.execute("USE lake;")
-        return conn
 
     def table_exists(self, table_name):
         try:
@@ -82,11 +53,11 @@ class DuckdbCkanIngestor:
         except duckdb.CatalogException:
             return False
 
-    def ingest(self):
-        resources = self.packages["resources"].combine_chunks().flatten()
+    def ingest(self, packages: pyarrow.Table):
+        resources = packages["resources"].combine_chunks().flatten()
         # noinspection PyArgumentList
         ckan_resources = pa.Table.from_struct_array(resources)
-        ckan_datasets = self.packages.drop_columns("resources")
+        ckan_datasets = packages.drop_columns("resources")
         self.conn.begin()
         self.merge_dataset(ckan_datasets, CKAN_DATASET_TABLE, "metadata_modified")
         self.merge_dataset(ckan_resources, CKAN_RESOURCE_TABLE, "last_modified")
@@ -99,7 +70,7 @@ class DuckdbCkanIngestor:
         if self.table_exists(table_name):
             current_packages = self.conn.table(table_name).arrow()
             new_packages = self._merge_schema(new_packages, current_packages)
-            self.logger.info(f"{table_name} new dataset size:", new_packages.num_rows)
+            self.logger.info(f"{table_name} new dataset size: {new_packages.num_rows}")
             deleted_count = self.conn.execute(f"""
                         DELETE FROM {table_name}
                         WHERE id IN (SELECT new_packages.id FROM new_packages
@@ -108,14 +79,14 @@ class DuckdbCkanIngestor:
                                 new_packages.{update_at_column} > current_packages.{update_at_column})
                         )
                     """).arrow()["Count"][0].as_py()
-            self.logger.info(f"{table_name} rows to deleted:", deleted_count)
+            self.logger.info(f"{table_name} rows to deleted:{deleted_count}")
             total_inserted = self.conn.execute(f"""
                         INSERT INTO {table_name}
                         SELECT * from new_packages
                         ANTI JOIN {table_name}
                         USING (id)
                     """).arrow()["Count"][0].as_py()
-            self.logger.info(f"{table_name} rows inserted:", total_inserted)
+            self.logger.info(f"{table_name} rows inserted:{total_inserted}")
 
         else:
             self.logger.info(f"{table_name} created")
@@ -173,9 +144,9 @@ class DuckdbCkanIngestor:
             self.logger.debug(f"updating {ckan_resource['id']} from resource {ckan_resource['name']}")
             try:
                 self.conn.execute(f'CREATE OR REPLACE TABLE "{ckan_resource["id"]}" AS {query}')
-            except duckdb.InvalidInputException:
+            except duckdb.InvalidInputException as e:
                 self.logger.warning(
-                    f"Failed to parser {ckan_resource['id']} from resource {ckan_resource['name']} "
+                    f"Failed to parser {resource_id} from resource {ckan_resource['name']} error = {e}"
                     f"using formats {attempt_formats} query = {query}")
                 self.ingest_ckan_data(ckan_resource, attempt_formats)
             except duckdb.IOException:

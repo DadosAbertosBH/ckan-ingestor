@@ -3,7 +3,7 @@ from testcontainers.minio import MinioContainer
 
 
 @pytest.fixture(scope="session")
-def minio_url(request):
+def minio_url(request) -> str:
     minio = MinioContainer(
         image="minio/minio:RELEASE.2024-09-22T00-33-43Z",
         access_key="admin",

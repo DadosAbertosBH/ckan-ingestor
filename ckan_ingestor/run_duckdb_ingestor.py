@@ -16,10 +16,9 @@ ckan_url = os.environ.get("CKAN_URL", "https://dados.pbh.gov.br/")
 settings = DucklakeSettings()
 
 packages = CkanDatasetFetcher(ckan_url).fetch()
-ingestor = DuckdbCkanIngestor(
-    dataset=packages,
+ingestor = DuckdbCkanIngestor.from_settings(
     datastore_url= os.path.join(ckan_url, "datastore/dump"),
     settings=settings
 )
 ingestor.logger.setLevel(logging.DEBUG)
-ingestor.ingest()
+ingestor.ingest(packages)
