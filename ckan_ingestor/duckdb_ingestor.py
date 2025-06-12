@@ -128,12 +128,13 @@ class DuckdbCkanIngestor:
             try:
                 self.logger.debug(f"updating {ckan_resource['id']} from resource {ckan_resource['name']}")
                 if ckan_resource["datastore_active"] and "DATA_STORE" not in attempt_formats:
-                    url = f"{self.datastore_url}/{resource_id}?format=json"
                     attempt_formats.append("DATA_STORE")
+                    url = f"{self.datastore_url}/{resource_id}?format=json"
                     datastore_table = self.read_from_datastore(url)
                     self.conn.register("datastore_table", datastore_table)
                     query = f"SELECT * FROM datastore_table"
                 elif ckan_resource["format"] == "CSV" and "CSV" not in attempt_formats:
+                    attempt_formats.append("CSV")
                     csv_table = self.csv_reader.read(ckan_resource['url'])
                     self.conn.register("csv_table", csv_table)
                     query = f"SELECT * FROM csv_table"
