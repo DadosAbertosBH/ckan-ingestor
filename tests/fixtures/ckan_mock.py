@@ -24,7 +24,7 @@ def ckman_mock_url():
         offset = request.args.get('offset', default='0')
 
         if int(offset) > 0:
-            return { "fields": [], "records": [] }
+            return { "fields": [{"id":"_id","type":"int"}], "records": [] }
 
         module_directory = os.path.dirname(os.path.abspath(__file__))
         file = os.path.join(module_directory, "data", f"{resource_id}.{format_param}")

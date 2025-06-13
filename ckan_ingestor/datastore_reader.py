@@ -16,16 +16,14 @@ class DatastoreReader:
         Some resources seem to exceed max response lenght and return broken json.
         Here we are spliting the requests to avoid those cases
         """
-        fetched_records = -1
+
         offset=0
         tables = []
-        while fetched_records != 0:
-            url = f"{self.datastore_url}/{resource_id}?format=json&offset={offset}&limit={MAX_RECORDS_FETCH}"
-            data = DatastoreReader._read_json(url)
-            fetched_records = data.num_rows
+        url = f"{self.datastore_url}/{resource_id}?format=json&offset={offset}&limit={MAX_RECORDS_FETCH}"
+        while data := DatastoreReader._read_json(url):
             offset = offset + MAX_RECORDS_FETCH
-            if data.num_rows > 0:
-                tables.append(data)
+            url = f"{self.datastore_url}/{resource_id}?format=json&offset={offset}&limit={MAX_RECORDS_FETCH}"
+            tables.append(data)
         return pyarrow.concat_tables(tables)
 
     @staticmethod
@@ -39,5 +37,7 @@ class DatastoreReader:
         column_names = [field['id'] for field in data['fields']]
         column_data = list(zip(*row_data))
         arrays = [pyarrow.array(col) for col in column_data]
+        if not arrays:
+            return None
         # noinspection PyArgumentList
         return pyarrow.Table.from_arrays(arrays, names=column_names)
