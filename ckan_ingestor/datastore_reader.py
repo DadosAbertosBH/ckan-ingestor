@@ -24,6 +24,8 @@ class DatastoreReader:
             offset = offset + MAX_RECORDS_FETCH
             url = f"{self.datastore_url}/{resource_id}?format=json&offset={offset}&limit={MAX_RECORDS_FETCH}"
             tables.append(data)
+        if not tables:
+            raise duckdb.IOException(f"Now rows from {url}")
         return pyarrow.concat_tables(tables, promote=True)
 
     @staticmethod

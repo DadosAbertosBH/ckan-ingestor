@@ -1,8 +1,6 @@
-from logging import exception
-
 import duckdb
 import pyarrow
-
+import pyarrow.csv as csv
 
 class DuckDbCsvReader:
 
@@ -13,6 +11,6 @@ class DuckDbCsvReader:
         for encoding in ["utf-8", "latin-1", "CWI"]:
             try:
                 return self.conn.execute(f"SELECT * FROM read_csv('{url}', sample_size=-1, encoding='{encoding}')").arrow()
-            except duckdb.InvalidInputException as e:
-                last_e = e
-        raise last_e
+            except duckdb.InvalidInputException:
+                pass
+        return csv.read_csv(url)
