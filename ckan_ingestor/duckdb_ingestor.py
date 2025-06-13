@@ -9,6 +9,7 @@ import requests
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 from ckan_ingestor.csv_reader import DuckDbCsvReader
+from ckan_ingestor.datastore_reader import DatastoreReader
 from ckan_ingestor.duckdb_connection_factory import from_settings
 from ckan_ingestor.s3_pdf_ingestor import S3PdfIngestor
 
@@ -20,6 +21,7 @@ class DuckdbCkanIngestor:
     conn: duckdb
     pdf_ingestor: S3PdfIngestor
     csv_reader: DuckDbCsvReader
+    datastore_reader: DatastoreReader
     logger = logging.getLogger(__name__)
 
     def __init__(
@@ -32,7 +34,7 @@ class DuckdbCkanIngestor:
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
-        self.datastore_url = datastore_url
+        self.datastore_reader = DatastoreReader(conn=conn, dastore_url=datastore_url)
         self.pdf_ingestor = pdf_ingestor
         self.csv_reader = DuckDbCsvReader(conn)
         self.conn = conn
@@ -124,13 +126,12 @@ class DuckdbCkanIngestor:
         if attempt_formats is None:
             attempt_formats = []
 
-        if not self.table_is_up_to_date(ckan_resource["id"], ckan_resource["last_modified"]):
+        if not self.table_is_up_to_date(resource_id, ckan_resource["last_modified"]):
             try:
                 self.logger.debug(f"updating {ckan_resource['id']} from resource {ckan_resource['name']}")
                 if ckan_resource["datastore_active"] and "DATA_STORE" not in attempt_formats:
                     attempt_formats.append("DATA_STORE")
-                    url = f"{self.datastore_url}/{resource_id}?format=json"
-                    datastore_table = self.read_from_datastore(url)
+                    datastore_table = self.datastore_reader.read(resource_id)
                     self.conn.register("datastore_table", datastore_table)
                     query = f"SELECT * FROM datastore_table"
                 elif ckan_resource["format"] == "CSV" and "CSV" not in attempt_formats:
@@ -171,14 +172,3 @@ class DuckdbCkanIngestor:
             new_packages = new_packages.append_column(field, pyarrow.nulls(new_packages.num_rows, field.type))
         return new_packages.cast(merged_schema)
 
-    def read_from_datastore(self, url: str) -> pyarrow.Table:
-        response = requests.get(url, headers={
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0"
-        })
-        response.raise_for_status()
-        data = response.json()
-        row_data = data["records"]
-        column_names = [field['id'] for field in data['fields']]
-        column_data = list(zip(*row_data))
-        arrays = [pyarrow.array(col) for col in column_data]
-        return pyarrow.Table.from_arrays(arrays, names=column_names)

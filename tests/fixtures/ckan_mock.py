@@ -21,6 +21,11 @@ def ckman_mock_url():
     @app.route('/datastore/<string:resource_id>')
     def get(resource_id: str):
         format_param = request.args.get('format')
+        offset = request.args.get('offset', default='0')
+
+        if int(offset) > 0:
+            return { "fields": [], "records": [] }
+
         module_directory = os.path.dirname(os.path.abspath(__file__))
         file = os.path.join(module_directory, "data", f"{resource_id}.{format_param}")
         with open(file) as f:

@@ -1,0 +1,43 @@
+import duckdb
+import pyarrow
+import requests
+
+MAX_RECORDS_FETCH = 100_000
+
+class DatastoreReader:
+
+
+    def __init__(self, conn: duckdb.DuckDBPyConnection, dastore_url: str):
+        self.datastore_url = dastore_url
+        self.conn = conn
+
+    def read(self, resource_id: str) -> pyarrow.Table:
+        """
+        Some resources seem to exceed max response lenght and return broken json.
+        Here we are spliting the requests to avoid those cases
+        """
+        fetched_records = -1
+        offset=0
+        tables = []
+        while fetched_records != 0:
+            url = f"{self.datastore_url}/{resource_id}?format=json&offset={offset}&limit={MAX_RECORDS_FETCH}"
+            data = DatastoreReader._read_json(url)
+            fetched_records = data.num_rows
+            offset = offset + MAX_RECORDS_FETCH
+            if data.num_rows > 0:
+                tables.append(data)
+        return pyarrow.concat_tables(tables)
+
+    @staticmethod
+    def _read_json(url):
+        response = requests.get(url, headers={
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0"
+        })
+        response.raise_for_status()
+        data = response.json()
+        row_data = data["records"]
+        column_names = [field['id'] for field in data['fields']]
+        column_data = list(zip(*row_data))
+        arrays = [pyarrow.array(col) for col in column_data]
+        # noinspection PyArgumentList
+        return pyarrow.Table.from_arrays(arrays, names=column_names)

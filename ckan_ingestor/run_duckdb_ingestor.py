@@ -20,5 +20,5 @@ ingestor = DuckdbCkanIngestor.from_settings(
     datastore_url= os.path.join(ckan_url, "datastore/dump"),
     settings=settings
 )
-ingestor.logger.setLevel(logging.DEBUG)
+ingestor.logger.setLevel(logging.WARNING)
 ingestor.ingest(packages)
