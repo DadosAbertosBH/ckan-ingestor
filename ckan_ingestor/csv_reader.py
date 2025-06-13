@@ -1,3 +1,5 @@
+from logging import exception
+
 import duckdb
 import pyarrow
 
@@ -8,9 +10,9 @@ class DuckDbCsvReader:
         self.conn = conn
 
     def read(self, url: str) -> pyarrow.Table:
-        try:
-            return self.conn.execute(f"SELECT * FROM read_csv('{url}', sample_size=-1)").arrow()
-        except duckdb.InvalidInputException as e:
-            if "Invalid unicode" in str(e):
-                return self.conn.execute(f"SELECT * FROM read_csv('{url}', sample_size=-1, encoding='latin-1')").arrow()
-            raise e
+        for encoding in ["utf-8", "latin-1", "CWI"]:
+            try:
+                return self.conn.execute(f"SELECT * FROM read_csv('{url}', sample_size=-1, encoding='{encoding}')").arrow()
+            except duckdb.InvalidInputException as e:
+                last_e = e
+        raise last_e

@@ -18,13 +18,13 @@ class DatastoreReader:
         """
 
         offset=0
-        tables = []
+        tables:list[pyarrow.Table] = []
         url = f"{self.datastore_url}/{resource_id}?format=json&offset={offset}&limit={MAX_RECORDS_FETCH}"
         while data := DatastoreReader._read_json(url):
             offset = offset + MAX_RECORDS_FETCH
             url = f"{self.datastore_url}/{resource_id}?format=json&offset={offset}&limit={MAX_RECORDS_FETCH}"
             tables.append(data)
-        return pyarrow.concat_tables(tables)
+        return pyarrow.concat_tables(tables, promote=True)
 
     @staticmethod
     def _read_json(url):
@@ -32,7 +32,11 @@ class DatastoreReader:
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0"
         })
         response.raise_for_status()
-        data = response.json()
+        try:
+            data = response.json()
+        except requests.JSONDecodeError as e:
+            print(f"Failed to parse json url = {url}")
+            raise e
         row_data = data["records"]
         column_names = [field['id'] for field in data['fields']]
         column_data = list(zip(*row_data))
