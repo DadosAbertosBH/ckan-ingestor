@@ -36,7 +36,7 @@ class S3DocumentIngestor:
                         "s3:ListMultipartUploadParts",
                         "s3:AbortMultipartUpload",
                     ],
-                    "Resource": f"arn:aws:s3:::{self.bucket}/pdfs/*",
+                    "Resource": f"arn:aws:s3:::{self.bucket}/docs/*",
                 },
             ],
         }
@@ -49,7 +49,7 @@ class S3DocumentIngestor:
         }) as response:
             response.raise_for_status()
             pdf_bytes = response.content
-            object_name = f"/docs/${filename}"
+            object_name = f"/docs/{filename}"
             data = BytesIO(response.content)
             # Upload the object to Minio
             self.minio.put_object(

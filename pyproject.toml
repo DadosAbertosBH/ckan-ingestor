@@ -17,6 +17,9 @@ dependencies = [
     "dagster-duckdb>=0.26.19",
     "dagster-duckdb-pandas>=0.26.19",
     "pandas>=2.3.0",
+    "sherlock>=0.4.1",
+    "redis>=6.2.0",
+    "pyiceberg>=0.9.1",
 ]
 
 [dependency-groups]

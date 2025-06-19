@@ -20,10 +20,7 @@ settings = DucklakeSettings()
 packages = CkanDatasetFetcher(ckan_url).fetch()
 resources = packages["resources"].combine_chunks().flatten()
 ckan_resources = pyarrow.Table.from_struct_array(resources)
-ingestor = DuckdbCkanMetadataIngestor.from_settings(
-    datastore_url= os.path.join(ckan_url, "datastore/dump"),
-    settings=settings
-)
+ingestor = DuckdbCkanMetadataIngestor.from_settings()
 ingestor.logger.setLevel(logging.INFO)
 ingestor.ingest_dataset(packages)
 ingestor.ingest_resources(ckan_resources)

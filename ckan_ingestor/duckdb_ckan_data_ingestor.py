@@ -3,6 +3,7 @@ import threading
 
 import duckdb
 import requests
+import sherlock
 
 from ckan_ingestor.csv_reader import DuckDbCsvReader
 from ckan_ingestor.datastore_reader import DatastoreReader
@@ -10,7 +11,7 @@ from ckan_ingestor.s3_pdf_ingestor import S3DocumentIngestor
 
 
 class DuckdbCkanDataIngestor:
-    conn: duckdb
+    ducklake_conn: duckdb
     document_ingestor: S3DocumentIngestor
     csv_reader: DuckDbCsvReader
     datastore_reader: DatastoreReader
@@ -18,7 +19,7 @@ class DuckdbCkanDataIngestor:
 
     def __init__(
             self,
-            lock: threading.RLock,
+            lock: sherlock.Lock,
             ducklake_conn: duckdb.DuckDBPyConnection,
             document_ingestor: S3DocumentIngestor,
             datastore_reader: DatastoreReader,

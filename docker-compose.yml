@@ -1,6 +1,10 @@
 version: '3'
 
 services:
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
   minio:
     image: quay.io/minio/minio:RELEASE.2024-08-03T04-33-23Z
     ports:

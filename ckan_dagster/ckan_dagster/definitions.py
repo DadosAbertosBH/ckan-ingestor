@@ -6,13 +6,14 @@ from ckan_dagster.ckan_dagster.resources.duckdb_data_ingestor_resource import Du
 from ckan_dagster.ckan_dagster.resources.duckdb_metadata_ingestor_resource import DuckdbMetadataIngestorResource
 from ckan_dagster.ckan_dagster.resources.ducklake_settings_resource import DucklakeSettingsResource
 from ckan_ingestor.ckan_dataset_fetcher import CkanDatasetFetcher
+from ckan_ingestor.dataset_fetcher import DatasetFetcher
 from ckan_ingestor.duckdb_ckan_data_ingestor import DuckdbCkanDataIngestor
 from ckan_ingestor.duckdb_ckan_metadata_ingestor import DuckdbCkanMetadataIngestor
 
 
 @dg.asset()
 def ckan_datasets(
-        dataset_fetcher: dg.ResourceParam[CkanDatasetFetcher],
+        dataset_fetcher: dg.ResourceParam[DatasetFetcher],
         metadata_ingestor: dg.ResourceParam[DuckdbCkanMetadataIngestor]):
     packages = dataset_fetcher.fetch()
     metadata_ingestor.ingest_dataset(packages)
@@ -61,12 +62,12 @@ def ckan_data(context: dg.AssetExecutionContext, ingestor: dg.ResourceParam[Duck
     ).arrow().to_pylist()[0])
 
     ingestor.ingest_ckan_data(resource)
-    count = ingestor.ducklake_conn.execute(f"select count(*) from \"{resource_id}\"").fetchone()[0]
+    count = ingestor.ducklake_conn.execute(f"select count(*) from \"{resource_id}\".\"{resource_id}\"").fetchone()[0]
     return dg.MaterializeResult(
         metadata={
             "row_count": dg.MetadataValue.int(count),
             "preview": dg.MetadataValue.md(
-                ingestor.ducklake_conn.execute(f"select * from \"{resource_id}\" limit 10")
+                ingestor.ducklake_conn.execute(f"select * from \"{resource_id}\".\"{resource_id}\" limit 10")
                 .fetchdf()
                 .to_markdown(index=False)
             ),

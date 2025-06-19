@@ -1,9 +1,10 @@
 from ckan_dagster.ckan_dagster.definitions import ckan_datasets
-from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 from ckan_ingestor.config.s3_settings import S3Settings
 from ckan_ingestor.duckdb_ckan_metadata_ingestor import DuckdbCkanMetadataIngestor
+from tests.fake_ckan_dataset_fetcher import FakeCkanDatasetFetcher
 from tests.fixtures.datasets import initial_dataset
-from tests.fixtures.minio import minio_url
+from tests.fixtures.infrastructure import *
+
 
 def test_load_dataset(initial_dataset, minio_url):
     settings = DucklakeSettings(
@@ -17,7 +18,7 @@ def test_load_dataset(initial_dataset, minio_url):
             use_ssl=False
         )
     )
-
+    fetcher = FakeCkanDatasetFetcher(initial_dataset)
     metadata_ingestor = DuckdbCkanMetadataIngestor.from_settings(settings)
-    ckan_datasets(initial_dataset, metadata_ingestor)
+    ckan_datasets(fetcher, metadata_ingestor)
 
