@@ -2,41 +2,56 @@ image: docker
 services:
   - docker:dind
 
-build:
-  stage: build
+
+variables:
+  UV_VERSION: "0.5"
+  PYTHON_VERSION: "3.12"
+  BASE_LAYER: bookworm-slim
+  # GitLab CI creates a separate mountpoint for the build directory,
+  # so we need to copy instead of using hard links.
+  UV_LINK_MODE: copy
+
+uv:
+  image: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
   script:
-    - mkdir -vp ~/.docker/cli-plugins/
-    - wget  https://github.com/docker/buildx/releases/download/v0.9.1/buildx-v0.9.1.linux-amd64 -O ~/.docker/cli-plugins/docker-buildx
-    - chmod a+x ~/.docker/cli-plugins/docker-buildx
-    - docker context create jitsu
-    - docker buildx create jitsu --use
-    - cd ingestor
-    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
-    - docker buildx build --platform linux/amd64,linux/arm64 --push -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
-  rules:
-    - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
-      changes:
-        - ingestor/**/*  
-deploy-ingestor:
-  stage: deploy
-  variables:
-    TARGET_ENV: production
-    TF_ROOT:  "infra"
-    TF_STATE_NAME:  "ingestor"
-    TARGET_BRANCH: main
-  trigger:
-    strategy: depend  
-    include:
-      - local: /templates/validate-plan-apply.yml
-        inputs:
-          version: 0.18.0
-          opentofu_version: 1.7.1
-          root_dir: $TF_ROOT
-          state_name: $TF_STATE_NAME
-          stage_validate: build
-          stage_build: build
-          stage_deploy: deploy
-          runner_env: $TARGET_ENV  
-          runner_tag: $TARGET_ENV
-  rules:
-    - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
+    uvx ruff check
+
+#
+#deploy-ingestor:
+#  stage: deploy
+#  variables:
+#    TARGET_ENV: production
+#    TF_ROOT:  "infra"
+#    TF_STATE_NAME:  "ingestor"
+#    TARGET_BRANCH: main
+#  trigger:
+#    strategy: depend
+#    include:
+#      - local: /templates/validate-plan-apply.yml
+#        inputs:
+#          version: 0.18.0
+#          opentofu_version: 1.7.1
+#          root_dir: $TF_ROOT
+#          state_name: $TF_STATE_NAME
+#          stage_validate: build
+#          stage_build: build
+#          stage_deploy: deploy
+#          runner_env: $TARGET_ENV
+#          runner_tag: $TARGET_ENV
+#  rules:
+#    - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
+#build:
+#  stage: build
+#  script:
+#    - mkdir -vp ~/.docker/cli-plugins/
+#    - wget  https://github.com/docker/buildx/releases/download/v0.9.1/buildx-v0.9.1.linux-amd64 -O ~/.docker/cli-plugins/docker-buildx
+#    - chmod a+x ~/.docker/cli-plugins/docker-buildx
+#    - docker context create jitsu
+#    - docker buildx create jitsu --use
+#    - cd ingestor
+#    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
+#    - docker buildx build --platform linux/amd64,linux/arm64 --push -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
+#  rules:
+#    - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
+#      changes:
+#        - ingestor/**/*

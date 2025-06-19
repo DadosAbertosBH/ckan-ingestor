@@ -24,19 +24,24 @@ class DuckdbDataIngestorResource(dg.ConfigurableResource[DuckdbCkanDataIngestor]
 
     @contextmanager
     def yield_for_execution(self, context: InitResourceContext):
-        connection_config = {"memory_limit": "1GB", 'threads': 1, }
+        connection_config = {
+            "memory_limit": "1GB",
+            "threads": 1,
+        }
         sherlock.configure(
-            expire=600,
-            timeout=600,
-            retry_interval=0.1,
-            backend=sherlock.backends.REDIS
+            expire=600, timeout=600, retry_interval=0.1, backend=sherlock.backends.REDIS
         )
-        with duckdb.connect(f":memory:{uuid.uuid4()}", config=connection_config) as local_conn:
+        with duckdb.connect(
+            f":memory:{uuid.uuid4()}", config=connection_config
+        ) as local_conn:
             yield DuckdbCkanDataIngestor(
-                lock=Lock('my_lock'),
+                lock=Lock("my_lock"),
                 ducklake_conn=self.metadata_ingestor.conn,
-                document_ingestor=S3DocumentIngestor(s3_settings=self.ducklake_settings.data_path),
-                datastore_reader=DatastoreReader(conn=local_conn,
-                                                 dastore_url=self.ducklake_settings.datastore_url),
-                csv_reader=DuckDbCsvReader(conn=local_conn)
+                document_ingestor=S3DocumentIngestor(
+                    s3_settings=self.ducklake_settings.data_path
+                ),
+                datastore_reader=DatastoreReader(
+                    conn=local_conn, dastore_url=self.ducklake_settings.datastore_url
+                ),
+                csv_reader=DuckDbCsvReader(conn=local_conn),
             )

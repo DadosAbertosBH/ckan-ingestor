@@ -12,7 +12,9 @@ os.environ["DUCKLAKE_DATA_PATH__ENDPOINT"] = "localhost:9000"
 os.environ["DUCKLAKE_DATA_PATH__URL_STYLE"] = "path"
 os.environ["DUCKLAKE_DATA_PATH__USE_SSL"] = "false"
 # os.environ["DUCKLAKE_CATALOG_URI"] = "run_ducklake"
-os.environ["DUCKLAKE_CATALOG_URI"] = "postgres:dbname=postgres host=localhost user=postgres password=postgres"
+os.environ["DUCKLAKE_CATALOG_URI"] = (
+    "postgres:dbname=postgres host=localhost user=postgres password=postgres"
+)
 ckan_url = os.environ.get("CKAN_URL", "https://dados.pbh.gov.br/")
 
 settings = DucklakeSettings()

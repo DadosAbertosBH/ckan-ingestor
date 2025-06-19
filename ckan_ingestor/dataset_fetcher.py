@@ -4,7 +4,6 @@ import pyarrow
 
 
 class DatasetFetcher(ABC):
-
     @abstractmethod
     def fetch(self) -> pyarrow.Table:
         pass

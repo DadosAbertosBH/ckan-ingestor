@@ -6,6 +6,7 @@ import requests
 
 from ckan_ingestor.ckan_dataset_fetcher import CkanDatasetFetcher
 
+
 @dlt.source
 def ckan(ckan_url=dlt.config.value):
     fetcher = CkanDatasetFetcher(ckan_url)
@@ -16,7 +17,7 @@ def ckan(ckan_url=dlt.config.value):
         write_disposition={"disposition": "merge", "strategy": "upsert"},
         primary_key="id",
         table_format="delta",
-        columns={"metadata_modified": {"dedup_sort": "desc"}}
+        columns={"metadata_modified": {"dedup_sort": "desc"}},
     )
     def ckan_dataset():
         yield packages
@@ -30,7 +31,7 @@ def ckan(ckan_url=dlt.config.value):
         write_disposition="merge",
         primary_key="id",
         table_format="delta",
-        columns={"last_modified": {"dedup_sort": "desc"}}
+        columns={"last_modified": {"dedup_sort": "desc"}},
     )
     def ckan_resource():
         # noinspection PyArgumentList
@@ -47,8 +48,10 @@ def ckan(ckan_url=dlt.config.value):
     )
     def ckan_data(item):
         source_state = dlt.current.source_state()
-        item_id = item['id']
-        latest_sync_str = source_state.get(f"{item_id}_latest_sync", "1900-01-01T00:00:00.000000")
+        item_id = item["id"]
+        latest_sync_str = source_state.get(
+            f"{item_id}_latest_sync", "1900-01-01T00:00:00.000000"
+        )
         latest_sync = datetime.fromisoformat(latest_sync_str)
         last_modified = datetime.fromisoformat(item["last_modified"])
         if latest_sync < last_modified:
@@ -62,10 +65,14 @@ def ckan(ckan_url=dlt.config.value):
     for r in resources:
         yield ckan_data(r.as_py())
 
+
 def _fetch_and_parser_json(url):
-    json = requests.get(url, headers={
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0"
-    }).json()
+    json = requests.get(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0"
+        },
+    ).json()
     fields = [_get_field_schema(x) for x in json["fields"]]
     schema = pyarrow.schema(fields)
     records = json["records"]
@@ -73,12 +80,14 @@ def _fetch_and_parser_json(url):
     table = pyarrow.Table.from_pylist(records, schema=schema)
     return table
 
+
 def _normalize_id(id: str):
     return id.replace("-", "_")
 
+
 def _get_field_schema(field):
     field_name = field["id"]
-    match(field['type']):
+    match field["type"]:
         case "int":
             return field_name, pyarrow.int32()
         case "text":

@@ -7,7 +7,6 @@ from ckan_ingestor.duckdb_ckan_metadata_ingestor import DuckdbCkanMetadataIngest
 
 
 class DucklakeSettingsResource(dg.ConfigurableResource[DucklakeSettings]):
-
     def create_resource(self, context: InitResourceContext) -> DucklakeSettings:
         settings = DucklakeSettings(
             database=":memory:",
@@ -17,7 +16,7 @@ class DucklakeSettingsResource(dg.ConfigurableResource[DucklakeSettings]):
                 url_style="path",
                 access_key_id="admin",
                 secret_access_key="password",
-                use_ssl=False
-            )
+                use_ssl=False,
+            ),
         )
         return settings

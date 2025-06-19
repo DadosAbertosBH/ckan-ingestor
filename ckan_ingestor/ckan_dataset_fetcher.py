@@ -12,6 +12,7 @@ class CkanDatasetFetcher(DatasetFetcher):
 
     def fetch(self) -> pyarrow.Table:
         import duckdb
+
         with duckdb.connect(":memory:") as conn:
             return conn.execute(f"""
             select unnest(result, max_depth :=2) from 

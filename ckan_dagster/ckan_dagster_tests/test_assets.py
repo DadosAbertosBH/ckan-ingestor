@@ -15,10 +15,9 @@ def test_load_dataset(initial_dataset, minio_url):
             url_style="path",
             access_key_id="admin",
             secret_access_key="password",
-            use_ssl=False
-        )
+            use_ssl=False,
+        ),
     )
     fetcher = FakeCkanDatasetFetcher(initial_dataset)
     metadata_ingestor = DuckdbCkanMetadataIngestor.from_settings(settings)
     ckan_datasets(fetcher, metadata_ingestor)
-

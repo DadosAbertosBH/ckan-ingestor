@@ -12,8 +12,11 @@ def from_settings(settings: DucklakeSettings = DucklakeSettings()):
     conn.execute("INSTALL httpfs; LOAD httpfs;")
     conn.execute("SET pg_debug_show_queries=false;")
 
-    account_id = "" if settings.data_path.account_id is None \
+    account_id = (
+        ""
+        if settings.data_path.account_id is None
         else f",'ACCOUNT_ID '{settings.data_path.account_id}'"
+    )
 
     stmt = f"""
             CREATE OR REPLACE SECRET secret (
@@ -31,7 +34,6 @@ def from_settings(settings: DucklakeSettings = DucklakeSettings()):
 
     stmt = (
         "ATTACH 'ducklake:{conn}' AS lake (DATA_PATH '{data_path_protocol}://{data_path_bucket}');"
-
     ).format(
         conn=settings.catalog_uri,
         data_path_protocol=settings.data_path.protocol,

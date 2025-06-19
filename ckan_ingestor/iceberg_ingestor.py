@@ -18,14 +18,10 @@ class IcebergCkanIngestor:
         self.packages = dataset.drop_columns(["resources", "organization", "tags"])
         self.catalog = load_catalog(
             "default",  # must be the same
-            **{
-                "uri": catalog_settings.uri,
-                "warehouse": catalog_settings.warehouse
-            }
+            **{"uri": catalog_settings.uri, "warehouse": catalog_settings.warehouse},
         )
 
     def ingest(self):
-
         namespaces = self.catalog.list_namespaces()
         if ("default",) not in namespaces:
             self.catalog.create_namespace("default")
@@ -34,9 +30,15 @@ class IcebergCkanIngestor:
 
         try:
             table = self.catalog.load_table("default.datasets")
-            table.upsert(self.packages, join_cols=["id", "metadata_modified"], when_matched_update_all=False)
+            table.upsert(
+                self.packages,
+                join_cols=["id", "metadata_modified"],
+                when_matched_update_all=False,
+            )
             items = pc.unique(self.packages["id"]).to_pylist()
             table.overwrite(self.packages, overwrite_filter=In("id", items))
         except NoSuchTableError:
-            table = self.catalog.create_table("default.datasets", schema=self.packages.schema)
+            table = self.catalog.create_table(
+                "default.datasets", schema=self.packages.schema
+            )
             table.append(self.packages)

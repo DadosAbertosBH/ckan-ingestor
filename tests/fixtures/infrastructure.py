@@ -25,6 +25,7 @@ def minio_url(request) -> str:
     def remove_container():
         # minio.stop()
         pass
+
     request.addfinalizer(remove_container)
     minio.get_client().make_bucket("warehouse")
 
@@ -36,11 +37,14 @@ def redis_client(request):
     container = RedisContainer()
     container.start()
     client = container.get_client()
+
     def remove_container():
         # minio.stop()
         pass
+
     request.addfinalizer(remove_container)
     return client
+
 
 @pytest.fixture
 def ducklake_settings(minio_url) -> DucklakeSettings:
@@ -51,6 +55,9 @@ def ducklake_settings(minio_url) -> DucklakeSettings:
     os.environ["DUCKLAKE_DATA_PATH__USE_SSL"] = "false"
     return DucklakeSettings()
 
+
 @pytest.fixture
-def in_memory_duckdb_conn(ducklake_settings: DucklakeSettings) -> duckdb.DuckDBPyConnection:
+def in_memory_duckdb_conn(
+    ducklake_settings: DucklakeSettings,
+) -> duckdb.DuckDBPyConnection:
     return from_settings(ducklake_settings)

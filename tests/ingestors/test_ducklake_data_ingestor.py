@@ -9,21 +9,26 @@ from ckan_ingestor.s3_pdf_ingestor import S3DocumentIngestor
 from tests.fixtures.ckan_mock import *
 from tests.fixtures.datasets import *
 from tests.fixtures.infrastructure import *
-from tests.ingestors.test_ducklake_metadata_ingestor import PDF_RESOURCE_ID, _assert_expected_table_state
+from tests.ingestors.test_ducklake_metadata_ingestor import (
+    PDF_RESOURCE_ID,
+    _assert_expected_table_state,
+)
 
 
 @pytest.fixture
-def ingestor(in_memory_duckdb_conn: duckdb.DuckDBPyConnection,
-             ducklake_settings: DucklakeSettings,
-             ckman_mock_url,
-             redis_client) -> DuckdbCkanDataIngestor:
+def ingestor(
+    in_memory_duckdb_conn: duckdb.DuckDBPyConnection,
+    ducklake_settings: DucklakeSettings,
+    ckman_mock_url,
+    redis_client,
+) -> DuckdbCkanDataIngestor:
     sherlock.configure(client=redis_client)
     subject = DuckdbCkanDataIngestor(
         ducklake_conn=in_memory_duckdb_conn,
         document_ingestor=S3DocumentIngestor(ducklake_settings.data_path),
         datastore_reader=DatastoreReader(in_memory_duckdb_conn, ckman_mock_url),
         csv_reader=DuckDbCsvReader(in_memory_duckdb_conn),
-        lock=Lock('my_lock'),
+        lock=Lock("my_lock"),
     )
     return subject
 
@@ -33,7 +38,9 @@ def test_s3_ingestor(ingestor: DuckdbCkanDataIngestor, dataset_with_pdf):
     resource = dataset_with_pdf["resources"].to_pylist()[0][0]
     subject.ingest_ckan_data(resource)
 
-    url = subject.ducklake_conn.sql(f"select url from \"{PDF_RESOURCE_ID}\"").fetchone()[0]
+    url = subject.ducklake_conn.sql(f'select url from "{PDF_RESOURCE_ID}"').fetchone()[
+        0
+    ]
     response = requests.get(url)
     response.raise_for_status()  # raise if error
 
@@ -59,5 +66,7 @@ def test_ingest_invalid_json_fallback_to_csv(ingestor: DuckdbCkanDataIngestor):
         deletes=0,
     )
 
-    value = subject.ducklake_conn.execute(f'select x from "{INVALID_INPUT_JSON_ID}"').fetchone()[0]
-    assert 'from_csv' == value
+    value = subject.ducklake_conn.execute(
+        f'select x from "{INVALID_INPUT_JSON_ID}"'
+    ).fetchone()[0]
+    assert "from_csv" == value

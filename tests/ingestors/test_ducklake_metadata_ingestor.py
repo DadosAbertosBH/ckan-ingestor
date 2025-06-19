@@ -10,12 +10,16 @@ EXPECTED_DATASET_ROWS_WITH_INSERT_SIZE = 2
 EXPECTED_RESOURCE_ROWS_SIZE = 1
 PDF_RESOURCE_ID = "5a172c1c-b329-4f84-bc11-5c2fc99849e5"
 
+
 @pytest.fixture
 def ingestor(in_memory_duckdb_conn: duckdb.DuckDBPyConnection, ckman_mock_url):
     subject = DuckdbCkanMetadataIngestor(conn=in_memory_duckdb_conn)
     return subject
 
-def test_same_dataset_does_not_generate_changes(ingestor: DuckdbCkanMetadataIngestor, initial_dataset: pyarrow.Table):
+
+def test_same_dataset_does_not_generate_changes(
+    ingestor: DuckdbCkanMetadataIngestor, initial_dataset: pyarrow.Table
+):
     subject = ingestor
 
     resources = initial_dataset["resources"].combine_chunks().flatten()
@@ -30,14 +34,14 @@ def test_same_dataset_does_not_generate_changes(ingestor: DuckdbCkanMetadataInge
         CKAN_DATASET_TABLE,
         EXPECTED_DATASET_ROWS_SIZE,
         inserts=EXPECTED_DATASET_ROWS_SIZE,
-        deletes=0
+        deletes=0,
     )
     _assert_expected_table_state(
         subject.conn,
         CKAN_RESOURCE_TABLE,
         EXPECTED_RESOURCE_ROWS_SIZE,
         inserts=EXPECTED_RESOURCE_ROWS_SIZE,
-        deletes=0
+        deletes=0,
     )
 
     current_snapshot = subject.conn.execute("SELECT * FROM snapshots();").arrow()
@@ -46,20 +50,19 @@ def test_same_dataset_does_not_generate_changes(ingestor: DuckdbCkanMetadataInge
     subject.ingest_dataset(initial_dataset)
     subject.ingest_resources(ckan_resources)
 
-
     _assert_expected_table_state(
         subject.conn,
         CKAN_DATASET_TABLE,
         EXPECTED_DATASET_ROWS_SIZE,
         inserts=EXPECTED_DATASET_ROWS_SIZE,
-        deletes=0
+        deletes=0,
     )
     _assert_expected_table_state(
         subject.conn,
         CKAN_RESOURCE_TABLE,
         EXPECTED_RESOURCE_ROWS_SIZE,
         inserts=EXPECTED_RESOURCE_ROWS_SIZE,
-        deletes=0
+        deletes=0,
     )
     # Expected create schema  table
     snapshots = subject.conn.execute("SELECT * FROM snapshots();").arrow()
@@ -81,20 +84,19 @@ def test_update_dataset(ingestor, initial_dataset, dataset_with_update):
     subject.ingest_dataset(dataset_with_update)
     subject.ingest_resources(ckan_resources)
 
-
     _assert_expected_table_state(
         subject.conn,
         CKAN_DATASET_TABLE,
         EXPECTED_DATASET_ROWS_SIZE,
         inserts=1,
-        deletes=1
+        deletes=1,
     )
     _assert_expected_table_state(
         subject.conn,
         CKAN_RESOURCE_TABLE,
         EXPECTED_RESOURCE_ROWS_SIZE,
         inserts=1,
-        deletes=1
+        deletes=1,
     )
 
 
@@ -118,7 +120,7 @@ def test_insert_new_row_dataset(ingestor, initial_dataset, dataset_with_new_row)
         CKAN_DATASET_TABLE,
         EXPECTED_DATASET_ROWS_SIZE + 1,
         inserts=1,
-        deletes=0
+        deletes=0,
     )
     _assert_expected_table_state(
         subject.conn,
@@ -128,13 +130,18 @@ def test_insert_new_row_dataset(ingestor, initial_dataset, dataset_with_new_row)
         deletes=0,
     )
 
+
 def _assert_expected_table_state(conn, table_name, expected_rows, inserts=0, deletes=0):
     assert conn.table(table_name).arrow().shape[0] == expected_rows
-    max_snapshot = conn.execute(" SELECT MAX(snapshot_id) FROM  snapshots()").fetchone()[0]
+    max_snapshot = conn.execute(
+        " SELECT MAX(snapshot_id) FROM  snapshots()"
+    ).fetchone()[0]
     max_table_snapshot = conn.execute(f"""
             SELECT MAX(snapshot_id) FROM table_changes('{table_name}', 0, {max_snapshot})
         
     """).fetchone()[0]
-    changes = conn.execute(f"FROM table_changes('{table_name}', {max_table_snapshot}, {max_table_snapshot});").arrow()
+    changes = conn.execute(
+        f"FROM table_changes('{table_name}', {max_table_snapshot}, {max_table_snapshot});"
+    ).arrow()
     assert changes.filter(pc.field("change_type") == "insert").num_rows == inserts
     assert changes.filter(pc.field("change_type") == "delete").num_rows == deletes
