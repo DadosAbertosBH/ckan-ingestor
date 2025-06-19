@@ -7,13 +7,13 @@ from minio import Minio
 from ckan_ingestor.config.s3_settings import S3Settings
 
 
-class S3PdfIngestor:
+class S3DocumentIngestor:
 
     minio: Minio
     bucket: str
     public_url: str
 
-    def __init__(self, s3_settings = S3Settings()):
+    def __init__(self, s3_settings: S3Settings):
         protocol = "https" if s3_settings.use_ssl else "http"
         self.public_url = f"{protocol}://{s3_settings.endpoint}/{s3_settings.bucket}"
         self.bucket = s3_settings.bucket
@@ -43,21 +43,21 @@ class S3PdfIngestor:
         self.minio.set_bucket_policy(self.bucket, json.dumps(policy))
 
 
-    def ingest(self, dataset_id:str, pdf_url: str):
-        response = requests.get(pdf_url, headers={
+    def ingest(self, filename:str, download_url: str, content_type):
+        with requests.get(download_url, stream=True, headers={
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0"
-        })
-        response.raise_for_status()
-        pdf_bytes = response.content
-        object_name = f"/pdfs/{dataset_id}.pdf"
-        data = BytesIO(response.content)
-        # Upload the object to Minio
-        self.minio.put_object(
-            bucket_name=self.bucket,
-            object_name=object_name,
-            data=data,
-            length=len(pdf_bytes),
-            content_type='application/pdf'
-        )
+        }) as response:
+            response.raise_for_status()
+            pdf_bytes = response.content
+            object_name = f"/docs/${filename}"
+            data = BytesIO(response.content)
+            # Upload the object to Minio
+            self.minio.put_object(
+                bucket_name=self.bucket,
+                object_name=object_name,
+                data=data,
+                length=len(pdf_bytes),
+                content_type=content_type
+            )
 
-        return self.public_url + object_name
+            return self.public_url + object_name

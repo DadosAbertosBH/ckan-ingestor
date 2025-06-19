@@ -12,3 +12,5 @@ class DucklakeSettings(BaseSettings):
     database: str = "public"
     catalog_uri: str = ":memory:" # "postgres:dbname=ducklake_catalog host=localhost"
     data_path: S3Settings = S3Settings()
+
+    datastore_url: str ='https://dados.pbh.gov.br/datastore/dump'

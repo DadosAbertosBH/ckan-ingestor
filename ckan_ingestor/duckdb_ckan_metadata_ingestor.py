@@ -1,0 +1,168 @@
+import logging
+import threading
+from datetime import datetime
+from threading import Thread
+
+import duckdb
+import math
+import pyarrow
+import pytz
+
+from ckan_ingestor.config.ducklake_settings import DucklakeSettings
+from ckan_ingestor.csv_reader import DuckDbCsvReader
+from ckan_ingestor.datastore_reader import DatastoreReader
+from ckan_ingestor.duckdb_ckan_data_ingestor import DuckdbCkanDataIngestor
+from ckan_ingestor.duckdb_connection_factory import from_settings
+from ckan_ingestor.s3_pdf_ingestor import S3DocumentIngestor
+
+CKAN_DATASET_TABLE = "ckan_dataset"
+CKAN_RESOURCE_TABLE = "ckan_resource"
+
+
+class DuckdbCkanMetadataIngestor:
+    """
+    This class is responsible to write the datasets and resources tables
+    """
+    conn: duckdb
+    csv_reader: DuckDbCsvReader
+    datastore_reader: DatastoreReader
+    logger = logging.getLogger(__name__)
+    lock = threading.RLock()
+
+    def __init__(
+            self,
+            conn: duckdb.DuckDBPyConnection,
+    ):
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
+        self.csv_reader = DuckDbCsvReader(conn)
+        self.conn = conn
+
+    @classmethod
+    def from_settings(
+            cls,
+            settings: DucklakeSettings
+    ):
+        return cls(
+            conn=from_settings(settings=settings),
+        )
+
+    def table_exists(self, table_name):
+        try:
+            result = self.conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+            return len(result) > 0
+        except duckdb.CatalogException:
+            return False
+
+    def ingest_dataset(self, packages: pyarrow.Table):
+        ckan_datasets = packages.drop_columns("resources")
+        self.conn.begin()
+        self.merge_dataset(ckan_datasets, CKAN_DATASET_TABLE, "metadata_modified")
+        self.conn.commit()
+
+    def ingest_resources(self, resources: pyarrow.Table):
+        self.conn.begin()
+        self.merge_dataset(resources, CKAN_RESOURCE_TABLE, "last_modified")
+        self.conn.commit()
+
+    def merge_dataset(self, new_packages: pyarrow.Table, table_name: str, update_at_column: str):
+        if self.table_exists(table_name):
+            current_packages = self.conn.table(table_name).arrow()
+            new_packages = self._merge_schema(new_packages, current_packages)
+            self.logger.info(f"{table_name} new dataset size: {new_packages.num_rows}")
+            deleted_count = self.conn.execute(f"""
+                        DELETE FROM {table_name}
+                        WHERE id IN (SELECT new_packages.id FROM new_packages
+                            ASOF JOIN current_packages
+                            ON (new_packages.id = current_packages.id AND 
+                                new_packages.{update_at_column} > current_packages.{update_at_column})
+                        )
+                    """).arrow()["Count"][0].as_py()
+            self.logger.info(f"{table_name} rows to deleted:{deleted_count}")
+            total_inserted = self.conn.execute(f"""
+                        INSERT INTO {table_name}
+                        SELECT * from new_packages
+                        ANTI JOIN {table_name}
+                        USING (id)
+                    """).arrow()["Count"][0].as_py()
+            self.logger.info(f"{table_name} rows inserted:{total_inserted}")
+
+        else:
+            self.logger.info(f"{table_name} created")
+            self.conn.execute(f"""
+                    CREATE TABLE {table_name} AS select * from new_packages
+                """)
+
+    @staticmethod
+    def _merge_schema(new_packages, current_packages):
+        merged_schema = pyarrow.unify_schemas(
+            [new_packages.schema, current_packages.schema],
+            promote_options="permissive"
+        )
+        missing_fields = [f for f in merged_schema if f.name not in new_packages.column_names]
+        for field in missing_fields:
+            new_packages = new_packages.append_column(field, pyarrow.nulls(new_packages.num_rows, field.type))
+        return new_packages.cast(merged_schema)
+
+    def table_is_up_to_date(
+            self,
+            table_name: str,
+            last_modified: str
+    ) -> bool:
+        """Check if the table is up to date based on the last modified timestamp."""
+        if not self.table_exists(table_name):
+            return False
+
+        max_snapshot = self.conn.execute("SELECT MAX(snapshot_id) FROM snapshots()").fetchone()[0]
+        row = self.conn.execute(f"""
+            SELECT snapshot_time FROM snapshots()
+            WHERE snapshot_id in (
+                SELECT MAX(snapshot_id) FROM table_changes('{table_name}', 0, {max_snapshot})
+            )
+        """).fetchone()
+
+        # Case table is empty
+        if not row:
+            return False
+
+        snapshot_time = row[0]
+
+        return snapshot_time > pytz.UTC.localize(datetime.fromisoformat(last_modified))
+
+    def ingest_ckan_data_async(self, ckan_resources: pyarrow.Table):
+        # for r in ckan_resources.to_pylist():
+        #     self.ingest_ckan_data(r)
+
+        def thread(conn, batch):
+            i = 0
+            for r in batch.to_pylist():
+                with duckdb.connect(f":memory:{r['id']}", config={"memory_limit": "1GB", 'threads': 1}, ) as local_conn:
+                    self.logger.info(f"Working on {r['id']}, index = {i} in thread {threading.current_thread().name}")
+                    i = i + 1
+                    ingestor = DuckdbCkanDataIngestor(
+                        lock=self.lock,
+                        ducklake_conn=conn,
+                        document_ingestor=S3DocumentIngestor(),
+                    )
+                    ingestor.logger.setLevel(logging.INFO)
+                    ingestor.ingest_ckan_data(r)
+
+        number_of_treads = 50
+        slice_size = math.ceil(ckan_resources.num_rows / number_of_treads)
+        threads = []
+        i = 0
+
+        for batch in ckan_resources.to_batches(slice_size):
+            threads.append(Thread(target=thread,
+                                  args=[self.conn, batch],
+                                  name='write_thread_' + str(i)))
+            i = i + 1
+
+        for thread in threads:
+            thread.start()
+
+        # Ensure all threads complete before printing final results
+        for thread in threads:
+            thread.join()

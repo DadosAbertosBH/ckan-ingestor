@@ -60,9 +60,3 @@ def non_latin1_and_non_utf8() -> str:
     module_directory = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(module_directory, "data/non_latin1_and_non_utf8.csv")) as f:
         return f.name
-
-@pytest.fixture
-def csv_with_bom() -> str:
-    module_directory = os.path.dirname(os.path.abspath(__file__))
-    with open(os.path.join(module_directory, "data/csv_with_bom.csv")) as f:
-        return f.name

@@ -8,8 +8,8 @@ import requests
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 from ckan_ingestor.duckdb_connection_factory import from_settings
-from ckan_ingestor.duckdb_ingestor import DuckdbCkanIngestor, CKAN_DATASET_TABLE, CKAN_RESOURCE_TABLE
-from ckan_ingestor.s3_pdf_ingestor import S3PdfIngestor
+from ckan_ingestor.duckdb_ckan_metadata_ingestor import DuckdbCkanMetadataIngestor, CKAN_DATASET_TABLE, CKAN_RESOURCE_TABLE
+from ckan_ingestor.s3_pdf_ingestor import S3DocumentIngestor
 from tests.fixtures.ckan_mock import ckman_mock_url, INVALID_INPUT_JSON_ID
 from tests.fixtures.datasets import initial_dataset, dataset_with_update, dataset_with_new_row, dataset_with_pdf
 from tests.fixtures.minio import minio_url
@@ -30,13 +30,13 @@ def in_memory_duckdb_conn(minio_url) -> duckdb.DuckDBPyConnection:
 
 @pytest.fixture
 def ingestor(in_memory_duckdb_conn: duckdb.DuckDBPyConnection, ckman_mock_url):
-    subject = DuckdbCkanIngestor(
+    subject = DuckdbCkanMetadataIngestor(
         conn=in_memory_duckdb_conn,
         datastore_url=f"{ckman_mock_url}/datastore",
-        pdf_ingestor=S3PdfIngestor(DucklakeSettings().data_path))
+        document_ingestor=S3DocumentIngestor(DucklakeSettings().data_path))
     return subject
 
-def test_same_dataset_does_not_generate_changes(ingestor: DuckdbCkanIngestor, initial_dataset: pyarrow.Table):
+def test_same_dataset_does_not_generate_changes(ingestor: DuckdbCkanMetadataIngestor, initial_dataset: pyarrow.Table):
     subject = ingestor
     subject.ingest(initial_dataset)
 
@@ -123,7 +123,7 @@ def test_insert_new_row_dataset(ingestor, initial_dataset, dataset_with_new_row)
     )
 
 
-def test_s3_ingestor(ingestor: DuckdbCkanIngestor, dataset_with_pdf):
+def test_s3_ingestor(ingestor: DuckdbCkanMetadataIngestor, dataset_with_pdf):
     subject = ingestor
     subject.ingest(dataset_with_pdf)
 
@@ -132,7 +132,7 @@ def test_s3_ingestor(ingestor: DuckdbCkanIngestor, dataset_with_pdf):
     response.raise_for_status()  # raise if error
 
 
-def test_ingest_invalid_json_fallback_to_csv(ingestor: DuckdbCkanIngestor):
+def test_ingest_invalid_json_fallback_to_csv(ingestor: DuckdbCkanMetadataIngestor):
     subject = ingestor
     # noinspection PyArgumentList
     resources = pyarrow.Table.from_pylist([{

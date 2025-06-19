@@ -16,6 +16,7 @@ dependencies = [
     "dagster-webserver>=1.10.19",
     "dagster-duckdb>=0.26.19",
     "dagster-duckdb-pandas>=0.26.19",
+    "pandas>=2.3.0",
 ]
 
 [dependency-groups]
