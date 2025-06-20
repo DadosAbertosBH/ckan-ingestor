@@ -27,6 +27,17 @@ test:
     - uv run ruff check
     - uv run pytest
     - uv cache prune --ci
+
+build:
+  stage: build
+  script:
+    - cd ckan_ingestor
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
+    - docker buildx build --platform linux/amd64,linux/arm64 --push -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
+  rules:
+    - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
+      changes:
+        - ckan_ingestor/**/*
 #
 #deploy-ingestor:
 #  stage: deploy
@@ -51,18 +62,4 @@ test:
 #          runner_tag: $TARGET_ENV
 #  rules:
 #    - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
-#build:
-#  stage: build
-#  script:
-#    - mkdir -vp ~/.docker/cli-plugins/
-#    - wget  https://github.com/docker/buildx/releases/download/v0.9.1/buildx-v0.9.1.linux-amd64 -O ~/.docker/cli-plugins/docker-buildx
-#    - chmod a+x ~/.docker/cli-plugins/docker-buildx
-#    - docker context create jitsu
-#    - docker buildx create jitsu --use
-#    - cd ingestor
-#    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
-#    - docker buildx build --platform linux/amd64,linux/arm64 --push -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
-#  rules:
-#    - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
-#      changes:
-#        - ingestor/**/*
+

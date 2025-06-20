@@ -5,4 +5,4 @@ ADD . .
 
 RUN uv sync --locked
 
-RUN uv run ckan_ingestor/run_duckdb_ingestor.py
+EXPOSE 80
