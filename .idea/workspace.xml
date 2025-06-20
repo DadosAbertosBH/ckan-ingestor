@@ -1,0 +1,555 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="refactor: simplify CI build process by removing unnecessary directory change and updating Dockerfile path">
+      <change afterPath="$PROJECT_DIR$/.dockerignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.11/site-packages/dagster_shared/dagster_model/pydantic_compat_layer.py" root0="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.11/site-packages/flask/app.py" root0="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.11/site-packages/flask/helpers.py" root0="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.11/site-packages/minio/api.py" root0="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.11/site-packages/pyiceberg/table/upsert_util.py" root0="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.11/site-packages/sherlock/__init__.py" root0="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.11/site-packages/sherlock/lock.py" root0="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.11/site-packages/testcontainers/core/container.py" root0="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/.venv/lib/python3.11/site-packages/testcontainers/redis/__init__.py" root0="SKIP_INSPECTION" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 8
+}</component>
+  <component name="ProjectId" id="2yIEVJhnYZdypXDi7alk6IkiUEu" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Docker.docker-compose.yml.db: Compose Deployment.executor&quot;: &quot;Run&quot;,
+    &quot;Docker.docker-compose.yml: Compose Deployment.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for ckan_dagster.ckan_dagster_tests.test_assets.test_load_dataset.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for ckan_ingestor.run_duckdb_ingestor.executor&quot;: &quot;Debug&quot;,
+    &quot;Python tests.pytest for test_assets.test_load_dataset.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for test_csv_reader.test_csv_with_bom.executor&quot;: &quot;Debug&quot;,
+    &quot;Python tests.pytest for test_csv_reader.test_parse_latin_encoded_csv_file.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for test_csv_reader.test_parse_non_latin_and_non_utf8.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for test_dlt_delta_ingestor.test_full_insert.executor&quot;: &quot;Debug&quot;,
+    &quot;Python tests.pytest for test_ducklake_data_ingestor.test_ingest_invalid_json_fallback_to_csv.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for test_ducklake_data_ingestor.test_s3_ingestor.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for test_ducklake_ingestor.test_ingest_invalid_json_fallback_to_csv.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for test_ducklake_ingestor.test_insert_new_row_dataset.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for test_ducklake_ingestor.test_s3_ingestor.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for test_ducklake_ingestor.test_same_dataset_does_not_generate_changes.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for test_ducklake_ingestor.test_x.executor&quot;: &quot;Debug&quot;,
+    &quot;Python tests.pytest for test_ducklake_metadata_ingestor.test_same_dataset_does_not_generate_changes.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for tests.ingestors.test_csv_reader.executor&quot;: &quot;Debug&quot;,
+    &quot;Python tests.pytest for tests.ingestors.test_csv_reader.test_csv_with_bom.executor&quot;: &quot;Debug&quot;,
+    &quot;Python tests.pytest for tests.ingestors.test_csv_reader.test_parse_non_latin_and_non_utf8.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for tests.ingestors.test_ducklake_data_ingestor.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for tests.ingestors.test_ducklake_data_ingestor.test_ingest_invalid_json_fallback_to_csv.executor&quot;: &quot;Debug&quot;,
+    &quot;Python tests.pytest for tests.ingestors.test_ducklake_data_ingestor.test_s3_ingestor.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for tests.ingestors.test_ducklake_ingestor.executor&quot;: &quot;Debug&quot;,
+    &quot;Python tests.pytest for tests.ingestors.test_ducklake_ingestor.test_ingest_invalid_json_fallback_to_csv.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for tests.ingestors.test_ducklake_ingestor.test_insert_new_row_dataset.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for tests.ingestors.test_ducklake_ingestor.test_same_dataset_does_not_generate_changes.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest for tests.ingestors.test_ducklake_ingestor.test_update_dataset.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest in ingestors.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest in test_ducklake_data_ingestor.py.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest in test_ducklake_ingestor.py.executor&quot;: &quot;Run&quot;,
+    &quot;Python tests.pytest in test_ducklake_metadata_ingestor.py.executor&quot;: &quot;Run&quot;,
+    &quot;Python.run_duckdb_ingestor.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/guilhermecastro/Projects/ckan-ingestor/tests/fixtures/data&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;settings.sync&quot;
+  }
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/tests/fixtures/data" />
+      <recent name="$PROJECT_DIR$/ckan_dagster/ckan_dagster/resources" />
+      <recent name="$PROJECT_DIR$/ckan_dagster/ckan_dagster" />
+      <recent name="$PROJECT_DIR$/ckan_ingestor" />
+      <recent name="$PROJECT_DIR$/tests/fixtures" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+      <recent name="$PROJECT_DIR$/ckan_ingestor" />
+      <recent name="$PROJECT_DIR$/tests" />
+      <recent name="$PROJECT_DIR$/ckan_dagster/ckan_dagster/resources" />
+      <recent name="$PROJECT_DIR$/tests/fixtures/data" />
+    </key>
+  </component>
+  <component name="RunManager" selected="Python tests.pytest in test_ducklake_data_ingestor.py">
+    <configuration default="true" type="docker-deploy" factoryName="docker-compose.yml" temporary="true">
+      <deployment type="docker-compose.yml">
+        <settings />
+      </deployment>
+      <method v="2" />
+    </configuration>
+    <configuration name="pytest for test_ducklake_data_ingestor.test_ingest_invalid_json_fallback_to_csv" type="tests" factoryName="py.test" temporary="true" nameIsGenerated="true">
+      <module name="ckan-ingestor" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/tests/ingestors" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="_new_keywords" value="&quot;&quot;" />
+      <option name="_new_parameters" value="&quot;&quot;" />
+      <option name="_new_additionalArguments" value="&quot;&quot;" />
+      <option name="_new_target" value="&quot;test_ducklake_data_ingestor.test_ingest_invalid_json_fallback_to_csv&quot;" />
+      <option name="_new_targetType" value="&quot;PYTHON&quot;" />
+      <method v="2" />
+    </configuration>
+    <configuration name="pytest for tests.ingestors.test_ducklake_data_ingestor" type="tests" factoryName="py.test" temporary="true" nameIsGenerated="true">
+      <module name="ckan-ingestor" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/tests/ingestors" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="_new_keywords" value="&quot;&quot;" />
+      <option name="_new_parameters" value="&quot;&quot;" />
+      <option name="_new_additionalArguments" value="&quot;&quot;" />
+      <option name="_new_target" value="&quot;tests.ingestors.test_ducklake_data_ingestor&quot;" />
+      <option name="_new_targetType" value="&quot;PYTHON&quot;" />
+      <method v="2" />
+    </configuration>
+    <configuration name="pytest for tests.ingestors.test_ducklake_data_ingestor.test_ingest_invalid_json_fallback_to_csv" type="tests" factoryName="py.test" temporary="true" nameIsGenerated="true">
+      <module name="ckan-ingestor" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/tests/ingestors" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="_new_keywords" value="&quot;&quot;" />
+      <option name="_new_parameters" value="&quot;&quot;" />
+      <option name="_new_additionalArguments" value="&quot;&quot;" />
+      <option name="_new_target" value="&quot;tests.ingestors.test_ducklake_data_ingestor.test_ingest_invalid_json_fallback_to_csv&quot;" />
+      <option name="_new_targetType" value="&quot;PYTHON&quot;" />
+      <method v="2" />
+    </configuration>
+    <configuration name="pytest for tests.ingestors.test_ducklake_data_ingestor.test_s3_ingestor" type="tests" factoryName="py.test" temporary="true" nameIsGenerated="true">
+      <module name="ckan-ingestor" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/tests/ingestors" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="_new_keywords" value="&quot;&quot;" />
+      <option name="_new_parameters" value="&quot;&quot;" />
+      <option name="_new_additionalArguments" value="&quot;&quot;" />
+      <option name="_new_target" value="&quot;tests.ingestors.test_ducklake_data_ingestor.test_s3_ingestor&quot;" />
+      <option name="_new_targetType" value="&quot;PYTHON&quot;" />
+      <method v="2" />
+    </configuration>
+    <configuration name="pytest in test_ducklake_data_ingestor.py" type="tests" factoryName="py.test" temporary="true" nameIsGenerated="true">
+      <module name="ckan-ingestor" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/tests/ingestors" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="_new_keywords" value="&quot;&quot;" />
+      <option name="_new_parameters" value="&quot;&quot;" />
+      <option name="_new_additionalArguments" value="&quot;&quot;" />
+      <option name="_new_target" value="&quot;$PROJECT_DIR$/tests/ingestors/test_ducklake_data_ingestor.py&quot;" />
+      <option name="_new_targetType" value="&quot;PATH&quot;" />
+      <method v="2" />
+    </configuration>
+    <list>
+      <item itemvalue="Python tests.pytest for test_ducklake_data_ingestor.test_ingest_invalid_json_fallback_to_csv" />
+      <item itemvalue="Python tests.pytest for tests.ingestors.test_ducklake_data_ingestor" />
+      <item itemvalue="Python tests.pytest for tests.ingestors.test_ducklake_data_ingestor.test_ingest_invalid_json_fallback_to_csv" />
+      <item itemvalue="Python tests.pytest for tests.ingestors.test_ducklake_data_ingestor.test_s3_ingestor" />
+      <item itemvalue="Python tests.pytest in test_ducklake_data_ingestor.py" />
+    </list>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python tests.pytest in test_ducklake_data_ingestor.py" />
+        <item itemvalue="Python tests.pytest for test_ducklake_data_ingestor.test_ingest_invalid_json_fallback_to_csv" />
+        <item itemvalue="Python tests.pytest for tests.ingestors.test_ducklake_data_ingestor.test_ingest_invalid_json_fallback_to_csv" />
+        <item itemvalue="Python tests.pytest for tests.ingestors.test_ducklake_data_ingestor.test_s3_ingestor" />
+        <item itemvalue="Python tests.pytest for tests.ingestors.test_ducklake_data_ingestor" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-dfff61a61320-9cdd278e9d02-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-251.25410.159" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="" />
+      <created>1749513710009</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1749513710009</updated>
+    </task>
+    <task id="LOCAL-00001" summary="WIP - ingest data">
+      <option name="closed" value="true" />
+      <created>1749529248441</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1749529248441</updated>
+    </task>
+    <task id="LOCAL-00002" summary="fallback to csv when json valid is invalid.">
+      <option name="closed" value="true" />
+      <created>1749603414357</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1749603414357</updated>
+    </task>
+    <task id="LOCAL-00003" summary="refactor ingestion logic to improve format handling and error reporting">
+      <option name="closed" value="true" />
+      <created>1749616203748</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1749616203748</updated>
+    </task>
+    <task id="LOCAL-00004" summary="simplify test">
+      <option name="closed" value="true" />
+      <created>1749672596393</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1749672596393</updated>
+    </task>
+    <task id="LOCAL-00005" summary="download pdf">
+      <option name="closed" value="true" />
+      <created>1749674192172</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1749674192172</updated>
+    </task>
+    <task id="LOCAL-00006" summary="add logging setup and improve resource ID handling in ingestion process">
+      <option name="closed" value="true" />
+      <created>1749675617441</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1749675617441</updated>
+    </task>
+    <task id="LOCAL-00007" summary="add logging setup and improve resource ID handling in ingestion process">
+      <option name="closed" value="true" />
+      <created>1749756647505</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1749756647505</updated>
+    </task>
+    <task id="LOCAL-00008" summary="fix csv parser">
+      <option name="closed" value="true" />
+      <created>1749757720077</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1749757720077</updated>
+    </task>
+    <task id="LOCAL-00009" summary="refactor ingestion logic to improve format handling and error reporting">
+      <option name="closed" value="true" />
+      <created>1749761628241</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1749761628241</updated>
+    </task>
+    <task id="LOCAL-00010" summary="add User-Agent header to requests in datastore read method">
+      <option name="closed" value="true" />
+      <created>1749761732386</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1749761732386</updated>
+    </task>
+    <task id="LOCAL-00011" summary="add CSV format handling in ingestion process">
+      <option name="closed" value="true" />
+      <created>1749763929536</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1749763929536</updated>
+    </task>
+    <task id="LOCAL-00012" summary="add DatastoreReader class for improved data fetching and refactor ingestion logic">
+      <option name="closed" value="true" />
+      <created>1749827611033</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1749827611033</updated>
+    </task>
+    <task id="LOCAL-00013" summary="refactor datastore reader to streamline data fetching and improve error handling">
+      <option name="closed" value="true" />
+      <created>1749828473978</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1749828473978</updated>
+    </task>
+    <task id="LOCAL-00014" summary="try more encoding types">
+      <option name="closed" value="true" />
+      <created>1749837834828</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1749837834828</updated>
+    </task>
+    <task id="LOCAL-00015" summary="add support for Dagster dependencies and improve CSV reading with BOM handling">
+      <option name="closed" value="true" />
+      <created>1749843895524</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1749843895524</updated>
+    </task>
+    <task id="LOCAL-00016" summary="dagster working">
+      <option name="closed" value="true" />
+      <created>1750305098604</created>
+      <option name="number" value="00016" />
+      <option name="presentableId" value="LOCAL-00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1750305098604</updated>
+    </task>
+    <task id="LOCAL-00017" summary="fix tests">
+      <option name="closed" value="true" />
+      <created>1750371351599</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1750371351599</updated>
+    </task>
+    <task id="LOCAL-00018" summary="refactor CI configuration and improve code formatting across multiple files">
+      <option name="closed" value="true" />
+      <created>1750373239526</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1750373239526</updated>
+    </task>
+    <task id="LOCAL-00019" summary="configure ci">
+      <option name="closed" value="true" />
+      <created>1750385767143</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1750385767144</updated>
+    </task>
+    <task id="LOCAL-00020" summary="steps as array">
+      <option name="closed" value="true" />
+      <created>1750385838989</created>
+      <option name="number" value="00020" />
+      <option name="presentableId" value="LOCAL-00020" />
+      <option name="project" value="LOCAL" />
+      <updated>1750385838989</updated>
+    </task>
+    <task id="LOCAL-00021" summary="uv cache">
+      <option name="closed" value="true" />
+      <created>1750385993328</created>
+      <option name="number" value="00021" />
+      <option name="presentableId" value="LOCAL-00021" />
+      <option name="project" value="LOCAL" />
+      <updated>1750385993328</updated>
+    </task>
+    <task id="LOCAL-00022" summary="use uvx">
+      <option name="closed" value="true" />
+      <created>1750386642858</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1750386642858</updated>
+    </task>
+    <task id="LOCAL-00023" summary="update CI script to use 'uv run' for ruff and pytest commands">
+      <option name="closed" value="true" />
+      <created>1750386789698</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1750386789698</updated>
+    </task>
+    <task id="LOCAL-00024" summary="simplify pytest command in CI script">
+      <option name="closed" value="true" />
+      <created>1750386958098</created>
+      <option name="number" value="00024" />
+      <option name="presentableId" value="LOCAL-00024" />
+      <option name="project" value="LOCAL" />
+      <updated>1750386958098</updated>
+    </task>
+    <task id="LOCAL-00025" summary="dind">
+      <option name="closed" value="true" />
+      <created>1750387224454</created>
+      <option name="number" value="00025" />
+      <option name="presentableId" value="LOCAL-00025" />
+      <option name="project" value="LOCAL" />
+      <updated>1750387224454</updated>
+    </task>
+    <task id="LOCAL-00026" summary="disable warnings">
+      <option name="closed" value="true" />
+      <created>1750388244050</created>
+      <option name="number" value="00026" />
+      <option name="presentableId" value="LOCAL-00026" />
+      <option name="project" value="LOCAL" />
+      <updated>1750388244050</updated>
+    </task>
+    <task id="LOCAL-00027" summary="refactor: update import path for INVALID_INPUT_JSON_ID in test_ducklake_data_ingestor.py">
+      <option name="closed" value="true" />
+      <created>1750388366994</created>
+      <option name="number" value="00027" />
+      <option name="presentableId" value="LOCAL-00027" />
+      <option name="project" value="LOCAL" />
+      <updated>1750388366994</updated>
+    </task>
+    <task id="LOCAL-00028" summary="fix: ensure file extension is lowercase in data loading function">
+      <option name="closed" value="true" />
+      <created>1750388664715</created>
+      <option name="number" value="00028" />
+      <option name="presentableId" value="LOCAL-00028" />
+      <option name="project" value="LOCAL" />
+      <updated>1750388664715</updated>
+    </task>
+    <task id="LOCAL-00029" summary="feat: update file serving method and adjust URLs in JSON datasets">
+      <option name="closed" value="true" />
+      <created>1750389655167</created>
+      <option name="number" value="00029" />
+      <option name="presentableId" value="LOCAL-00029" />
+      <option name="project" value="LOCAL" />
+      <updated>1750389655167</updated>
+    </task>
+    <task id="LOCAL-00030" summary="build image">
+      <option name="closed" value="true" />
+      <created>1750425737974</created>
+      <option name="number" value="00030" />
+      <option name="presentableId" value="LOCAL-00030" />
+      <option name="project" value="LOCAL" />
+      <updated>1750425737974</updated>
+    </task>
+    <task id="LOCAL-00031" summary="build image">
+      <option name="closed" value="true" />
+      <created>1750425916416</created>
+      <option name="number" value="00031" />
+      <option name="presentableId" value="LOCAL-00031" />
+      <option name="project" value="LOCAL" />
+      <updated>1750425916416</updated>
+    </task>
+    <task id="LOCAL-00032" summary="feat: add CI stages for testing and building, and mark IcebergCkanIngestor as deprecated">
+      <option name="closed" value="true" />
+      <created>1750426187031</created>
+      <option name="number" value="00032" />
+      <option name="presentableId" value="LOCAL-00032" />
+      <option name="project" value="LOCAL" />
+      <updated>1750426187031</updated>
+    </task>
+    <task id="LOCAL-00033" summary="feat: add license headers to Python files and create license header script">
+      <option name="closed" value="true" />
+      <created>1750427652013</created>
+      <option name="number" value="00033" />
+      <option name="presentableId" value="LOCAL-00033" />
+      <option name="project" value="LOCAL" />
+      <updated>1750427652013</updated>
+    </task>
+    <task id="LOCAL-00034" summary="refactor: simplify CI build process by removing unnecessary directory change and updating Dockerfile path">
+      <option name="closed" value="true" />
+      <created>1750428080721</created>
+      <option name="number" value="00034" />
+      <option name="presentableId" value="LOCAL-00034" />
+      <option name="project" value="LOCAL" />
+      <updated>1750428080721</updated>
+    </task>
+    <option name="localTasksCounter" value="35" />
+    <servers />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="refactor ingestion logic to improve format handling and error reporting" />
+    <MESSAGE value="add User-Agent header to requests in datastore read method" />
+    <MESSAGE value="add CSV format handling in ingestion process" />
+    <MESSAGE value="add DatastoreReader class for improved data fetching and refactor ingestion logic" />
+    <MESSAGE value="refactor datastore reader to streamline data fetching and improve error handling" />
+    <MESSAGE value="try more encoding types" />
+    <MESSAGE value="add support for Dagster dependencies and improve CSV reading with BOM handling" />
+    <MESSAGE value="dagster working" />
+    <MESSAGE value="fix tests" />
+    <MESSAGE value="refactor CI configuration and improve code formatting across multiple files" />
+    <MESSAGE value="configure ci" />
+    <MESSAGE value="steps as array" />
+    <MESSAGE value="uv cache" />
+    <MESSAGE value="use uvx" />
+    <MESSAGE value="update CI script to use 'uv run' for ruff and pytest commands" />
+    <MESSAGE value="simplify pytest command in CI script" />
+    <MESSAGE value="dind" />
+    <MESSAGE value="disable warnings" />
+    <MESSAGE value="refactor: update import path for INVALID_INPUT_JSON_ID in test_ducklake_data_ingestor.py" />
+    <MESSAGE value="fix: ensure file extension is lowercase in data loading function" />
+    <MESSAGE value="feat: update file serving method and adjust URLs in JSON datasets" />
+    <MESSAGE value="build image" />
+    <MESSAGE value="feat: add CI stages for testing and building, and mark IcebergCkanIngestor as deprecated" />
+    <MESSAGE value="feat: add license headers to Python files and create license header script" />
+    <MESSAGE value="refactor: simplify CI build process by removing unnecessary directory change and updating Dockerfile path" />
+    <option name="LAST_COMMIT_MESSAGE" value="refactor: simplify CI build process by removing unnecessary directory change and updating Dockerfile path" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <default-breakpoints>
+        <breakpoint type="python-exception">
+          <properties notifyOnTerminate="true" exception="BaseException">
+            <option name="notifyOnTerminate" value="true" />
+          </properties>
+        </breakpoint>
+      </default-breakpoints>
+    </breakpoint-manager>
+    <watches-manager>
+      <configuration name="tests">
+        <watch expression="set(merged_schema.names).difference(set(new_packages.column_names))" language="Python" />
+        <watch expression="new_packages.column_names" language="Python" />
+        <watch expression="merged_schema.names" language="Python" />
+        <watch expression="__py_debug_temp_var_606212608[29]" />
+      </configuration>
+      <configuration name="PythonConfigurationType">
+        <watch expression="table.take([0]).to_pydict()[&quot;id&quot;]" language="Python" />
+        <watch expression="r['id']" language="Python" />
+      </configuration>
+    </watches-manager>
+  </component>
+</project>
