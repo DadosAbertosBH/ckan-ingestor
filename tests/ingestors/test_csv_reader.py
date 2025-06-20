@@ -2,8 +2,6 @@ import duckdb
 import pytest
 
 from ckan_ingestor.csv_reader import DuckDbCsvReader
-from tests.fixtures.datasets import latin_encoded_csv_file, non_latin1_and_non_utf8
-from tests.fixtures.ckan_mock import ckman_mock_url
 
 
 @pytest.fixture

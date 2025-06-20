@@ -3,7 +3,6 @@ import pyarrow.compute as pc
 from pyiceberg.catalog import load_catalog, Catalog
 from pyiceberg.exceptions import NoSuchTableError
 from pyiceberg.expressions import In
-import time
 
 from ckan_ingestor.config.rest_catalog_settings import RestCatalogSettings
 

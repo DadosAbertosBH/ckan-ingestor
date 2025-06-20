@@ -1,5 +1,4 @@
 import logging
-import threading
 
 import duckdb
 import requests
@@ -55,11 +54,11 @@ class DuckdbCkanDataIngestor:
             ):
                 attempt_formats.append("DATA_STORE")
                 _datastore_table = self.datastore_reader.read(resource_id)
-                query = f"SELECT * FROM _datastore_table"
+                query = "SELECT * FROM _datastore_table"
             elif ckan_resource["format"] == "CSV" and "CSV" not in attempt_formats:
                 attempt_formats.append("CSV")
                 _csv_table = self.csv_reader.read(ckan_resource["url"])
-                query = f"SELECT * FROM _csv_table"
+                query = "SELECT * FROM _csv_table"
             elif ckan_resource["format"] == "JSON" and "JSON" not in attempt_formats:
                 attempt_formats.append("JSON")
                 query = f"SELECT * FROM read_json('{ckan_resource['url']}', maximum_object_size=2_147_483_648)"

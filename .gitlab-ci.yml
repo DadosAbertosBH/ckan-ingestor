@@ -11,10 +11,12 @@ variables:
   # so we need to copy instead of using hard links.
   UV_LINK_MODE: copy
 
-uv:
+test:
   image: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
   script:
-    uvx ruff check
+    uv sync
+    uv ruff check
+    uv pytest --cov=ingestor --cov-report=xml --cov-report=html
 
 #
 #deploy-ingestor:

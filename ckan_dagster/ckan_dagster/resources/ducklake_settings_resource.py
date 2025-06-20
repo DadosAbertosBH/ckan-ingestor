@@ -3,7 +3,6 @@ from dagster import InitResourceContext
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 from ckan_ingestor.config.s3_settings import S3Settings
-from ckan_ingestor.duckdb_ckan_metadata_ingestor import DuckdbCkanMetadataIngestor
 
 
 class DucklakeSettingsResource(dg.ConfigurableResource[DucklakeSettings]):

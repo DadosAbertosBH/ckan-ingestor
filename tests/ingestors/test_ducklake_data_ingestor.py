@@ -1,14 +1,15 @@
+import pytest
 import requests
 import sherlock
+from duckdb import DuckDBPyConnection
 from sherlock import Lock
 
 from ckan_ingestor.csv_reader import DuckDbCsvReader
 from ckan_ingestor.datastore_reader import DatastoreReader
 from ckan_ingestor.duckdb_ckan_data_ingestor import DuckdbCkanDataIngestor
 from ckan_ingestor.s3_pdf_ingestor import S3DocumentIngestor
-from tests.fixtures.ckan_mock import *
-from tests.fixtures.datasets import *
-from tests.fixtures.infrastructure import *
+from ckan_ingestor.config.ducklake_settings import DucklakeSettings
+from tests.fixtures.ckan_mock import INVALID_INPUT_JSON_ID
 from tests.ingestors.test_ducklake_metadata_ingestor import (
     PDF_RESOURCE_ID,
     _assert_expected_table_state,
@@ -17,7 +18,7 @@ from tests.ingestors.test_ducklake_metadata_ingestor import (
 
 @pytest.fixture
 def ingestor(
-    in_memory_duckdb_conn: duckdb.DuckDBPyConnection,
+    in_memory_duckdb_conn: DuckDBPyConnection,
     ducklake_settings: DucklakeSettings,
     ckman_mock_url,
     redis_client,

@@ -1,19 +1,15 @@
 import logging
 import threading
 from datetime import datetime
-from threading import Thread
 
 import duckdb
-import math
 import pyarrow
 import pytz
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 from ckan_ingestor.csv_reader import DuckDbCsvReader
 from ckan_ingestor.datastore_reader import DatastoreReader
-from ckan_ingestor.duckdb_ckan_data_ingestor import DuckdbCkanDataIngestor
 from ckan_ingestor.duckdb_connection_factory import from_settings
-from ckan_ingestor.s3_pdf_ingestor import S3DocumentIngestor
 
 CKAN_DATASET_TABLE = "ckan_dataset"
 CKAN_RESOURCE_TABLE = "ckan_resource"
@@ -140,47 +136,3 @@ class DuckdbCkanMetadataIngestor:
 
         return snapshot_time > pytz.UTC.localize(datetime.fromisoformat(last_modified))
 
-    def ingest_ckan_data_async(self, ckan_resources: pyarrow.Table):
-        # for r in ckan_resources.to_pylist():
-        #     self.ingest_ckan_data(r)
-
-        def thread(conn, batch):
-            i = 0
-            for r in batch.to_pylist():
-                with duckdb.connect(
-                    f":memory:{r['id']}",
-                    config={"memory_limit": "1GB", "threads": 1},
-                ) as local_conn:
-                    self.logger.info(
-                        f"Working on {r['id']}, index = {i} in thread {threading.current_thread().name}"
-                    )
-                    i = i + 1
-                    ingestor = DuckdbCkanDataIngestor(
-                        lock=self.lock,
-                        ducklake_conn=conn,
-                        document_ingestor=S3DocumentIngestor(),
-                    )
-                    ingestor.logger.setLevel(logging.INFO)
-                    ingestor.ingest_ckan_data(r)
-
-        number_of_treads = 50
-        slice_size = math.ceil(ckan_resources.num_rows / number_of_treads)
-        threads = []
-        i = 0
-
-        for batch in ckan_resources.to_batches(slice_size):
-            threads.append(
-                Thread(
-                    target=thread,
-                    args=[self.conn, batch],
-                    name="write_thread_" + str(i),
-                )
-            )
-            i = i + 1
-
-        for thread in threads:
-            thread.start()
-
-        # Ensure all threads complete before printing final results
-        for thread in threads:
-            thread.join()

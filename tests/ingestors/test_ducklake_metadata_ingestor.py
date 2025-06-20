@@ -1,9 +1,11 @@
 import pyarrow.compute as pc
 
-from ckan_ingestor.duckdb_ckan_metadata_ingestor import *
-from tests.fixtures.ckan_mock import *
-from tests.fixtures.datasets import *
-from tests.fixtures.infrastructure import *
+import pyarrow as pa
+from duckdb import DuckDBPyConnection
+
+from pytest import fixture
+
+from ckan_ingestor.duckdb_ckan_metadata_ingestor import DuckdbCkanMetadataIngestor, CKAN_RESOURCE_TABLE, CKAN_DATASET_TABLE
 
 EXPECTED_DATASET_ROWS_SIZE = 1
 EXPECTED_DATASET_ROWS_WITH_INSERT_SIZE = 2
@@ -11,20 +13,20 @@ EXPECTED_RESOURCE_ROWS_SIZE = 1
 PDF_RESOURCE_ID = "5a172c1c-b329-4f84-bc11-5c2fc99849e5"
 
 
-@pytest.fixture
-def ingestor(in_memory_duckdb_conn: duckdb.DuckDBPyConnection, ckman_mock_url):
+@fixture
+def ingestor(in_memory_duckdb_conn: DuckDBPyConnection, ckman_mock_url):
     subject = DuckdbCkanMetadataIngestor(conn=in_memory_duckdb_conn)
     return subject
 
 
 def test_same_dataset_does_not_generate_changes(
-    ingestor: DuckdbCkanMetadataIngestor, initial_dataset: pyarrow.Table
+    ingestor: DuckdbCkanMetadataIngestor, initial_dataset: pa.Table
 ):
     subject = ingestor
 
     resources = initial_dataset["resources"].combine_chunks().flatten()
     # noinspection PyArgumentList
-    ckan_resources = pyarrow.Table.from_struct_array(resources)
+    ckan_resources = pa.Table.from_struct_array(resources)
 
     subject.ingest_dataset(initial_dataset)
     subject.ingest_resources(ckan_resources)
@@ -74,13 +76,13 @@ def test_update_dataset(ingestor, initial_dataset, dataset_with_update):
     subject = ingestor
     resources = initial_dataset["resources"].combine_chunks().flatten()
     # noinspection PyArgumentList
-    ckan_resources = pyarrow.Table.from_struct_array(resources)
+    ckan_resources = pa.Table.from_struct_array(resources)
     subject.ingest_dataset(initial_dataset)
     subject.ingest_resources(ckan_resources)
 
     resources = dataset_with_update["resources"].combine_chunks().flatten()
     # noinspection PyArgumentList
-    ckan_resources = pyarrow.Table.from_struct_array(resources)
+    ckan_resources = pa.Table.from_struct_array(resources)
     subject.ingest_dataset(dataset_with_update)
     subject.ingest_resources(ckan_resources)
 
@@ -105,13 +107,13 @@ def test_insert_new_row_dataset(ingestor, initial_dataset, dataset_with_new_row)
     # Run pipeline again and assert that one row is updated
     resources = initial_dataset["resources"].combine_chunks().flatten()
     # noinspection PyArgumentList
-    ckan_resources = pyarrow.Table.from_struct_array(resources)
+    ckan_resources = pa.Table.from_struct_array(resources)
     subject.ingest_dataset(initial_dataset)
     subject.ingest_resources(ckan_resources)
 
     resources = dataset_with_new_row["resources"].combine_chunks().flatten()
     # noinspection PyArgumentList
-    ckan_resources = pyarrow.Table.from_struct_array(resources)
+    ckan_resources = pa.Table.from_struct_array(resources)
     subject.ingest_dataset(dataset_with_new_row)
     subject.ingest_resources(ckan_resources)
 

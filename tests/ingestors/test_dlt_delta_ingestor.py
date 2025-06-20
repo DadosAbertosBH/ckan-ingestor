@@ -7,7 +7,6 @@ import pytest
 
 import dlt_ckan.ckan_source
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
-from tests.fixtures.datasets import initial_dataset
 
 
 @pytest.mark.skip(

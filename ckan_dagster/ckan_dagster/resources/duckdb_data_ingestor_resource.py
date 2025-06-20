@@ -1,13 +1,10 @@
 import uuid
 from contextlib import contextmanager
-from typing import Generator
-from xml.dom.minidom import Document
 
 import dagster as dg
 import duckdb
 import sherlock
 from dagster import InitResourceContext
-from dagster._config.pythonic_config.conversion_utils import TResValue
 from sherlock import Lock
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
