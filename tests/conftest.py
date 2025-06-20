@@ -6,7 +6,7 @@ from threading import Thread
 import duckdb
 import pyarrow
 import pytest
-from flask import Flask, request
+from flask import Flask, request, send_from_directory
 from flask_cors import CORS
 from testcontainers.minio import MinioContainer
 from testcontainers.redis import RedisContainer
@@ -34,9 +34,9 @@ def ckman_mock_url():
             return {"fields": [{"id": "_id", "type": "int"}], "records": []}
 
         module_directory = os.path.dirname(os.path.abspath(__file__))
-        file = os.path.join(module_directory, "fixtures", "data", f"{resource_id}.{format_param.lower()}")
-        with open(file) as f:
-            return f.read()
+        file_name =  f"{resource_id}.{format_param.lower()}"
+        file_dir = os.path.join(module_directory, "fixtures", "data")
+        return send_from_directory(file_dir, file_name)
 
     thread = Thread(
         target=app.run, daemon=True, kwargs=dict(host="localhost", port=5001)

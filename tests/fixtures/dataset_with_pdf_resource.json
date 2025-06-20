@@ -56,7 +56,7 @@
         "revision_id": "17a3bc04-d1a4-4cc8-a609-d8df75f58506",
         "size": 77040,
         "state": "active",
-        "url": "https://ckan.pbh.gov.br/dataset/9a92f45e-b3b9-4528-a626-513a8b36374b/resource/5a172c1c-b329-4f84-bc11-5c2fc99849e5/download/pda-receita-de-issqn-por-ctiss-dicionario.pdf",
+        "url": "http://localhost:5001/datastore/a_pdf_file?format=PDF",
         "url_type": "upload"
       }
     ],
