@@ -3,21 +3,22 @@ services:
   - docker:dind
 
 
-variables:
-  UV_VERSION: "0.5"
-  PYTHON_VERSION: "3.12"
-  BASE_LAYER: bookworm-slim
-  # GitLab CI creates a separate mountpoint for the build directory,
-  # so we need to copy instead of using hard links.
-  UV_LINK_MODE: copy
 
 test:
   image: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+  variables:
+    UV_VERSION: "0.5"
+    UV_CACHE_DIR: .uv-cache
+    PYTHON_VERSION: "3.12"
+    BASE_LAYER: bookworm-slim
+    # GitLab CI creates a separate mountpoint for the build directory,
+    # so we need to copy instead of using hard links.
+    UV_LINK_MODE: copy
   script:
     - uv sync
-    - uv ruff check
+    - ruff check
     - uv pytest --cov=ingestor --cov-report=xml --cov-report=html
-
+    - uv cache prune --ci
 #
 #deploy-ingestor:
 #  stage: deploy
