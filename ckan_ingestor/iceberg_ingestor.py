@@ -1,3 +1,5 @@
+from warnings import deprecated
+
 import pyarrow as pa
 import pyarrow.compute as pc
 from pyiceberg.catalog import load_catalog, Catalog
@@ -6,7 +8,7 @@ from pyiceberg.expressions import In
 
 from ckan_ingestor.config.rest_catalog_settings import RestCatalogSettings
 
-
+@deprecated("This class is deprecated, until merge is implemented in pyiceberg.")
 class IcebergCkanIngestor:
     packages: pa.Table
     bucket: str

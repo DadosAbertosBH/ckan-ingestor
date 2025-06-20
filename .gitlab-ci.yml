@@ -1,4 +1,9 @@
 image: docker
+
+stages:
+  - test
+  - build
+
 services:
   - name: docker:dind
     # explicitly disable tls to avoid docker startup interruption
@@ -13,6 +18,7 @@ variables:
   DOCKER_DRIVER: overlay2
 
 test:
+  stage: test
   image: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
   variables:
     UV_VERSION: "0.5"
@@ -39,6 +45,8 @@ build:
   script:
     - cd ckan_ingestor
     - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
+    - docker context create builder
+    - docker buildx create builder --use
     - docker buildx build --platform linux/amd64,linux/arm64 --push -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
   rules:
     - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
