@@ -8,6 +8,9 @@ from ckan_ingestor.config.s3_settings import S3Settings
 
 
 class S3DocumentIngestor:
+    """
+    Ingestor for PDF documents into an S3 bucket using Minio.
+    """
     minio: Minio
     bucket: str
     public_url: str

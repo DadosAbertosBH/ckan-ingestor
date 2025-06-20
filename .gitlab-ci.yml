@@ -22,6 +22,12 @@ test:
     # GitLab CI creates a separate mountpoint for the build directory,
     # so we need to copy instead of using hard links.
     UV_LINK_MODE: copy
+  cache:
+    - key:
+        files:
+          - uv.lock
+      paths:
+        - $UV_CACHE_DIR
   script:
     - uv sync
     - uv run ruff check
