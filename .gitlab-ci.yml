@@ -16,7 +16,7 @@ test:
     UV_LINK_MODE: copy
   script:
     - uv sync
-    - ruff check
+    - uvx ruff check
     - uv pytest --cov=ingestor --cov-report=xml --cov-report=html
     - uv cache prune --ci
 #
