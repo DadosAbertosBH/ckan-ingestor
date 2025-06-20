@@ -34,7 +34,7 @@ def ckman_mock_url():
             return {"fields": [{"id": "_id", "type": "int"}], "records": []}
 
         module_directory = os.path.dirname(os.path.abspath(__file__))
-        file = os.path.join(module_directory, "fixtures", "data", f"{resource_id}.{format_param}")
+        file = os.path.join(module_directory, "fixtures", "data", f"{resource_id}.{format_param.lower()}")
         with open(file) as f:
             return f.read()
 
