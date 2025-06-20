@@ -17,7 +17,7 @@ test:
   script:
     - uv sync
     - uv run ruff check
-    - uv run pytest --cov=ingestor --cov-report=xml --cov-report=html
+    - uv run pytest
     - uv cache prune --ci
 #
 #deploy-ingestor:
