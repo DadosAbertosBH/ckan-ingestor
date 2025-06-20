@@ -14,9 +14,9 @@ variables:
 test:
   image: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
   script:
-    uv sync
-    uv ruff check
-    uv pytest --cov=ingestor --cov-report=xml --cov-report=html
+    - uv sync
+    - uv ruff check
+    - uv pytest --cov=ingestor --cov-report=xml --cov-report=html
 
 #
 #deploy-ingestor:
