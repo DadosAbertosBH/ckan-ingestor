@@ -1,11 +1,9 @@
 import os
 from unittest.mock import patch
 
-import dlt
 import pyarrow
 import pytest
 
-import dlt_ckan.ckan_source
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 
 
@@ -15,6 +13,9 @@ from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 def test_full_insert(
     ducklake_settings: DucklakeSettings, initial_dataset: pyarrow.Table
 ):
+    import dlt
+    import dlt_ckan.ckan_source
+
     with patch(
         "ckan_ingestor.ckan_dataset_fetcher.CkanDatasetFetcher.fetch",
         return_value=initial_dataset,
