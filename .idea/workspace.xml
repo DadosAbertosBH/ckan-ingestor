@@ -4,11 +4,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="try without envs">
-      <change afterPath="$PROJECT_DIR$/infra/aws_s3_role_provider/main.tf" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/infra/aws_s3_role_provider/outputs.tf" afterDir="false" />
+    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="feat: add IAM user, policy, and S3 bucket configuration">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/infra/main.tf" beforeDir="false" afterPath="$PROJECT_DIR$/infra/main.tf" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/infra/aws_s3_role_provider/main.tf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/infra/aws_s3_role_provider/outputs.tf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/infra/main.tf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/infra/providers.tf" beforeDir="false" afterPath="$PROJECT_DIR$/infra/providers.tf" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -228,14 +229,6 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1749513710009</updated>
-    </task>
-    <task id="LOCAL-00001" summary="WIP - ingest data">
-      <option name="closed" value="true" />
-      <created>1749529248441</created>
-      <option name="number" value="00001" />
-      <option name="presentableId" value="LOCAL-00001" />
-      <option name="project" value="LOCAL" />
-      <updated>1749529248441</updated>
     </task>
     <task id="LOCAL-00002" summary="fallback to csv when json valid is invalid.">
       <option name="closed" value="true" />
@@ -621,11 +614,18 @@
       <option name="project" value="LOCAL" />
       <updated>1750607366602</updated>
     </task>
-    <option name="localTasksCounter" value="50" />
+    <task id="LOCAL-00050" summary="feat: add IAM user, policy, and S3 bucket configuration">
+      <option name="closed" value="true" />
+      <created>1750620397931</created>
+      <option name="number" value="00050" />
+      <option name="presentableId" value="LOCAL-00050" />
+      <option name="project" value="LOCAL" />
+      <updated>1750620397932</updated>
+    </task>
+    <option name="localTasksCounter" value="51" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="update CI script to use 'uv run' for ruff and pytest commands" />
     <MESSAGE value="simplify pytest command in CI script" />
     <MESSAGE value="dind" />
     <MESSAGE value="disable warnings" />
@@ -650,7 +650,8 @@
     <MESSAGE value="fix: change shebang in find_image_tag.sh to use /bin/bash" />
     <MESSAGE value="fix: change shebang in find_image_tag.sh to use /usr/bin/env bash" />
     <MESSAGE value="try without envs" />
-    <option name="LAST_COMMIT_MESSAGE" value="try without envs" />
+    <MESSAGE value="feat: add IAM user, policy, and S3 bucket configuration" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: add IAM user, policy, and S3 bucket configuration" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
