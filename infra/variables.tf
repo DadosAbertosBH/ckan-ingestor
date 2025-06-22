@@ -34,22 +34,22 @@ variable "image" {
 }
 
 variable "ducklake_db_host" {
-    type      = string
-    sensitive = false
+  type      = string
+  sensitive = false
 }
 
 
 variable "ducklake_db_database" {
-    type      = string
-    sensitive = false
+  type      = string
+  sensitive = false
 }
 
 variable "ducklake_db_user" {
-    type      = string
-    sensitive = false
+  type      = string
+  sensitive = false
 }
 
 variable "ducklake_db_password" {
-    type      = string
-    sensitive = true
+  type      = string
+  sensitive = true
 }

@@ -36,7 +36,7 @@ resource "helm_release" "dagster" {
             {
               name  = "DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY"
               value = var.s3_secret_key
-            },            {
+              }, {
               name  = "DUCKLAKE_DATA_PATH__BUCKET"
               value = "public-datasets"
             },
