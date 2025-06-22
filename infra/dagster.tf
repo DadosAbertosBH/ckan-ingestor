@@ -10,13 +10,13 @@ resource "helm_release" "dagster" {
       dagster-user-deployments = {
         deployments = [{
           name = "ckan_pbh"
+          port = 3030
           image = {
             name       = "pedalin/ckan-ingestor"
             repository = "registry.gitlab.com"
             tag        = var.image_tag
-
+            pullPolicy = "IfNotPresent"
           }
-          port = 3030
 
           env = [
             {
