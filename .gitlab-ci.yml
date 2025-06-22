@@ -3,6 +3,7 @@ image: docker
 stages:
   - test
   - build
+  - deploy
 
 services:
   - name: docker:dind
