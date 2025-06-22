@@ -4,12 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="feat: add IAM user, policy, and S3 bucket configuration">
+    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="fix: update provider versions in providers.tf and adjust workspace.xml">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/infra/aws_s3_role_provider/main.tf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/infra/aws_s3_role_provider/outputs.tf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/infra/main.tf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/infra/providers.tf" beforeDir="false" afterPath="$PROJECT_DIR$/infra/providers.tf" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/infra/dagster.tf" beforeDir="false" afterPath="$PROJECT_DIR$/infra/dagster.tf" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -229,14 +226,6 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1749513710009</updated>
-    </task>
-    <task id="LOCAL-00002" summary="fallback to csv when json valid is invalid.">
-      <option name="closed" value="true" />
-      <created>1749603414357</created>
-      <option name="number" value="00002" />
-      <option name="presentableId" value="LOCAL-00002" />
-      <option name="project" value="LOCAL" />
-      <updated>1749603414357</updated>
     </task>
     <task id="LOCAL-00003" summary="refactor ingestion logic to improve format handling and error reporting">
       <option name="closed" value="true" />
@@ -622,11 +611,18 @@
       <option name="project" value="LOCAL" />
       <updated>1750620397932</updated>
     </task>
-    <option name="localTasksCounter" value="51" />
+    <task id="LOCAL-00051" summary="fix: update provider versions in providers.tf and adjust workspace.xml">
+      <option name="closed" value="true" />
+      <created>1750622043740</created>
+      <option name="number" value="00051" />
+      <option name="presentableId" value="LOCAL-00051" />
+      <option name="project" value="LOCAL" />
+      <updated>1750622043740</updated>
+    </task>
+    <option name="localTasksCounter" value="52" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="simplify pytest command in CI script" />
     <MESSAGE value="dind" />
     <MESSAGE value="disable warnings" />
     <MESSAGE value="refactor: update import path for INVALID_INPUT_JSON_ID in test_ducklake_data_ingestor.py" />
@@ -651,7 +647,8 @@
     <MESSAGE value="fix: change shebang in find_image_tag.sh to use /usr/bin/env bash" />
     <MESSAGE value="try without envs" />
     <MESSAGE value="feat: add IAM user, policy, and S3 bucket configuration" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: add IAM user, policy, and S3 bucket configuration" />
+    <MESSAGE value="fix: update provider versions in providers.tf and adjust workspace.xml" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix: update provider versions in providers.tf and adjust workspace.xml" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
