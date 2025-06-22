@@ -4,9 +4,15 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="refactor: simplify CI build process by removing unnecessary directory change and updating Dockerfile path">
-      <change afterPath="$PROJECT_DIR$/.dockerignore" afterDir="false" />
+    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="fix docker file">
+      <change afterPath="$PROJECT_DIR$/infra/dagster.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/infra/redis.tf" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitlab-ci.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.gitlab-ci.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ckan_ingestor/duckdb_connection_factory.py" beforeDir="false" afterPath="$PROJECT_DIR$/ckan_ingestor/duckdb_connection_factory.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/infra/variables.tf" beforeDir="false" afterPath="$PROJECT_DIR$/infra/variables.tf" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -43,55 +49,55 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Docker.docker-compose.yml.db: Compose Deployment.executor&quot;: &quot;Run&quot;,
-    &quot;Docker.docker-compose.yml: Compose Deployment.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for ckan_dagster.ckan_dagster_tests.test_assets.test_load_dataset.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for ckan_ingestor.run_duckdb_ingestor.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.pytest for test_assets.test_load_dataset.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for test_csv_reader.test_csv_with_bom.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.pytest for test_csv_reader.test_parse_latin_encoded_csv_file.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for test_csv_reader.test_parse_non_latin_and_non_utf8.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for test_dlt_delta_ingestor.test_full_insert.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.pytest for test_ducklake_data_ingestor.test_ingest_invalid_json_fallback_to_csv.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for test_ducklake_data_ingestor.test_s3_ingestor.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for test_ducklake_ingestor.test_ingest_invalid_json_fallback_to_csv.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for test_ducklake_ingestor.test_insert_new_row_dataset.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for test_ducklake_ingestor.test_s3_ingestor.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for test_ducklake_ingestor.test_same_dataset_does_not_generate_changes.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for test_ducklake_ingestor.test_x.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.pytest for test_ducklake_metadata_ingestor.test_same_dataset_does_not_generate_changes.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for tests.ingestors.test_csv_reader.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.pytest for tests.ingestors.test_csv_reader.test_csv_with_bom.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.pytest for tests.ingestors.test_csv_reader.test_parse_non_latin_and_non_utf8.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for tests.ingestors.test_ducklake_data_ingestor.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for tests.ingestors.test_ducklake_data_ingestor.test_ingest_invalid_json_fallback_to_csv.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.pytest for tests.ingestors.test_ducklake_data_ingestor.test_s3_ingestor.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for tests.ingestors.test_ducklake_ingestor.executor&quot;: &quot;Debug&quot;,
-    &quot;Python tests.pytest for tests.ingestors.test_ducklake_ingestor.test_ingest_invalid_json_fallback_to_csv.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for tests.ingestors.test_ducklake_ingestor.test_insert_new_row_dataset.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for tests.ingestors.test_ducklake_ingestor.test_same_dataset_does_not_generate_changes.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest for tests.ingestors.test_ducklake_ingestor.test_update_dataset.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest in ingestors.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest in test_ducklake_data_ingestor.py.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest in test_ducklake_ingestor.py.executor&quot;: &quot;Run&quot;,
-    &quot;Python tests.pytest in test_ducklake_metadata_ingestor.py.executor&quot;: &quot;Run&quot;,
-    &quot;Python.run_duckdb_ingestor.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/Users/guilhermecastro/Projects/ckan-ingestor/tests/fixtures/data&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;settings.sync&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Docker.docker-compose.yml.db: Compose Deployment.executor": "Run",
+    "Docker.docker-compose.yml: Compose Deployment.executor": "Run",
+    "Python tests.pytest for ckan_dagster.ckan_dagster_tests.test_assets.test_load_dataset.executor": "Run",
+    "Python tests.pytest for ckan_ingestor.run_duckdb_ingestor.executor": "Debug",
+    "Python tests.pytest for test_assets.test_load_dataset.executor": "Run",
+    "Python tests.pytest for test_csv_reader.test_csv_with_bom.executor": "Debug",
+    "Python tests.pytest for test_csv_reader.test_parse_latin_encoded_csv_file.executor": "Run",
+    "Python tests.pytest for test_csv_reader.test_parse_non_latin_and_non_utf8.executor": "Run",
+    "Python tests.pytest for test_dlt_delta_ingestor.test_full_insert.executor": "Debug",
+    "Python tests.pytest for test_ducklake_data_ingestor.test_ingest_invalid_json_fallback_to_csv.executor": "Run",
+    "Python tests.pytest for test_ducklake_data_ingestor.test_s3_ingestor.executor": "Run",
+    "Python tests.pytest for test_ducklake_ingestor.test_ingest_invalid_json_fallback_to_csv.executor": "Run",
+    "Python tests.pytest for test_ducklake_ingestor.test_insert_new_row_dataset.executor": "Run",
+    "Python tests.pytest for test_ducklake_ingestor.test_s3_ingestor.executor": "Run",
+    "Python tests.pytest for test_ducklake_ingestor.test_same_dataset_does_not_generate_changes.executor": "Run",
+    "Python tests.pytest for test_ducklake_ingestor.test_x.executor": "Debug",
+    "Python tests.pytest for test_ducklake_metadata_ingestor.test_same_dataset_does_not_generate_changes.executor": "Run",
+    "Python tests.pytest for tests.ingestors.test_csv_reader.executor": "Debug",
+    "Python tests.pytest for tests.ingestors.test_csv_reader.test_csv_with_bom.executor": "Debug",
+    "Python tests.pytest for tests.ingestors.test_csv_reader.test_parse_non_latin_and_non_utf8.executor": "Run",
+    "Python tests.pytest for tests.ingestors.test_ducklake_data_ingestor.executor": "Run",
+    "Python tests.pytest for tests.ingestors.test_ducklake_data_ingestor.test_ingest_invalid_json_fallback_to_csv.executor": "Debug",
+    "Python tests.pytest for tests.ingestors.test_ducklake_data_ingestor.test_s3_ingestor.executor": "Run",
+    "Python tests.pytest for tests.ingestors.test_ducklake_ingestor.executor": "Debug",
+    "Python tests.pytest for tests.ingestors.test_ducklake_ingestor.test_ingest_invalid_json_fallback_to_csv.executor": "Run",
+    "Python tests.pytest for tests.ingestors.test_ducklake_ingestor.test_insert_new_row_dataset.executor": "Run",
+    "Python tests.pytest for tests.ingestors.test_ducklake_ingestor.test_same_dataset_does_not_generate_changes.executor": "Run",
+    "Python tests.pytest for tests.ingestors.test_ducklake_ingestor.test_update_dataset.executor": "Run",
+    "Python tests.pytest in ingestors.executor": "Run",
+    "Python tests.pytest in test_ducklake_data_ingestor.py.executor": "Run",
+    "Python tests.pytest in test_ducklake_ingestor.py.executor": "Run",
+    "Python tests.pytest in test_ducklake_metadata_ingestor.py.executor": "Run",
+    "Python.run_duckdb_ingestor.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "main",
+    "last_opened_file_path": "/Users/guilhermecastro/Projects/ckan-ingestor/infra",
+    "settings.editor.selected.configurable": "settings.sync"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/infra" />
       <recent name="$PROJECT_DIR$/tests/fixtures/data" />
       <recent name="$PROJECT_DIR$/ckan_dagster/ckan_dagster/resources" />
       <recent name="$PROJECT_DIR$/ckan_dagster/ckan_dagster" />
       <recent name="$PROJECT_DIR$/ckan_ingestor" />
-      <recent name="$PROJECT_DIR$/tests/fixtures" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$" />
@@ -498,11 +504,18 @@
       <option name="project" value="LOCAL" />
       <updated>1750428080721</updated>
     </task>
-    <option name="localTasksCounter" value="35" />
+    <task id="LOCAL-00035" summary="fix docker file">
+      <option name="closed" value="true" />
+      <created>1750429632100</created>
+      <option name="number" value="00035" />
+      <option name="presentableId" value="LOCAL-00035" />
+      <option name="project" value="LOCAL" />
+      <updated>1750429632100</updated>
+    </task>
+    <option name="localTasksCounter" value="36" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="refactor ingestion logic to improve format handling and error reporting" />
     <MESSAGE value="add User-Agent header to requests in datastore read method" />
     <MESSAGE value="add CSV format handling in ingestion process" />
     <MESSAGE value="add DatastoreReader class for improved data fetching and refactor ingestion logic" />
@@ -527,7 +540,8 @@
     <MESSAGE value="feat: add CI stages for testing and building, and mark IcebergCkanIngestor as deprecated" />
     <MESSAGE value="feat: add license headers to Python files and create license header script" />
     <MESSAGE value="refactor: simplify CI build process by removing unnecessary directory change and updating Dockerfile path" />
-    <option name="LAST_COMMIT_MESSAGE" value="refactor: simplify CI build process by removing unnecessary directory change and updating Dockerfile path" />
+    <MESSAGE value="fix docker file" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix docker file" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

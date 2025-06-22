@@ -23,6 +23,7 @@ def from_settings(settings: DucklakeSettings = DucklakeSettings()):
     conn = duckdb.connect(settings.database)
     conn.install_extension("ducklake")
     conn.load_extension("ducklake")
+    conn.execute("INSTALL mysql; LOAD mysql;")
     conn.execute("INSTALL postgres; LOAD postgres;")
     conn.execute("INSTALL httpfs; LOAD httpfs;")
     conn.execute("SET pg_debug_show_queries=false;")

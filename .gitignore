@@ -8,3 +8,4 @@ _old/ingestor/.env
 *.parquet
 *.ducklake
 *.wal
+.tmp_dagster*
