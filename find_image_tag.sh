@@ -18,6 +18,8 @@ REPO_ID=$(
     jq -e ".[] | select(.name==\"$IMAGE_NAME\") | .id"
 )
 
+echo -e "search url = https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/registry/repositories/$REPO_ID/tags/$TAG" >&2
+
 TAG=$(
   curl \
     --silent \
