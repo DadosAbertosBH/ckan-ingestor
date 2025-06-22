@@ -5,7 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="fix: change shebang in find_image_tag.sh to use /usr/bin/env bash">
-      <change beforePath="$PROJECT_DIR$/templates/plan.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/plan.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/infra/aws_s3_role_provider/main.tf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/infra/aws_s3_role_provider/outputs.tf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/infra/ingestor.tf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/infra/providers.tf" beforeDir="false" afterPath="$PROJECT_DIR$/infra/providers.tf" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -602,7 +606,15 @@
       <option name="project" value="LOCAL" />
       <updated>1750605687373</updated>
     </task>
-    <option name="localTasksCounter" value="48" />
+    <task id="LOCAL-00048" summary="fix: change shebang in find_image_tag.sh to use /usr/bin/env bash">
+      <option name="closed" value="true" />
+      <created>1750606003240</created>
+      <option name="number" value="00048" />
+      <option name="presentableId" value="LOCAL-00048" />
+      <option name="project" value="LOCAL" />
+      <updated>1750606003240</updated>
+    </task>
+    <option name="localTasksCounter" value="49" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
