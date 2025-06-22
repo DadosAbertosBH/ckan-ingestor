@@ -4,11 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="fix: update Docker build command and correct Dagster API arguments">
+    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="fix: rename find_image_tag.sh and simplify image tag retrieval logic">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/infra/dagster.tf" beforeDir="false" afterPath="$PROJECT_DIR$/infra/dagster.tf" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/infra/find_image_tag.sh" beforeDir="false" afterPath="$PROJECT_DIR$/find_image_tag.sh" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/infra/variables.tf" beforeDir="false" afterPath="$PROJECT_DIR$/infra/variables.tf" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/find_image_tag.sh" beforeDir="false" afterPath="$PROJECT_DIR$/find_image_tag.sh" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/templates/plan.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/plan.yml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -549,11 +547,18 @@
       <option name="project" value="LOCAL" />
       <updated>1750602387798</updated>
     </task>
-    <option name="localTasksCounter" value="41" />
+    <task id="LOCAL-00041" summary="fix: rename find_image_tag.sh and simplify image tag retrieval logic">
+      <option name="closed" value="true" />
+      <created>1750603098967</created>
+      <option name="number" value="00041" />
+      <option name="presentableId" value="LOCAL-00041" />
+      <option name="project" value="LOCAL" />
+      <updated>1750603098967</updated>
+    </task>
+    <option name="localTasksCounter" value="42" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="add support for Dagster dependencies and improve CSV reading with BOM handling" />
     <MESSAGE value="dagster working" />
     <MESSAGE value="fix tests" />
     <MESSAGE value="refactor CI configuration and improve code formatting across multiple files" />
@@ -578,7 +583,8 @@
     <MESSAGE value="feat: add new job templates for OpenTofu CI configuration and update existing job definitions" />
     <MESSAGE value="feat: update job template inputs in CI configuration" />
     <MESSAGE value="fix: update Docker build command and correct Dagster API arguments" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix: update Docker build command and correct Dagster API arguments" />
+    <MESSAGE value="fix: rename find_image_tag.sh and simplify image tag retrieval logic" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix: rename find_image_tag.sh and simplify image tag retrieval logic" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

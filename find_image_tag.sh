@@ -38,3 +38,4 @@ if [ "$CI_COMMIT_SHORT_SHA" == "$TAG" ]; then
 else
   echo -e "${TXT_RED}Tag not found${TXT_CLEAR}" >&2
   exit 1
+fi
