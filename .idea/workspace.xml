@@ -4,9 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="fix: update provider versions in providers.tf and adjust workspace.xml">
+    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="fix: update environment variables in dagster.tf and adjust workspace.xml">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/infra/dagster.tf" beforeDir="false" afterPath="$PROJECT_DIR$/infra/dagster.tf" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/infra/variables.tf" beforeDir="false" afterPath="$PROJECT_DIR$/infra/variables.tf" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/plan.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/plan.yml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -226,14 +228,6 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1749513710009</updated>
-    </task>
-    <task id="LOCAL-00003" summary="refactor ingestion logic to improve format handling and error reporting">
-      <option name="closed" value="true" />
-      <created>1749616203748</created>
-      <option name="number" value="00003" />
-      <option name="presentableId" value="LOCAL-00003" />
-      <option name="project" value="LOCAL" />
-      <updated>1749616203748</updated>
     </task>
     <task id="LOCAL-00004" summary="simplify test">
       <option name="closed" value="true" />
@@ -619,11 +613,18 @@
       <option name="project" value="LOCAL" />
       <updated>1750622043740</updated>
     </task>
-    <option name="localTasksCounter" value="52" />
+    <task id="LOCAL-00052" summary="fix: update environment variables in dagster.tf and adjust workspace.xml">
+      <option name="closed" value="true" />
+      <created>1750622975652</created>
+      <option name="number" value="00052" />
+      <option name="presentableId" value="LOCAL-00052" />
+      <option name="project" value="LOCAL" />
+      <updated>1750622975652</updated>
+    </task>
+    <option name="localTasksCounter" value="53" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="dind" />
     <MESSAGE value="disable warnings" />
     <MESSAGE value="refactor: update import path for INVALID_INPUT_JSON_ID in test_ducklake_data_ingestor.py" />
     <MESSAGE value="fix: ensure file extension is lowercase in data loading function" />
@@ -648,7 +649,8 @@
     <MESSAGE value="try without envs" />
     <MESSAGE value="feat: add IAM user, policy, and S3 bucket configuration" />
     <MESSAGE value="fix: update provider versions in providers.tf and adjust workspace.xml" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix: update provider versions in providers.tf and adjust workspace.xml" />
+    <MESSAGE value="fix: update environment variables in dagster.tf and adjust workspace.xml" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix: update environment variables in dagster.tf and adjust workspace.xml" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

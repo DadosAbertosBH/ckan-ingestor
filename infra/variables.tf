@@ -28,7 +28,7 @@ variable "s3_region" {
   sensitive = false
 }
 
-variable "image" {
+variable "image_tag" {
   type      = string
   sensitive = false
 }
