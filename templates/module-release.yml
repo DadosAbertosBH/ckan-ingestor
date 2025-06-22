@@ -1,0 +1,69 @@
+spec:
+  inputs:
+    # Job and Stage name
+    as:
+      default: 'module-release'
+      description: 'Defines the name of this job.'
+    stage:
+      default: 'release'
+      description: 'Defines the stage that this job will belong to.'
+
+    root_dir:
+      default: ${CI_PROJECT_DIR}
+      description: 'Root directory for the OpenTofu module.'
+
+    module_name:
+      default: ${CI_PROJECT_NAME}
+      description: |
+        Name of the module that should be published.
+        Must comply with the naming restrictions of the module registry.
+
+    module_system:
+      default: local
+      description: |
+        System that this module can be used with.
+        e.g. 'local' or 'azurerm'
+
+    module_version:
+      description: |
+        Version of the module that should be published.
+        e.g. '0.1.0'
+      default: ${CI_COMMIT_TAG}
+
+    rules:
+      # FIXME: eventually, we'll want to define `null` as the default,
+      # but this is NOT support yet, see
+      # https://gitlab.com/gitlab-org/gitlab/-/issues/440468
+      default: [{when: on_success}]
+      type: array
+      description: 'Defines the `rules` of the job.'
+
+
+---
+
+'$[[ inputs.as ]]':
+  stage: $[[ inputs.stage ]]
+  image: debian:bookworm-slim
+  rules: $[[ inputs.rules ]]
+  variables:
+    TAR_FILENAME: /tmp/${CI_PROJECT_NAME}-${CI_COMMIT_SHA}.tgz
+    GITLAB_TOFU_ROOT_DIR: $[[ inputs.root_dir ]]
+    UPLOAD_URL:
+      ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/terraform/modules/$[[ inputs.module_name ]]/$[[ inputs.module_system ]]/$[[ inputs.module_version ]]/file
+  before_script:
+    - apt update && apt install -y --no-install-recommends ca-certificates curl
+  script:
+    - >-
+      tar -vczf "$TAR_FILENAME"
+      -C "$GITLAB_TOFU_ROOT_DIR"
+      --exclude=./.git
+      --exclude=./.terraform*
+      --exclude-ignore=.tarignore
+      .
+    - >-
+      curl
+      --fail-with-body
+      --location
+      --header "JOB-TOKEN: ${CI_JOB_TOKEN}"
+      --upload-file "$TAR_FILENAME"
+      "$UPLOAD_URL"

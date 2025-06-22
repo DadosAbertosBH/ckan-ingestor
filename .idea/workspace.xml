@@ -4,9 +4,29 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="feat: add Dagster and Redis Helm releases, update CI configuration, and enhance DuckDB connection setup">
+    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="feat: add deploy stage to CI configuration">
+      <change afterPath="$PROJECT_DIR$/templates/__internal_id_tokens_base_job.yml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/templates/detect-drift.yml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/templates/fetch-mr-plan.yml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/templates/graph.yml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/templates/module-release.yml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/templates/policy-enforcement.yml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/templates/publish-policy-bundle.yml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/templates/validate-plan-destroy.yml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.gitlab-ci.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.gitlab-ci.yml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/apply.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/apply.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/custom-command.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/custom-command.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/delete-state.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/delete-state.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/destroy.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/destroy.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/fmt.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/fmt.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/full-pipeline.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/full-pipeline.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/job-templates.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/job-templates.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/plan.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/plan.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/test.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/test.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/validate-plan-apply.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/validate-plan-apply.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/validate-plan.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/validate-plan.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/templates/validate.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/validate.yml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -81,17 +101,17 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "main",
-    "last_opened_file_path": "/Users/guilhermecastro/Projects/ckan-ingestor/infra",
+    "last_opened_file_path": "/Users/guilhermecastro/Projects/ckan-ingestor/templates",
     "settings.editor.selected.configurable": "settings.sync"
   }
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/templates" />
       <recent name="$PROJECT_DIR$/infra" />
       <recent name="$PROJECT_DIR$/tests/fixtures/data" />
       <recent name="$PROJECT_DIR$/ckan_dagster/ckan_dagster/resources" />
       <recent name="$PROJECT_DIR$/ckan_dagster/ckan_dagster" />
-      <recent name="$PROJECT_DIR$/ckan_ingestor" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$" />
@@ -514,11 +534,18 @@
       <option name="project" value="LOCAL" />
       <updated>1750600328686</updated>
     </task>
-    <option name="localTasksCounter" value="37" />
+    <task id="LOCAL-00037" summary="feat: add deploy stage to CI configuration">
+      <option name="closed" value="true" />
+      <created>1750600398392</created>
+      <option name="number" value="00037" />
+      <option name="presentableId" value="LOCAL-00037" />
+      <option name="project" value="LOCAL" />
+      <updated>1750600398392</updated>
+    </task>
+    <option name="localTasksCounter" value="38" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="add CSV format handling in ingestion process" />
     <MESSAGE value="add DatastoreReader class for improved data fetching and refactor ingestion logic" />
     <MESSAGE value="refactor datastore reader to streamline data fetching and improve error handling" />
     <MESSAGE value="try more encoding types" />
@@ -543,7 +570,8 @@
     <MESSAGE value="refactor: simplify CI build process by removing unnecessary directory change and updating Dockerfile path" />
     <MESSAGE value="fix docker file" />
     <MESSAGE value="feat: add Dagster and Redis Helm releases, update CI configuration, and enhance DuckDB connection setup" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: add Dagster and Redis Helm releases, update CI configuration, and enhance DuckDB connection setup" />
+    <MESSAGE value="feat: add deploy stage to CI configuration" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: add deploy stage to CI configuration" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

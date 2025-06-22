@@ -15,17 +15,19 @@ spec:
     create_delete_state_job:
       default: 'true'
       description: 'Wheather the delete-state job should be created or not.'
+    rules:
+      default: [{when: manual}]
+      type: array
+      description: 'Defines the `rules` of the job.'
 
 ---
 
 '$[[ inputs.as ]]':
   stage: $[[ inputs.stage ]]
-  resource_group: $TF_STATE_NAME
+  resource_group: $GITLAB_TOFU_STATE_NAME
   image: curlimages/curl:latest
   variables:
-    TF_STATE_NAME: $[[ inputs.state_name ]]
+    GITLAB_TOFU_STATE_NAME: $[[ inputs.state_name ]]
   script:
-    - curl --request DELETE -u "gitlab-ci-token:$CI_JOB_TOKEN" "$CI_API_V4_URL/projects/$CI_PROJECT_ID/terraform/state/$TF_STATE_NAME"
-  rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-    - when: manual
+    - curl --request DELETE -u "gitlab-ci-token:$CI_JOB_TOKEN" "$CI_API_V4_URL/projects/$CI_PROJECT_ID/terraform/state/$GITLAB_TOFU_STATE_NAME"
+  rules: $[[ inputs.rules ]]

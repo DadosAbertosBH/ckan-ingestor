@@ -54,7 +54,6 @@ build:
 deploy-ingestor:
   stage: deploy
   variables:
-    TARGET_ENV: production
     TF_ROOT:  "infra"
     TF_STATE_NAME:  "ingestor"
     TARGET_BRANCH: main
@@ -70,8 +69,6 @@ deploy-ingestor:
           stage_validate: build
           stage_build: build
           stage_deploy: deploy
-          runner_env: $TARGET_ENV
-          runner_tag: $TARGET_ENV
   rules:
     - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
 

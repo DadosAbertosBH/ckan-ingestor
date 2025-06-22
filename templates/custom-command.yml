@@ -12,36 +12,53 @@ spec:
     # This version is only required, because we cannot access the context of the component,
     # see https://gitlab.com/gitlab-org/gitlab/-/issues/438275
     version:
-      default: 'latest'
+      default: '2.6.1'
       description: 'Version of this component. Has to be the same as the one in the component include entry.'
 
-    opentofu_version:
-      default: '1.7.1'
+    base_os:
+      default: 'alpine'
       options:
+        - 'alpine'
+        - 'debian'
+        - '$GITLAB_OPENTOFU_BASE_IMAGE_OS'
+      description: 'Base OS of GitLab OpenTofu image.'
+
+    opentofu_version:
+      default: '1.9.1'
+      options:
+        - '1.9.1'
+        - '1.9.0'
+        - '1.8.9'
+        - '1.8.8'
+        - '1.7.8'
+        - '1.7.7'
+        - '1.6.3'
         - '$OPENTOFU_VERSION'
-        - '1.7.1'
-        - '1.7.0'
-        - '1.7.0-alpha1'
-        - '1.6.2'
-        - '1.6.1'
-        - '1.6.0'
       description: 'OpenTofu version that should be used.'
 
     # Images
     image_registry_base:
-      default: '$CI_REGISTRY/components/opentofu'
+      default: '$CI_TEMPLATE_REGISTRY_HOST/components/opentofu'
       description: 'Host URI to the job images. Will be combined with `image_name` to construct the actual image URI.'
     # FIXME: not yet possible because of https://gitlab.com/gitlab-org/gitlab/-/issues/438722
     # gitlab_opentofu_image:
     #   # FIXME: This should reference the component tag that is used.
     #   #        Currently, blocked by https://gitlab.com/gitlab-org/gitlab/-/issues/438275
-    #   # default: '$CI_REGISTRY/components/opentofu/gitlab-opentofu:$[[ inputs.opentofu_version ]]'
-    #   default: '$CI_REGISTRY/components/opentofu/gitlab-opentofu:$[[ inputs.version ]]-opentofu$[[ inputs.opentofu_version ]]'
+    #   # default: '$CI_TEMPLATE_REGISTRY_HOST/components/opentofu/gitlab-opentofu:$[[ inputs.opentofu_version ]]'
+    #   default: '$CI_TEMPLATE_REGISTRY_HOST/components/opentofu/gitlab-opentofu:$[[ inputs.version ]]-opentofu$[[ inputs.opentofu_version ]]'
     #   description: 'Tag of the gitlab-opentofu image.'
 
     image_name:
       default: 'gitlab-opentofu'
       description: 'Image name for the job images. Hosted under `image_registry_base`.'
+
+    image_digest:
+      default: ''
+      # FIXME: we cannot use regex yet because of a bug that rejects
+      # empty strings from ever being checked against the regex.
+      # see https://gitlab.com/gitlab-org/gitlab/-/issues/477707
+      # regex: '^(@sha256:[a-z0-9]{64})?$'
+      description: 'Image digest of the image you want to use. The format must be `@<image_digest>`, e.g. `@sha256:abc..`, see regex of this input. Please consult the release page at https://gitlab.com/components/opentofu/-/releases to obtain the image digests.'
 
     # Configuration
     root_dir:
@@ -51,21 +68,35 @@ spec:
     command:
       description: 'The gitlab-tofu command to run.'
 
+    needs:
+      # FIXME: eventually, we'll want to define `null` as the default,
+      # but this is NOT support yet, see
+      # https://gitlab.com/gitlab-org/gitlab/-/issues/440468
+      default: []
+      type: array
+      description: 'Defines the `needs` of the job.'
+
+    cache_policy:
+      default: pull-push
+      type: string
+      description: 'Defines the cache policy of the job.'
+
 ---
 
 '$[[ inputs.as ]]':
   stage: $[[ inputs.stage ]]
-  needs: []
+  needs: $[[ inputs.needs ]]
   cache:
     key: "$__CACHE_KEY_HACK"
+    policy: $[[ inputs.cache_policy ]]
     paths:
-      - $TF_ROOT/.terraform/
+      - $GITLAB_TOFU_ROOT_DIR/.terraform/
   variables:
     # FIXME: work around to make slashes work in `cache:key`. see https://gitlab.com/gitlab-org/gitlab/-/issues/439898
     __CACHE_KEY_HACK: "$[[ inputs.root_dir ]]"
-    TF_ROOT: $[[ inputs.root_dir ]]
+    GITLAB_TOFU_ROOT_DIR: $[[ inputs.root_dir ]]
   image:
-    name: '$[[ inputs.image_registry_base ]]/$[[ inputs.image_name ]]:$[[ inputs.version ]]-opentofu$[[ inputs.opentofu_version ]]'
+    name: '$[[ inputs.image_registry_base ]]/$[[ inputs.image_name ]]:$[[ inputs.version ]]-opentofu$[[ inputs.opentofu_version ]]-$[[ inputs.base_os ]]$[[ inputs.image_digest ]]'
   script:
     - gitlab-tofu $[[ inputs.command ]]
 

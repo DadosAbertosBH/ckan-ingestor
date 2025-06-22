@@ -2,10 +2,10 @@ spec:
   inputs:
     # Job and Stage name
     as:
-      default: 'destroy'
+      default: 'graph'
       description: 'Defines the name of this job.'
     stage:
-      default: 'cleanup'
+      default: 'validate'
       description: 'Defines the stage that this job will belong to.'
 
     # Versions
@@ -67,19 +67,27 @@ spec:
     state_name:
       default: default
       description: 'Remote OpenTofu state name.'
-    no_plan:
-      default: true
-      type: boolean
-      description: 'Whether a plan file should be used.'
-    plan_name:
-      default: 'destroy-plan'
-      description: 'The name of the plan file to use. Will be used for the cache and json file.'
+    graph_file:
+      default: 'graph.dot'
+      description: |
+        Name of the graph file that should be generated.
+        It will be uploaded as an artifact.
     var_file:
       default: ''
       type: string
-      description: 'Path to a variables files relative to root_dir. Only used if no_plan is true otherwise the variables are coming from the plan.'
+      description: 'Path to a variables files relative to root_dir.'
+    needs:
+      # FIXME: eventually, we'll want to define `null` as the default,
+      # but this is NOT support yet, see
+      # https://gitlab.com/gitlab-org/gitlab/-/issues/440468
+      default: []
+      type: array
+      description: 'Defines the `needs` of the job.'
     rules:
-      default: [{when: manual}]
+      # FIXME: eventually, we'll want to define `null` as the default,
+      # but this is NOT support yet, see
+      # https://gitlab.com/gitlab-org/gitlab/-/issues/440468
+      default: [{when: on_success}]
       type: array
       description: 'Defines the `rules` of the job.'
     cache_policy:
@@ -98,10 +106,6 @@ spec:
       default: false
       type: boolean
       description: 'Whether to setup automatic state and plan encryption for currently unencrypted state. This is only temporarily useful when migrating from an unencrypted state.'
-    auto_delete_state:
-      default: false
-      type: boolean
-      description: 'Whether to automatically delete the Terraform state. This only makes sense when using the GitLab-managed state backend. It is equivalent to running the delete-state job.'
     auto_define_backend:
       default: false
       type: boolean
@@ -150,10 +154,7 @@ include:
     # NOTE: see the comment above. This is to support the `id_tokens` setup.
     - '.$[[ inputs.as ]]:id_tokens-setup:$[[ inputs.enable_id_tokens ]]'
   stage: $[[ inputs.stage ]]
-  environment:
-    name: $GITLAB_TOFU_STATE_NAME
-    action: stop
-  resource_group: $GITLAB_TOFU_STATE_NAME
+  needs: $[[ inputs.needs ]]
   rules: $[[ inputs.rules ]]
   cache:
     key: "$__CACHE_KEY_HACK"
@@ -165,8 +166,6 @@ include:
     __CACHE_KEY_HACK: "$[[ inputs.root_dir ]]"
     GITLAB_TOFU_ROOT_DIR: $[[ inputs.root_dir ]]
     GITLAB_TOFU_STATE_NAME: $[[ inputs.state_name ]]
-    GITLAB_TOFU_APPLY_NO_PLAN: $[[ inputs.no_plan ]]
-    GITLAB_TOFU_PLAN_NAME: $[[ inputs.plan_name ]]
     GITLAB_TOFU_VAR_FILE: '$[[ inputs.var_file ]]'
     GITLAB_TOFU_AUTO_ENCRYPTION: '$[[ inputs.auto_encryption ]]'
     GITLAB_TOFU_AUTO_ENCRYPTION_PASSPHRASE: '$[[ inputs.auto_encryption_passphrase ]]'
@@ -175,9 +174,7 @@ include:
   image:
     name: '$[[ inputs.image_registry_base ]]/$[[ inputs.image_name ]]:$[[ inputs.version ]]-opentofu$[[ inputs.opentofu_version ]]-$[[ inputs.base_os ]]$[[ inputs.image_digest ]]'
   script:
-    - gitlab-tofu apply -destroy
-    - |
-      if $[[ inputs.auto_delete_state ]]; then
-        echo "Deleting state because auto_delete_state is set to true"
-        gitlab-tofu delete-state
-      fi
+    - gitlab-tofu graph > "$[[ inputs.graph_file ]]"
+  artifacts:
+    paths:
+      - "$[[ inputs.graph_file ]]"

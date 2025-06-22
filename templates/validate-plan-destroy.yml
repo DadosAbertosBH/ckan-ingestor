@@ -7,9 +7,9 @@ spec:
     stage_build:
       default: 'build'
       description: 'Defines the build stage. This stage includes the `plan` job.'
-    stage_deploy:
-      default: 'deploy'
-      description: 'Defines the deploy stage. This stage includes the `apply` job.'
+    stage_cleanup:
+      default: 'cleanup'
+      description: 'Defines the cleanup stage. This stage includes the `destroy` and `delete-state` jobs.'
 
     # Versions
     # This version is only required, because we cannot access the context of the component,
@@ -74,15 +74,8 @@ spec:
       default: default
       description: 'Remote OpenTofu state name.'
     plan_name:
-      default: 'plan'
-      description: 'The name of the plan cache and plan json file.'
-    # FIXME: at the moment we cannot support this input
-    # because we cannot nest inputs: https://gitlab.com/gitlab-org/gitlab/-/issues/438722
-    # If you want to auto apply, please refer to the `rules` input.
-    #auto_apply:
-    #  default: false
-    #  type: boolean
-    #  description: 'Whether the apply job is manual or automatically run.'
+      default: 'destroy-plan'
+      description: 'Destroy plan file name.'
     plan_artifacts_access:
       default: 'none'
       description: 'Access level for the plan artifact. See https://docs.gitlab.com/ee/ci/yaml/#artifactsaccess for possible values.'
@@ -90,6 +83,13 @@ spec:
       default: []
       type: array
       description: 'Extra artifacts to upload from the plan'
+    # FIXME: at the moment we cannot support this input
+    # because we cannot nest inputs: https://gitlab.com/gitlab-org/gitlab/-/issues/438722
+    # If you want to auto destroy, please refer to the `rules` input.
+    #auto_destroy:
+    #  default: false
+    #  type: boolean
+    #  description: 'Whether the destroy job is manual or automatically run.'
     var_file:
       default: ''
       type: string
@@ -131,12 +131,18 @@ spec:
         - if: $CI_COMMIT_BRANCH        # If there's no open merge request, add it to a *branch* pipeline instead.
       type: array
       description: 'Defines the `rules` of the `plan` job.'
-    apply_rules:
+    destroy_rules:
       default:
         - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
           when: manual
       type: array
-      description: 'Defines the `rules` of the `apply` job.'
+      description: 'Defines the `rules` of the `destroy` job.'
+    delete_state_rules:
+      default:
+        - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+          when: manual
+      type: array
+      description: 'Defines the `rules` of the `delete-state` job.'
     warning_on_non_empty_plan:
       default: false
       type: boolean
@@ -279,6 +285,7 @@ include:
       plan_name: $[[ inputs.plan_name ]]
       artifacts_access: $[[ inputs.plan_artifacts_access ]]
       extra_artifacts: $[[ inputs.plan_extra_artifacts ]]
+      destroy: true
       var_file: $[[ inputs.var_file ]]
       rules: $[[ inputs.plan_rules ]]
       cache_policy: pull
@@ -311,6 +318,7 @@ include:
       plan_name: $[[ inputs.plan_name ]]
       artifacts_access: $[[ inputs.plan_artifacts_access ]]
       extra_artifacts: $[[ inputs.plan_extra_artifacts ]]
+      destroy: true
       var_file: $[[ inputs.var_file ]]
       rules: $[[ inputs.plan_rules ]]
       auto_encryption: $[[ inputs.auto_encryption ]]
@@ -319,12 +327,12 @@ include:
       allow_developer_role: $[[ inputs.allow_developer_role_to_plan ]]
       auto_define_backend: $[[ inputs.auto_define_backend ]]
       drift_detection_mode: $[[ inputs.drift_detection_mode ]]
-  - local: '/templates/apply.yml'
+  - local: '/templates/destroy.yml'
     rules:
       - if: '"$[[ inputs.trigger_in_child_pipeline ]]" == "false"'
     inputs:
-      as: '$[[ inputs.job_name_prefix ]]apply'
-      stage: $[[ inputs.stage_deploy ]]
+      as: '$[[ inputs.job_name_prefix ]]destroy'
+      stage: $[[ inputs.stage_cleanup ]]
       version: $[[ inputs.version ]]
       base_os: $[[ inputs.base_os ]]
       opentofu_version: $[[ inputs.opentofu_version ]]
@@ -333,9 +341,10 @@ include:
       image_digest: $[[ inputs.image_digest ]]
       root_dir: $[[ inputs.root_dir ]]
       state_name: $[[ inputs.state_name ]]
+      no_plan: false
       plan_name: $[[ inputs.plan_name ]]
       var_file: $[[ inputs.var_file ]]
-      rules: $[[ inputs.apply_rules ]]
+      rules: $[[ inputs.destroy_rules ]]
       cache_policy: pull
       auto_encryption: $[[ inputs.auto_encryption ]]
       auto_encryption_passphrase: $[[ inputs.auto_encryption_passphrase ]]
@@ -344,20 +353,38 @@ include:
       enable_id_tokens: $[[ inputs.enable_id_tokens ]]
       id_tokens_base_job_name: $[[ inputs.id_tokens_base_job_name ]]
       id_tokens_setup_script: $[[ inputs.id_tokens_setup_script ]]
+  - local: '/templates/delete-state.yml'
+    rules:
+      - if: '"$[[ inputs.trigger_in_child_pipeline ]]" == "false"'
+    inputs:
+      as: '$[[ inputs.job_name_prefix ]]delete-state'
+      stage: $[[ inputs.stage_cleanup ]]
+      state_name: $[[ inputs.state_name ]]
+      rules: $[[ inputs.delete_state_rules ]]
+
+# FIXME: eventually, we'll have a `needs` input on the `delete-state`
+# job template, but the issue is that we cannot default it to something
+# meaningful other than `null` - but `null` is also not yet supported, see
+# https://gitlab.com/gitlab-org/gitlab/-/issues/440468
+'.$[[ inputs.job_name_prefix ]]delete-state:dummy:true':
+  stage: .pre
+  script: 'false'
+  rules: [{when: never}]
+
+'.$[[ inputs.job_name_prefix ]]delete-state:dummy:false':
+  needs: ['$[[ inputs.job_name_prefix ]]destroy']
+  rules: $[[ inputs.delete_state_rules ]]
+
+'$[[ inputs.job_name_prefix ]]delete-state':
+  extends: '.$[[ inputs.job_name_prefix ]]delete-state:dummy:$[[ inputs.trigger_in_child_pipeline ]]'
 
 
 # NOTE: the following configuration is only used if `trigger_in_child_pipeline` is enabled.
 stages:
   - $[[ inputs.stage_validate ]]
   - $[[ inputs.stage_build ]]
-  - $[[ inputs.stage_deploy ]]
+  - $[[ inputs.stage_cleanup ]]
   - $[[ inputs.child_pipeline_stage ]]
-
-before_script:
-  - curl -fsSL https://tailscale.com/install.sh | sh
-  - tailscaled --state="mem:" &
-  - tailscale up --authkey=${TAIL_SCALE_EPHEMERAL_AUTH_KEY} --hostname="gitlab-$(cat /etc/hostname)" --accept-routes
-
 
 '.$[[ inputs.job_name_prefix ]]$[[ inputs.child_pipeline_name ]]:bridge_job_stage:true':
   stage: $[[ inputs.child_pipeline_stage ]]
@@ -380,12 +407,12 @@ before_script:
       # so we need to introduce another input for it.
       # We probably need to split up `image_registry_base` and use parts of it here, too.
       - project: 'components/opentofu'
-        file: '/templates/validate-plan-apply.yml'
+        file: '/templates/validate-plan-destroy.yml'
         ref: '$[[ inputs.version ]]'
         inputs:
           stage_validate: $[[ inputs.stage_validate ]]
           stage_build: $[[ inputs.stage_build ]]
-          stage_deploy: $[[ inputs.stage_deploy ]]
+          stage_cleanup: $[[ inputs.stage_cleanup ]]
           version: $[[ inputs.version ]]
           base_os: $[[ inputs.base_os ]]
           opentofu_version: $[[ inputs.opentofu_version ]]
@@ -399,11 +426,12 @@ before_script:
           plan_artifacts_access: $[[ inputs.plan_artifacts_access ]]
           plan_extra_artifacts: $[[ inputs.plan_extra_artifacts ]]
           var_file: $[[ inputs.var_file ]]
-          fmt_rules: $[[ inputs.fmt_rules ]]
           fmt_allow_failure: $[[ inputs.fmt_allow_failure ]]
+          fmt_rules: $[[ inputs.fmt_rules ]]
           validate_rules: $[[ inputs.validate_rules ]]
           plan_rules: $[[ inputs.plan_rules ]]
-          apply_rules: $[[ inputs.apply_rules ]]
+          destroy_rules: $[[ inputs.destroy_rules ]]
+          delete_state_rules: $[[ inputs.delete_state_rules ]]
           warning_on_non_empty_plan: $[[ inputs.warning_on_non_empty_plan ]]
           auto_encryption: $[[ inputs.auto_encryption ]]
           auto_encryption_passphrase: $[[ inputs.auto_encryption_passphrase ]]
