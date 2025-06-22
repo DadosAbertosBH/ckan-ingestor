@@ -239,7 +239,7 @@ include:
         echo "Planning for a destroy"
         args="-destroy"
       fi
-    - TF_VAR_IMAGE=$(sh $CI_PROJECT_DIR/find_image_tag.sh)
+    - export TF_VAR_image=$(sh $CI_PROJECT_DIR/find_image_tag.sh)
     - gitlab-tofu plan $args
     - |
       if [ "$[[ inputs.post_mr_plan_comment ]]" == "true" ]; then
