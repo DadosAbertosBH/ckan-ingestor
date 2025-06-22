@@ -43,8 +43,8 @@ resource "helm_release" "dagster" {
           ]
 
           dagsterApiGrpcArgs = [
-            -"--python-file"
-            -"/app/ckan_dagster/ckan_dagster/definitions.py"
+            "--python-file",
+            "/app/ckan_dagster/ckan_dagster/definitions.py"
           ]
         }]
       }]

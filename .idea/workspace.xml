@@ -4,9 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="feat: add new job templates for OpenTofu CI configuration and update existing job definitions">
+    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="feat: update job template inputs in CI configuration">
       <change beforePath="$PROJECT_DIR$/.gitlab-ci.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.gitlab-ci.yml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/infra/dagster.tf" beforeDir="false" afterPath="$PROJECT_DIR$/infra/dagster.tf" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -530,11 +531,18 @@
       <option name="project" value="LOCAL" />
       <updated>1750601309186</updated>
     </task>
-    <option name="localTasksCounter" value="39" />
+    <task id="LOCAL-00039" summary="feat: update job template inputs in CI configuration">
+      <option name="closed" value="true" />
+      <created>1750601611841</created>
+      <option name="number" value="00039" />
+      <option name="presentableId" value="LOCAL-00039" />
+      <option name="project" value="LOCAL" />
+      <updated>1750601611841</updated>
+    </task>
+    <option name="localTasksCounter" value="40" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="refactor datastore reader to streamline data fetching and improve error handling" />
     <MESSAGE value="try more encoding types" />
     <MESSAGE value="add support for Dagster dependencies and improve CSV reading with BOM handling" />
     <MESSAGE value="dagster working" />
@@ -559,7 +567,8 @@
     <MESSAGE value="feat: add Dagster and Redis Helm releases, update CI configuration, and enhance DuckDB connection setup" />
     <MESSAGE value="feat: add deploy stage to CI configuration" />
     <MESSAGE value="feat: add new job templates for OpenTofu CI configuration and update existing job definitions" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: add new job templates for OpenTofu CI configuration and update existing job definitions" />
+    <MESSAGE value="feat: update job template inputs in CI configuration" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: update job template inputs in CI configuration" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
