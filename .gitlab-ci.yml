@@ -62,8 +62,7 @@ deploy-ingestor:
     include:
       - local: /templates/validate-plan-apply.yml
         inputs:
-          version: 0.18.0
-          opentofu_version: 1.7.1
+          base_os: "debian"
           root_dir: $TF_ROOT
           state_name: $TF_STATE_NAME
           stage_validate: build

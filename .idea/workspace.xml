@@ -4,29 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="feat: add deploy stage to CI configuration">
-      <change afterPath="$PROJECT_DIR$/templates/__internal_id_tokens_base_job.yml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/templates/detect-drift.yml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/templates/fetch-mr-plan.yml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/templates/graph.yml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/templates/module-release.yml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/templates/policy-enforcement.yml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/templates/publish-policy-bundle.yml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/templates/validate-plan-destroy.yml" afterDir="false" />
+    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="feat: add new job templates for OpenTofu CI configuration and update existing job definitions">
       <change beforePath="$PROJECT_DIR$/.gitlab-ci.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.gitlab-ci.yml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/apply.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/apply.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/custom-command.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/custom-command.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/delete-state.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/delete-state.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/destroy.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/destroy.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/fmt.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/fmt.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/full-pipeline.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/full-pipeline.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/job-templates.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/job-templates.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/plan.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/plan.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/test.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/test.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/validate-plan-apply.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/validate-plan-apply.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/validate-plan.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/validate-plan.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/templates/validate.yml" beforeDir="false" afterPath="$PROJECT_DIR$/templates/validate.yml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -542,11 +522,18 @@
       <option name="project" value="LOCAL" />
       <updated>1750600398392</updated>
     </task>
-    <option name="localTasksCounter" value="38" />
+    <task id="LOCAL-00038" summary="feat: add new job templates for OpenTofu CI configuration and update existing job definitions">
+      <option name="closed" value="true" />
+      <created>1750601309186</created>
+      <option name="number" value="00038" />
+      <option name="presentableId" value="LOCAL-00038" />
+      <option name="project" value="LOCAL" />
+      <updated>1750601309186</updated>
+    </task>
+    <option name="localTasksCounter" value="39" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="add DatastoreReader class for improved data fetching and refactor ingestion logic" />
     <MESSAGE value="refactor datastore reader to streamline data fetching and improve error handling" />
     <MESSAGE value="try more encoding types" />
     <MESSAGE value="add support for Dagster dependencies and improve CSV reading with BOM handling" />
@@ -571,7 +558,8 @@
     <MESSAGE value="fix docker file" />
     <MESSAGE value="feat: add Dagster and Redis Helm releases, update CI configuration, and enhance DuckDB connection setup" />
     <MESSAGE value="feat: add deploy stage to CI configuration" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: add deploy stage to CI configuration" />
+    <MESSAGE value="feat: add new job templates for OpenTofu CI configuration and update existing job definitions" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: add new job templates for OpenTofu CI configuration and update existing job definitions" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
