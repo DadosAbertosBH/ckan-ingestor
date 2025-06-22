@@ -18,8 +18,6 @@ REPO_ID=$(
     jq -e ".[] | select(.name==\"$IMAGE_NAME\") | .id"
 )
 
-echo -e "search url = https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/registry/repositories/$REPO_ID/tags/$TAG" >&2
-
 TAG=$(
   curl \
     --silent \
@@ -28,6 +26,9 @@ TAG=$(
     "https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/registry/repositories/$REPO_ID/tags/$TAG" |
     jq -r '.name'
 )
+
+echo -e "Checking if '$TAG' is from commit $CI_COMMIT_SHORT_SHA" >&2
+
 # First, check if the IMAGE TAG exists
 if [ "$CI_COMMIT_SHORT_SHA" == "$TAG" ]; then
   echo -e "${TXT_GREEN}found TAG $TAG${TXT_CLEAR}" >&2

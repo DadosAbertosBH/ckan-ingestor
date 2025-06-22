@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="fix: update find_image_tag.sh to simplify image tag retrieval and adjust CI configuration">
+    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="fix: add debug output for image tag retrieval in find_image_tag.sh">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/find_image_tag.sh" beforeDir="false" afterPath="$PROJECT_DIR$/find_image_tag.sh" afterDir="false" />
     </list>
@@ -562,11 +562,18 @@
       <option name="project" value="LOCAL" />
       <updated>1750603511263</updated>
     </task>
-    <option name="localTasksCounter" value="43" />
+    <task id="LOCAL-00043" summary="fix: add debug output for image tag retrieval in find_image_tag.sh">
+      <option name="closed" value="true" />
+      <created>1750604176390</created>
+      <option name="number" value="00043" />
+      <option name="presentableId" value="LOCAL-00043" />
+      <option name="project" value="LOCAL" />
+      <updated>1750604176390</updated>
+    </task>
+    <option name="localTasksCounter" value="44" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="fix tests" />
     <MESSAGE value="refactor CI configuration and improve code formatting across multiple files" />
     <MESSAGE value="configure ci" />
     <MESSAGE value="steps as array" />
@@ -591,7 +598,8 @@
     <MESSAGE value="fix: update Docker build command and correct Dagster API arguments" />
     <MESSAGE value="fix: rename find_image_tag.sh and simplify image tag retrieval logic" />
     <MESSAGE value="fix: update find_image_tag.sh to simplify image tag retrieval and adjust CI configuration" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix: update find_image_tag.sh to simplify image tag retrieval and adjust CI configuration" />
+    <MESSAGE value="fix: add debug output for image tag retrieval in find_image_tag.sh" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix: add debug output for image tag retrieval in find_image_tag.sh" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
