@@ -27,11 +27,11 @@ TAG=$(
     jq -r '.name'
 )
 
-echo -e "Checking if '$TAG' is from commit $CI_COMMIT_SHORT_SHA" >&2
+echo "Checking if '$TAG' is from commit '$CI_COMMIT_SHORT_SHA'" >&2
 
 # First, check if the IMAGE TAG exists
-if [ "$CI_COMMIT_SHORT_SHA" == "$TAG" ]; then
-  echo -e "${TXT_GREEN}found TAG $TAG${TXT_CLEAR}" >&2
+if [[ "$CI_COMMIT_SHORT_SHA" == "$TAG" ]]; then
+  echo "${TXT_GREEN}found TAG $TAG${TXT_CLEAR}" >&2
   if [ -z "$IMAGE_NAME" ]
   then
         echo "$CI_REGISTRY_IMAGE:$TAG"
@@ -39,6 +39,6 @@ if [ "$CI_COMMIT_SHORT_SHA" == "$TAG" ]; then
         echo "$CI_REGISTRY_IMAGE/$IMAGE_NAME:$TAG"
   fi
 else
-  echo -e "${TXT_RED}Tag not found${TXT_CLEAR}" >&2
+  echo "${TXT_RED}Tag not found${TXT_CLEAR}" >&2
   exit 1
 fi

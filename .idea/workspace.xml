@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="fix: add debug output for image tag retrieval in find_image_tag.sh">
+    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="fix: add debug output to find_image_tag.sh for tag verification">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/find_image_tag.sh" beforeDir="false" afterPath="$PROJECT_DIR$/find_image_tag.sh" afterDir="false" />
     </list>
@@ -80,6 +80,7 @@
     "Python.run_duckdb_ingestor.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
+    "SHELLCHECK.PATH": "/Users/guilhermecastro/Library/Application Support/JetBrains/PyCharmCE2025.1/plugins/Shell Script/shellcheck",
     "git-widget-placeholder": "main",
     "last_opened_file_path": "/Users/guilhermecastro/Projects/ckan-ingestor/templates",
     "settings.editor.selected.configurable": "settings.sync"
@@ -570,11 +571,18 @@
       <option name="project" value="LOCAL" />
       <updated>1750604176390</updated>
     </task>
-    <option name="localTasksCounter" value="44" />
+    <task id="LOCAL-00044" summary="fix: add debug output to find_image_tag.sh for tag verification">
+      <option name="closed" value="true" />
+      <created>1750604661810</created>
+      <option name="number" value="00044" />
+      <option name="presentableId" value="LOCAL-00044" />
+      <option name="project" value="LOCAL" />
+      <updated>1750604661810</updated>
+    </task>
+    <option name="localTasksCounter" value="45" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="refactor CI configuration and improve code formatting across multiple files" />
     <MESSAGE value="configure ci" />
     <MESSAGE value="steps as array" />
     <MESSAGE value="uv cache" />
@@ -599,7 +607,8 @@
     <MESSAGE value="fix: rename find_image_tag.sh and simplify image tag retrieval logic" />
     <MESSAGE value="fix: update find_image_tag.sh to simplify image tag retrieval and adjust CI configuration" />
     <MESSAGE value="fix: add debug output for image tag retrieval in find_image_tag.sh" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix: add debug output for image tag retrieval in find_image_tag.sh" />
+    <MESSAGE value="fix: add debug output to find_image_tag.sh for tag verification" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix: add debug output to find_image_tag.sh for tag verification" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
