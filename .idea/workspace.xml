@@ -4,8 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="fix: add debug output to find_image_tag.sh for tag verification">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="fix: improve debug output in find_image_tag.sh for tag verification">
       <change beforePath="$PROJECT_DIR$/find_image_tag.sh" beforeDir="false" afterPath="$PROJECT_DIR$/find_image_tag.sh" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -579,11 +578,18 @@
       <option name="project" value="LOCAL" />
       <updated>1750604661810</updated>
     </task>
-    <option name="localTasksCounter" value="45" />
+    <task id="LOCAL-00045" summary="fix: improve debug output in find_image_tag.sh for tag verification">
+      <option name="closed" value="true" />
+      <created>1750605057248</created>
+      <option name="number" value="00045" />
+      <option name="presentableId" value="LOCAL-00045" />
+      <option name="project" value="LOCAL" />
+      <updated>1750605057248</updated>
+    </task>
+    <option name="localTasksCounter" value="46" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="configure ci" />
     <MESSAGE value="steps as array" />
     <MESSAGE value="uv cache" />
     <MESSAGE value="use uvx" />
@@ -608,7 +614,8 @@
     <MESSAGE value="fix: update find_image_tag.sh to simplify image tag retrieval and adjust CI configuration" />
     <MESSAGE value="fix: add debug output for image tag retrieval in find_image_tag.sh" />
     <MESSAGE value="fix: add debug output to find_image_tag.sh for tag verification" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix: add debug output to find_image_tag.sh for tag verification" />
+    <MESSAGE value="fix: improve debug output in find_image_tag.sh for tag verification" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix: improve debug output in find_image_tag.sh for tag verification" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
