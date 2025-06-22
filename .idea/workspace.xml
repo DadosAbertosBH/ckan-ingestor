@@ -4,7 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="fix: improve debug output in find_image_tag.sh for tag verification">
+    <list default="true" id="f5a1c073-84cb-47a9-b973-e63dd01b24ed" name="Changes" comment="fix: change shebang in find_image_tag.sh to use /bin/bash">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/find_image_tag.sh" beforeDir="false" afterPath="$PROJECT_DIR$/find_image_tag.sh" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -586,11 +587,18 @@
       <option name="project" value="LOCAL" />
       <updated>1750605057248</updated>
     </task>
-    <option name="localTasksCounter" value="46" />
+    <task id="LOCAL-00046" summary="fix: change shebang in find_image_tag.sh to use /bin/bash">
+      <option name="closed" value="true" />
+      <created>1750605328288</created>
+      <option name="number" value="00046" />
+      <option name="presentableId" value="LOCAL-00046" />
+      <option name="project" value="LOCAL" />
+      <updated>1750605328288</updated>
+    </task>
+    <option name="localTasksCounter" value="47" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="steps as array" />
     <MESSAGE value="uv cache" />
     <MESSAGE value="use uvx" />
     <MESSAGE value="update CI script to use 'uv run' for ruff and pytest commands" />
@@ -615,7 +623,8 @@
     <MESSAGE value="fix: add debug output for image tag retrieval in find_image_tag.sh" />
     <MESSAGE value="fix: add debug output to find_image_tag.sh for tag verification" />
     <MESSAGE value="fix: improve debug output in find_image_tag.sh for tag verification" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix: improve debug output in find_image_tag.sh for tag verification" />
+    <MESSAGE value="fix: change shebang in find_image_tag.sh to use /bin/bash" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix: change shebang in find_image_tag.sh to use /bin/bash" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

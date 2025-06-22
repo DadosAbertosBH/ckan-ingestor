@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 IMAGE_NAME="${1:-""}"
 TAG=${CI_COMMIT_SHORT_SHA}
@@ -30,7 +30,8 @@ TAG=$(
 echo "Checking if '$TAG' is from commit '$CI_COMMIT_SHORT_SHA'" >&2
 
 # First, check if the IMAGE TAG exists
-if [[ "$CI_COMMIT_SHORT_SHA" == "$TAG" ]]; then
+if [ "$CI_COMMIT_SHORT_SHA" = "$TAG" ]
+ then
   echo "${TXT_GREEN}found TAG $TAG${TXT_CLEAR}" >&2
   if [ -z "$IMAGE_NAME" ]
   then
