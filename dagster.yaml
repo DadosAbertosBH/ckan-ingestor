@@ -3,7 +3,3 @@ run_coordinator:
   class: QueuedRunCoordinator
   config:
     max_concurrent_runs: 30
-
-#execution:
-#  config:
-#    in_process:

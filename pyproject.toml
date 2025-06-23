@@ -20,6 +20,7 @@ dependencies = [
     "sherlock>=0.4.1",
     "redis>=6.2.0",
     "pyiceberg>=0.9.1",
+    "dagster-dask>=0.26.19",
 ]
 
 [dependency-groups]

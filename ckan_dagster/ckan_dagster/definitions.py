@@ -16,6 +16,7 @@
 import dagster as dg
 import pyarrow
 
+from dagster_dask import dask_executor
 from ckan_dagster.ckan_dagster.resources.ckan_fetcher_resource import (
     CkanFetcherResource,
 )
@@ -108,7 +109,7 @@ def ckan_data(
             "row_count": dg.MetadataValue.int(count),
             "preview": dg.MetadataValue.md(
                 ingestor.ducklake_conn.execute(
-                    f'select * from "{resource_id}"."{resource_id}" limit 10'
+                    f'select * from "{resource_id}" limit 10'
                 )
                 .fetchdf()
                 .to_markdown(index=False)
@@ -120,6 +121,16 @@ def ckan_data(
 ckan_data_request_job = dg.define_asset_job(
     name="ckan_data_job",
     selection=dg.AssetSelection.assets("ckan_data"),
+    executor_def=dask_executor,
+    config={
+        "execution": {
+            "config": {
+                "cluster": {
+                    "local" : {}
+                }
+            }
+        }
+    }
 )
 
 

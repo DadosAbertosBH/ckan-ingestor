@@ -47,8 +47,7 @@ build:
     - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
     - docker context create builder
     - docker buildx create builder --use
-    # ,linux/arm64 <!-- Uncomment if you want to build for ARM64 -->
-    - docker buildx build --platform linux/amd64 --push -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
+    - docker buildx build --platform linux/amd64,linux/arm64 --push -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
   rules:
     - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
 
