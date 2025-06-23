@@ -10,16 +10,14 @@ resource "helm_release" "dagster" {
       {
         dagsterDaemon = {
           image = {
-            name       = "pedalin/dagster-celery-k8s"
-            repository = "registry.gitlab.com"
+            repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
             tag        = "4ecbc1ce"
             pullPolicy = "IfNotPresent"
           }
         }
         dagsterWebserver = {
           image = {
-            name       = "pedalin/ckan-ingestor"
-            repository = "registry.gitlab.com"
+            repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
             tag        = "4ecbc1ce"
             pullPolicy = "IfNotPresent"
           }
@@ -30,8 +28,7 @@ resource "helm_release" "dagster" {
               name = "ckan-pbh"
               port = 3030
               image = {
-                name       = "pedalin/ckan-ingestor"
-                repository = "registry.gitlab.com"
+                repository = "registry.gitlab.com/pedalin/ckan-ingestor"
                 tag        = var.image_tag
                 pullPolicy = "IfNotPresent"
               }
@@ -60,7 +57,8 @@ resource "helm_release" "dagster" {
                 {
                   name  = "DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY"
                   value = var.s3_secret_key
-                }, {
+                },
+                {
                   name  = "DUCKLAKE_DATA_PATH__BUCKET"
                   value = "public-datasets"
                 },
