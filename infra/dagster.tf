@@ -29,7 +29,7 @@ resource "kubernetes_job_v1" "initialize_db" {
           image = "migrate/migrate"
           args = [
             "-database",
-            "mysql://${var.ducklake_db_user}:${var.ducklake_db_password}@tcp(${var.ducklake_db_host}:3306)", "-path",
+            "mysql://${var.ducklake_db_user}:${var.ducklake_db_password}@tcp(${var.ducklake_db_host}:3306)/k3s", "-path",
             "/migrations", "up"
           ]
           volume_mount {
