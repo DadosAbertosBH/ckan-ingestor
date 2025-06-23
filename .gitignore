@@ -9,3 +9,4 @@ _old/ingestor/.env
 *.ducklake
 *.wal
 .tmp_dagster*
+/.idea/workspace.xml

@@ -13,7 +13,7 @@ pip install -e ".[dev]"
 Then, start the Dagster UI web server:
 
 ```bash
-DAGSTER_GRPC_TIMEOUT_SECONDS=600 dagster dev
+DAGSTER_GRPC_TIMEOUT_SECONDS=600 dagster dev -f ckan_dagster/ckan_dagster/definitions.py 
 ```
 
 Open http://localhost:3000 with your browser to see the project.

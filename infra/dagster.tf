@@ -9,7 +9,7 @@ resource "helm_release" "dagster" {
     {
       dagster-user-deployments = {
         deployments = [{
-          name = "ckan_pbh"
+          name = "ckan-pbh"
           port = 3030
           image = {
             name       = "pedalin/ckan-ingestor"
