@@ -5,6 +5,8 @@ WORKDIR /app
 
 ADD . .
 
-RUN uv sync --locked
+RUN uv venv /dagster_proj/.venv
+ENV PATH="/dagster_proj/.venv/bin:$PATH"
+RUN uv pip install --system -e .
 
 EXPOSE 80
