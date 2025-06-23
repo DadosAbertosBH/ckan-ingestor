@@ -27,7 +27,7 @@ resource "kubernetes_job_v1" "initialize_db" {
         container {
           name  = "migrate"
           image = "migrate/migrate"
-          command = [
+          args = [
             "-database",
             "mysql://${var.ducklake_db_user}:${var.ducklake_db_password}@tcp(${var.ducklake_db_host}:3306)", "-path",
             "/migrations", "up"
