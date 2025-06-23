@@ -36,7 +36,7 @@ resource "helm_release" "dagster" {
               env = [
                 {
                   name  = "DUCKLAKE_CATALOG_URI"
-                  value = "postgres:dbname=mysql host=${var.ducklake_db_host} database=${var.ducklake_db_database} user=${var.ducklake_db_user} password=${var.ducklake_db_password}"
+                  value = "mysql:host=${var.ducklake_db_host} db=${var.ducklake_db_database} user=${var.ducklake_db_user} password=${var.ducklake_db_password}"
                 },
                 {
                   name  = "DUCKLAKE_DATABASE"
