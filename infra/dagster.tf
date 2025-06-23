@@ -1,3 +1,9 @@
+resource "kubernetes_namespace" "dagster" {
+  metadata {
+    name = "dagster"
+  }
+}
+
 resource "kubernetes_config_map_v1" "dagster_config" {
   metadata {
     name      = "migrations"
@@ -11,7 +17,8 @@ resource "kubernetes_config_map_v1" "dagster_config" {
 
 resource "kubernetes_job_v1" "initialize_db" {
   metadata {
-    name = "demo"
+    name      = "migrations"
+    namespace = "dagster"
   }
   spec {
     template {
@@ -124,4 +131,6 @@ resource "helm_release" "dagster" {
       }
     )
   ]
+
+  depends_on = [kubernetes_job_v1.initialize_db]
 }
