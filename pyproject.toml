@@ -21,6 +21,7 @@ dependencies = [
     "redis>=6.2.0",
     "pyiceberg>=0.9.1",
     "dagster-dask>=0.26.19",
+    "dagster-postgres>=0.26.19",
 ]
 
 [dependency-groups]
