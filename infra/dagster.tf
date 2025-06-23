@@ -1,3 +1,53 @@
+resource "kubernetes_config_map_v1" "dagster_config" {
+  metadata {
+    name      = "migrations"
+    namespace = "dagster"
+  }
+  data = {
+    "000001_database.up.sql"   = "CREATE DATABASE IF NOT EXISTS ${var.ducklake_db_database};"
+    "000001_database.down.sql" = ""
+  }
+}
+
+resource "kubernetes_job_v1" "initialize_db" {
+  metadata {
+    name = "demo"
+  }
+  spec {
+    template {
+      metadata {}
+      spec {
+        container {
+          name  = "migrate/migrate"
+          image = "migrate/migrate"
+          command = [
+            "-database",
+            "mysql://${var.ducklake_db_user}:${var.ducklake_db_password}@tcp(${var.ducklake_db_host}:3306)", "-path",
+            "/migrations", "up"
+          ]
+          volume_mount {
+            mount_path = "/migrations"
+            name       = "migrations"
+          }
+        }
+        restart_policy = "Never"
+        volume {
+          name = "migrations"
+          config_map {
+            name = kubernetes_config_map_v1.dagster_config.metadata[0].name
+          }
+        }
+      }
+    }
+    backoff_limit = 4
+  }
+  wait_for_completion = true
+  timeouts {
+    create = "2m"
+    update = "2m"
+  }
+}
+
 resource "helm_release" "dagster" {
   name             = "dagster"
   repository       = "https://dagster-io.github.io/helm"
