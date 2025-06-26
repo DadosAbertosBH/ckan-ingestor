@@ -21,7 +21,7 @@ from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 def from_settings(settings: DucklakeSettings = DucklakeSettings()):
     """Return a duckdb connection with required extensions."""
     conn = duckdb.connect(settings.database)
-    conn.install_extension("ducklake")
+    conn.install_extension("ducklake FROM 'http://nightly-extensions.duckdb.org';")
     conn.load_extension("ducklake")
     conn.execute("INSTALL mysql; LOAD mysql;")
     conn.execute("INSTALL postgres; LOAD postgres;")
@@ -62,7 +62,7 @@ def from_settings(settings: DucklakeSettings = DucklakeSettings()):
         if "Table 'ducklake_metadata' already exist" not in str(e):
             raise e
         else:
-            stmt = "ATTACH 'ducklake:{conn}' AS lake;".format(conn=settings.catalog_uri)
+            stmt = "ATTACH 'ducklake:{conn}' (CREATE_IF_NOT_EXISTS false); AS lake;".format(conn=settings.catalog_uri)
             conn.execute(stmt)
     conn.execute("USE lake;")
     return conn
