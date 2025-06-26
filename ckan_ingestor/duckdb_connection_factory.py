@@ -21,7 +21,7 @@ from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 def from_settings(settings: DucklakeSettings = DucklakeSettings()):
     """Return a duckdb connection with required extensions."""
     conn = duckdb.connect(settings.database)
-    conn.install_extension("ducklake FROM 'http://nightly-extensions.duckdb.org';")
+    conn.install_extension("INSTALL ducklake FROM 'http://nightly-extensions.duckdb.org';")
     conn.load_extension("ducklake")
     conn.execute("INSTALL mysql; LOAD mysql;")
     conn.execute("INSTALL postgres; LOAD postgres;")
