@@ -21,7 +21,7 @@ from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 def from_settings(settings: DucklakeSettings = DucklakeSettings()):
     """Return a duckdb connection with required extensions."""
     conn = duckdb.connect(settings.database)
-    conn.install_extension("ducklake FROM 'http://nightly-extensions.duckdb.org';")
+    conn.install_extension("ducklake")
     conn.load_extension("ducklake")
     conn.execute("INSTALL mysql; LOAD mysql;")
     conn.execute("INSTALL postgres; LOAD postgres;")
@@ -48,21 +48,26 @@ def from_settings(settings: DucklakeSettings = DucklakeSettings()):
 
     conn.execute(stmt)
 
+    stmt = f"""
+        CREATE SECRET (
+            TYPE DUCKLAKE,
+            METADATA_PATH '{settings.catalog_uri}',
+            DATA_PATH '{settings.data_path.protocol}://{settings.data_path.bucket}'
+        );
+    """
+    conn.execute(stmt)
     try:
         stmt = (
-            "ATTACH 'ducklake:{conn}' AS lake (DATA_PATH '{data_path_protocol}://{data_path_bucket}');"
+            "ATTACH 'ducklake:' AS lake;"
         ).format(
-            conn=settings.catalog_uri,
-            data_path_protocol=settings.data_path.protocol,
-            data_path_bucket=settings.data_path.bucket,
-        )
+            )
         conn.execute(stmt)
     except duckdb.IOException as e:
         # Bug in mysql connection https://github.com/duckdb/ducklake/issues/214
         if "Table 'ducklake_metadata' already exist" not in str(e):
             raise e
         else:
-            stmt = "ATTACH 'ducklake:{conn}' (CREATE_IF_NOT_EXISTS false); AS lake;".format(conn=settings.catalog_uri)
+            stmt = "ATTACH 'ducklake:' (CREATE_IF_NOT_EXISTS false); AS lake;"
             conn.execute(stmt)
     conn.execute("USE lake;")
     return conn
