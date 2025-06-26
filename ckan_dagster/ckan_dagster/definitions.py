@@ -102,7 +102,7 @@ def ckan_data(
 
     ingestor.ingest_ckan_data(resource)
     count = ingestor.ducklake_conn.execute(
-        f'select count(*) from "{resource_id}"."{resource_id}"'
+        f'select count(*) from "{resource_id}"'
     ).fetchone()[0]
     return dg.MaterializeResult(
         metadata={

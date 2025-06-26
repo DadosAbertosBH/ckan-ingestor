@@ -48,14 +48,21 @@ def from_settings(settings: DucklakeSettings = DucklakeSettings()):
 
     conn.execute(stmt)
 
-    stmt = (
-        "ATTACH 'ducklake:{conn}' AS lake (DATA_PATH '{data_path_protocol}://{data_path_bucket}');"
-    ).format(
-        conn=settings.catalog_uri,
-        data_path_protocol=settings.data_path.protocol,
-        data_path_bucket=settings.data_path.bucket,
-    )
-
-    conn.execute(stmt)
+    try:
+        stmt = (
+            "ATTACH 'ducklake:{conn}' AS lake (DATA_PATH '{data_path_protocol}://{data_path_bucket}');"
+        ).format(
+            conn=settings.catalog_uri,
+            data_path_protocol=settings.data_path.protocol,
+            data_path_bucket=settings.data_path.bucket,
+        )
+        conn.execute(stmt)
+    except duckdb.IOException as e:
+        # Bug in mysql connection https://github.com/duckdb/ducklake/issues/214
+        if "Table 'ducklake_metadata' already exist" not in str(e):
+            raise e
+        else:
+            stmt = "ATTACH 'ducklake:{conn}' AS lake;".format(conn=settings.catalog_uri)
+            conn.execute(stmt)
     conn.execute("USE lake;")
     return conn
