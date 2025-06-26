@@ -65,7 +65,7 @@ def from_settings(settings: DucklakeSettings = DucklakeSettings()):
             print(f"raising = {e}")
             raise e
         else:
-            print(f"fallback")
+            print("fallback")
             conn.execute("ATTACH 'ducklake:' (CREATE_IF_NOT_EXISTS false); AS lake;")
     conn.execute("USE lake;")
     return conn
