@@ -29,7 +29,7 @@ resource "kubernetes_job_v1" "initialize_db" {
           image = "migrate/migrate"
           args = [
             "-database",
-            "mysql://${var.ducklake_db_user}:${var.ducklake_db_password}@tcp(${var.ducklake_db_host}:3306)/k3s", "-path",
+            "postgres://${var.ducklake_db_user}:${var.ducklake_db_password}@${var.ducklake_db_host}/postgres", "-path",
             "/migrations", "up"
           ]
           volume_mount {
@@ -93,7 +93,7 @@ resource "helm_release" "dagster" {
               env = [
                 {
                   name  = "DUCKLAKE_CATALOG_URI"
-                  value = "mysql:host=${var.ducklake_db_host} db=${var.ducklake_db_database} user=${var.ducklake_db_user} password=${var.ducklake_db_password}"
+                  value = "postgres:host=${var.ducklake_db_host} dbname=${var.ducklake_db_database} user=${var.ducklake_db_user} password=${var.ducklake_db_password}"
                 },
                 {
                   name  = "DUCKLAKE_DATABASE"
