@@ -29,7 +29,8 @@ resource "kubernetes_job_v1" "initialize_db" {
           image = "migrate/migrate"
           args = [
             "-database",
-            "postgres://${var.ducklake_db_user}:${var.ducklake_db_password}@${var.ducklake_db_host}/postgres?sslmode=disable", "-path",
+            "postgres://${var.ducklake_db_user}:${var.ducklake_db_password}@${var.ducklake_db_host}/postgres?sslmode=disable",
+            "-path",
             "/migrations", "up"
           ]
           volume_mount {
@@ -65,6 +66,12 @@ resource "helm_release" "dagster" {
   values = [
     yamlencode(
       {
+        env = [
+          {
+            name  = "DAGSTER_GRPC_TIMEOUT_SECONDS"
+            value = "600"
+          }
+        ]
         dagsterDaemon = {
           image = {
             repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
@@ -119,10 +126,6 @@ resource "helm_release" "dagster" {
                   name  = "DUCKLAKE_DATA_PATH__BUCKET"
                   value = "public-datasets"
                 },
-                {
-                  name = "DAGSTER_GRPC_TIMEOUT_SECONDS"
-                  value = "600"
-                }
               ]
 
               dagsterApiGrpcArgs = [
