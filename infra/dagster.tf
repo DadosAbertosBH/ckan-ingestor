@@ -119,6 +119,10 @@ resource "helm_release" "dagster" {
                   name  = "DUCKLAKE_DATA_PATH__BUCKET"
                   value = "public-datasets"
                 },
+                {
+                  name = "DAGSTER_GRPC_TIMEOUT_SECONDS"
+                  value = "600"
+                }
               ]
 
               dagsterApiGrpcArgs = [
