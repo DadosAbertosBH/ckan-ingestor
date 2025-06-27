@@ -134,8 +134,7 @@ ckan_data_request_job = dg.define_asset_job(
 )
 
 
-@dg.asset_sensor(
-    asset_key=dg.AssetKey("ckan_resources"),
+@dg.sensor(
     job=ckan_data_request_job,
     minimum_interval_seconds=60 * 60 * 12,  # 12 hours
 )
