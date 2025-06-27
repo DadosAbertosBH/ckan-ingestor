@@ -29,7 +29,7 @@ resource "kubernetes_job_v1" "initialize_db" {
           image = "migrate/migrate"
           args = [
             "-database",
-            "postgres://${var.ducklake_db_user}:${var.ducklake_db_password}@${var.ducklake_db_host}/postgres", "-path",
+            "postgres://${var.ducklake_db_user}:${var.ducklake_db_password}@${var.ducklake_db_host}/postgres?sslmode=disable", "-path",
             "/migrations", "up"
           ]
           volume_mount {
