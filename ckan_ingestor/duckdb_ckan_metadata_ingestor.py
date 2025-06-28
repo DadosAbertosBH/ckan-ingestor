@@ -15,11 +15,10 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import logging
 import threading
-from datetime import datetime
+from typing import List
 
 import duckdb
 import pyarrow
-import pytz
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 from ckan_ingestor.csv_reader import DuckDbCsvReader
@@ -132,19 +131,15 @@ class DuckdbCkanMetadataIngestor:
             )
         return new_packages.cast(merged_schema)
 
-    def table_is_up_to_date(self, table_name: str, last_modified: str) -> bool:
-        """Check if the table is up to date based on the last modified timestamp."""
-        if not self.table_exists(table_name):
-            return False
+    def get_outdated_resources_id(self) -> List[str]:
+        rows = self.conn.execute(
+            """
+                SELECT id, last_modified FROM ckan_resource 
+                ANTI JOIN ckan_resource_last_update 
+                  ON id = ckan_resource_id 
+                  AND ckan_resource.last_modified::TIMESTAMP < ckan_resource_last_update.last_modified            
+            """
+        ).fetchall()
 
-        row = self.conn.execute(
-            "SELECT last_modified FROM ckan_resource_last_update where ckan_resource_id = ?",
-        ).execute(table_name).fetchone()
 
-        # Case table is empty
-        if not row:
-            return False
-
-        snapshot_time = row[0]
-
-        return snapshot_time > pytz.UTC.localize(datetime.fromisoformat(last_modified))
+        return list(map(lambda row: row[0], rows))

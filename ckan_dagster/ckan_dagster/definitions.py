@@ -16,7 +16,6 @@
 import dagster as dg
 import pyarrow
 
-from dagster_dask import dask_executor
 from ckan_dagster.ckan_dagster.resources.ckan_fetcher_resource import (
     CkanFetcherResource,
 )
@@ -121,7 +120,6 @@ def ckan_data(
 ckan_data_request_job = dg.define_asset_job(
     name="ckan_data_job",
     selection=dg.AssetSelection.assets("ckan_data"),
-    executor_def=dask_executor,
     config={
         "execution": {
             "config": {
@@ -139,38 +137,15 @@ ckan_data_request_job = dg.define_asset_job(
     minimum_interval_seconds=60 * 60 * 12,  # 12 hours
 )
 def ckan_data_request_sensor(
-    context: dg.SensorEvaluationContext,
+    _context: dg.SensorEvaluationContext,
     metadata_ingestor: dg.ResourceParam[DuckdbCkanMetadataIngestor],
 ):
-    skipped = []
-    requested = []
-    resources = metadata_ingestor.conn.execute(
-        "select id, last_modified from ckan_resource"
-    ).fetchall()
-    resource_ids = [r[0] for r in resources]
-    for r in resources:
-        r_id, r_last_modified = r
-        if metadata_ingestor.table_is_up_to_date(r_id, r_last_modified):
-            skipped.append(
-                dg.SkipReason(
-                    f"Asset {r_id} is up to date, last_mofied = {r_last_modified}"
-                )
-            )
-        else:
-            requested.append(
-                dg.RunRequest(
-                    run_key=f"adhoc_ckan_data_{r_id}_{r_last_modified}",
-                    partition_key=r_id,
-                )
-            )
-    context.log.info(
-        f"Finished processing {len(resources)} resources, requested={len(requested)}, skipped={len(skipped)}"
-    )
+    resources_id = metadata_ingestor.get_outdated_resources_id()
+    runs = [dg.RunRequest(run_key=r_id, partition_key=r_id) for r_id in resources_id]
     return dg.SensorResult(
-        run_requests=requested,
-        skip_reasons=skipped,
+        run_requests=runs,
         dynamic_partitions_requests=[
-            resource_partitions.build_add_request(resource_ids)
+            resource_partitions.build_add_request(resources_id)
         ],
     )
 
