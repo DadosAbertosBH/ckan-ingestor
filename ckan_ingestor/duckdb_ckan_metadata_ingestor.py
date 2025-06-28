@@ -42,8 +42,8 @@ class DuckdbCkanMetadataIngestor:
     lock = threading.RLock()
 
     def __init__(
-        self,
-        conn: duckdb.DuckDBPyConnection,
+            self,
+            conn: duckdb.DuckDBPyConnection,
     ):
         handler = logging.StreamHandler()
         formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
@@ -73,11 +73,15 @@ class DuckdbCkanMetadataIngestor:
 
     def ingest_resources(self, resources: pyarrow.Table):
         self.conn.begin()
+        self.conn.execute("""
+        CREATE TABLE IF NOT EXISTS ckan_resource_last_update 
+            (ckan_resource_id UUID, last_modified TIMESTAMP)
+            """)
         self.merge_dataset(resources, CKAN_RESOURCE_TABLE, "last_modified")
         self.conn.commit()
 
     def merge_dataset(
-        self, new_packages: pyarrow.Table, table_name: str, update_at_column: str
+            self, new_packages: pyarrow.Table, table_name: str, update_at_column: str
     ):
         if self.table_exists(table_name):
             current_packages = self.conn.table(table_name).arrow()
@@ -133,15 +137,9 @@ class DuckdbCkanMetadataIngestor:
         if not self.table_exists(table_name):
             return False
 
-        max_snapshot = self.conn.execute(
-            "SELECT MAX(snapshot_id) FROM snapshots()"
-        ).fetchone()[0]
-        row = self.conn.execute(f"""
-            SELECT snapshot_time FROM snapshots()
-            WHERE snapshot_id in (
-                SELECT MAX(snapshot_id) FROM table_changes('{table_name}', 0, {max_snapshot})
-            )
-        """).fetchone()
+        row = self.conn.execute(
+            "SELECT last_modified FROM ckan_resource_last_update where ckan_resource_id = ?",
+        ).execute(table_name).fetchone()
 
         # Case table is empty
         if not row:
@@ -150,4 +148,3 @@ class DuckdbCkanMetadataIngestor:
         snapshot_time = row[0]
 
         return snapshot_time > pytz.UTC.localize(datetime.fromisoformat(last_modified))
-

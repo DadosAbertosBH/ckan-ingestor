@@ -103,6 +103,13 @@ class DuckdbCkanDataIngestor:
                 self.ducklake_conn.execute(
                     f'CREATE OR REPLACE TABLE "{ckan_resource["id"]}" AS {query}'
                 )
+                self.ducklake_conn.execute(
+                    "DELETE FROM ckan_resource_last_update where ckan_resource_id = ?", resource_id
+                )
+                self.ducklake_conn.execute("""
+                    INSERT INTO ckan_resource_last_update ckan_resource_id, last_modified VALUES (?, NOW())"
+                    """, resource_id
+                )
         except (
             duckdb.InvalidInputException,
             duckdb.IOException,
