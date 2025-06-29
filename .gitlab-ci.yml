@@ -51,8 +51,10 @@ build:
     - docker buildx build 
       --build-arg BUILDKIT_INLINE_CACHE=1 
       --cache-from $CI_REGISTRY_IMAGE:latest 
-      --platform linux/amd64,linux/arm64 
-      --push -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
+      --platform linux/amd64,linux/arm64
+      --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+      --tag $CI_REGISTRY_IMAGE:latest .
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
     - docker push $CI_REGISTRY_IMAGE:latest
   rules:
     - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
