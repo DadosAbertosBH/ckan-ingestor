@@ -45,9 +45,15 @@ build:
   stage: build
   script:
     - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
+    - docker pull $CI_REGISTRY_IMAGE:latest || true
     - docker context create builder
     - docker buildx create builder --use
-    - docker buildx build --platform linux/amd64,linux/arm64 --push -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
+    - docker buildx build 
+      --build-arg BUILDKIT_INLINE_CACHE=1 
+      --cache-from $CI_REGISTRY_IMAGE:latest 
+      --platform linux/amd64,linux/arm64 
+      --push -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
+    - docker push $CI_REGISTRY_IMAGE:latest
   rules:
     - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
 

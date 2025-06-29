@@ -1,7 +1,7 @@
 resource "kubernetes_deployment" "example" {
   metadata {
     name      = "terraform-example"
-    namespace = "duckdb"
+    namespace = "dagster"
   }
 
   spec {
