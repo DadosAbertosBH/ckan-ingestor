@@ -117,29 +117,20 @@ def ckan_data(
     )
 
 
-ckan_data_request_job = dg.define_asset_job(
+ckan_data_job = dg.define_asset_job(
     name="ckan_data_job",
     selection=dg.AssetSelection.assets("ckan_data"),
-    config={
-        "execution": {
-            "config": {
-                "cluster": {
-                    "local" : {}
-                }
-            }
-        }
-    }
 )
 
 
 @dg.sensor(
-    job=ckan_data_request_job,
+    job=ckan_data_job,
     minimum_interval_seconds=60 * 60 * 12,  # 12 hours
 )
 def ckan_data_request_sensor(
     _context: dg.SensorEvaluationContext,
     metadata_ingestor: dg.ResourceParam[DuckdbCkanMetadataIngestor],
-):
+) -> dg.SensorResult:
     resources_id = metadata_ingestor.get_outdated_resources_id()
     runs = [dg.RunRequest(run_key=r_id, partition_key=r_id) for r_id in resources_id]
     return dg.SensorResult(
@@ -154,7 +145,7 @@ ducklake_settings = DucklakeSettingsResource()
 metadata_ingestor = DuckdbMetadataIngestorResource(ducklake_settings=ducklake_settings)
 defs = dg.Definitions(
     assets=[ckan_datasets, ckan_resources, ckan_data],
-    jobs=[ckan_data_request_job],
+    jobs=[ckan_data_job],
     sensors=[ckan_data_request_sensor],
     resources={
         "dataset_fetcher": CkanFetcherResource(),
