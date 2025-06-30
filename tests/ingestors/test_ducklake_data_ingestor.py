@@ -33,10 +33,10 @@ from tests.ingestors.test_ducklake_metadata_ingestor import (
 
 @pytest.fixture
 def ingestor(
-    in_memory_duckdb_conn: DuckDBPyConnection,
-    ducklake_settings: DucklakeSettings,
-    ckman_mock_url,
-    redis_client,
+        in_memory_duckdb_conn: DuckDBPyConnection,
+        ducklake_settings: DucklakeSettings,
+        ckman_mock_url,
+        redis_client,
 ) -> DuckdbCkanDataIngestor:
     sherlock.configure(client=redis_client)
     subject = DuckdbCkanDataIngestor(
@@ -46,6 +46,10 @@ def ingestor(
         csv_reader=DuckDbCsvReader(in_memory_duckdb_conn),
         lock=Lock("my_lock"),
     )
+    subject.ducklake_conn.execute("""
+    CREATE TABLE IF NOT EXISTS ckan_resource_last_update 
+        (ckan_resource_id UUID, last_modified TIMESTAMP)
+        """)
     return subject
 
 

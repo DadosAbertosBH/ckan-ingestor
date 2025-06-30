@@ -21,7 +21,7 @@ DUCKLAKE_DATA_PATH__URL_STYLE="path"
 DUCKLAKE_DATA_PATH__ACCESS_KEY_ID="admin"
 DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY="password"
 DUCKLAKE_DATA_PATH__USE_SSL=false
-DUCKLAKE_DATA_PATH__USE_SSL=false DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY="password" DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY="password" DUCKLAKE_DATA_PATH__ACCESS_KEY_ID="admin" DUCKLAKE_DATA_PATH__URL_STYLE="path" DUCKLAKE_DATA_PATH__ENDPOINT="localhost:9000" DUCKLAKE_CATALOG_URI="postgres:dbname=postgres host=localhost user=postgres password=postgres" DAGSTER_GRPC_TIMEOUT_SECONDS=600 dagster dev -f ckan_dagster/ckan_dagster/definitions.py 
+DUCKLAKE_DATABASE=":memory:" DUCKLAKE_DATA_PATH__USE_SSL=false DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY="password" DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY="password" DUCKLAKE_DATA_PATH__ACCESS_KEY_ID="admin" DUCKLAKE_DATA_PATH__URL_STYLE="path" DUCKLAKE_DATA_PATH__ENDPOINT="localhost:9000" DUCKLAKE_CATALOG_URI="postgres:dbname=postgres host=localhost user=postgres password=postgres" DAGSTER_GRPC_TIMEOUT_SECONDS=600 dagster dev -f ckan_dagster/ckan_dagster/definitions.py 
 ```
 
 Open http://localhost:3000 with your browser to see the project.

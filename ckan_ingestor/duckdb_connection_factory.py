@@ -56,16 +56,6 @@ def from_settings(settings: DucklakeSettings = DucklakeSettings()):
         );
     """
     conn.execute(stmt)
-    try:
-        conn.execute("ATTACH 'ducklake:' AS lake;")
-    except duckdb.OperationalError as e:
-        # Bug in mysql connection https://github.com/duckdb/ducklake/issues/214
-        print(f"error = {e}")
-        if "Table 'ducklake_metadata' already exist" not in str(e):
-            print(f"raising = {e}")
-            raise e
-        else:
-            print("fallback")
-            conn.execute("ATTACH 'ducklake:' AS lake (CREATE_IF_NOT_EXISTS false);")
+    conn.execute("ATTACH 'ducklake:' AS lake;")
     conn.execute("USE lake;")
     return conn
