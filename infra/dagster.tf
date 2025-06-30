@@ -85,6 +85,7 @@ resource "helm_release" "dagster" {
             tag        = "4ecbc1ce"
             pullPolicy = "IfNotPresent"
           }
+          dbPoolMaxOverflow = 50
         }
         dagster-user-deployments = {
           deployments = [
