@@ -7,6 +7,7 @@ resource "helm_release" "redis" {
   values = [
     yamlencode(
       {
+        architecture = "standalone"
       }
     )
   ]
