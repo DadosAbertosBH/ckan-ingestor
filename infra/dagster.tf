@@ -66,12 +66,6 @@ resource "helm_release" "dagster" {
   values = [
     yamlencode(
       {
-        env = [
-          {
-            name  = "DAGSTER_GRPC_TIMEOUT_SECONDS"
-            value = "600"
-          }
-        ]
         dagsterDaemon = {
           image = {
             repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
@@ -85,7 +79,7 @@ resource "helm_release" "dagster" {
             tag        = "4ecbc1ce"
             pullPolicy = "IfNotPresent"
           }
-          dbPoolMaxOverflow = 50
+          dbPoolMaxOverflow = 150
         }
         dagster-user-deployments = {
           deployments = [
