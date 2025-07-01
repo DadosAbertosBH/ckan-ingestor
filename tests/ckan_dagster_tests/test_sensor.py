@@ -17,5 +17,5 @@ def test_ckan_data_request_sensor_returns_expected_run_requests():
         }
     )
     for run_request in ckan_data_request_sensor(context).run_requests:
-        assert dg.validate_run_config(defs.get_job_def("ckan_data_job"), run_request.run_config)
+        assert dg.validate_run_config(defs.resolve_job_def("ckan_data_job"), run_request.run_config)
         assert run_request.run_key in ["res1", "res2"]

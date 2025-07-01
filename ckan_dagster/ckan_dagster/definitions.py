@@ -125,7 +125,7 @@ ckan_data_job = dg.define_asset_job(
 
 @dg.sensor(
     job=ckan_data_job,
-    minimum_interval_seconds=60 * 60 * 12,  # 12 hours
+    minimum_interval_seconds=60 * 60 * 8,  # 8 hours
 )
 def ckan_data_request_sensor(
     _context: dg.SensorEvaluationContext,

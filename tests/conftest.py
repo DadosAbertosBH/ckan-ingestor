@@ -1,6 +1,6 @@
 # Pedalin
 # Copyright (C) 2025  Pedalin
-
+import json
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -79,7 +79,27 @@ def minio_url(request) -> str:
         pass
 
     request.addfinalizer(remove_container)
-    minio.get_client().make_bucket("warehouse")
+    bucket = "warehouse"
+    minio.get_client().make_bucket(bucket)
+
+    policy = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Principal": {"AWS": "*"},
+                "Action": [
+                    "s3:GetObject",
+                    "s3:PutObject",
+                    "s3:DeleteObject",
+                    "s3:ListMultipartUploadParts",
+                    "s3:AbortMultipartUpload",
+                ],
+                "Resource": f"arn:aws:s3:::{bucket}/docs/*",
+            },
+        ],
+    }
+    minio.get_client().set_bucket_policy(bucket, json.dumps(policy))
 
     return f"{host_ip}:{exposed_port}"
 

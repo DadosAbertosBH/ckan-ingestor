@@ -13,7 +13,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-import json
 from io import BytesIO
 
 import requests
@@ -40,24 +39,6 @@ class S3DocumentIngestor:
             secret_key=s3_settings.secret_access_key,
             secure=s3_settings.use_ssl,
         )
-        policy = {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Principal": {"AWS": "*"},
-                    "Action": [
-                        "s3:GetObject",
-                        "s3:PutObject",
-                        "s3:DeleteObject",
-                        "s3:ListMultipartUploadParts",
-                        "s3:AbortMultipartUpload",
-                    ],
-                    "Resource": f"arn:aws:s3:::{self.bucket}/docs/*",
-                },
-            ],
-        }
-        self.minio.set_bucket_policy(self.bucket, json.dumps(policy))
 
     def ingest(self, filename: str, download_url: str, content_type):
         with requests.get(
