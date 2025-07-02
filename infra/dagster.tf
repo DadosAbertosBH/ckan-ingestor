@@ -66,8 +66,9 @@ resource "helm_release" "dagster" {
   values = [
     yamlencode(
       {
-        config = {
-          runK8sConfig = {
+        runLauncher = {
+          type = "K8sRunLauncher"
+          k8sRunLauncher = {
             imagePullPolicy = "IfNotPresent"
             resources = {
               requests = {
@@ -79,11 +80,11 @@ resource "helm_release" "dagster" {
                 memory = "256Mi"
               }
             }
-          }
-        }
-        runLauncher = {
-          jobSpecConfig = {
-            ttlSecondsAfterFinished = 600
+            runK8sConfig = {
+              jobSpecConfig = {
+                ttlSecondsAfterFinished = 600
+              }
+            }
           }
         }
         rabbitmq = {
