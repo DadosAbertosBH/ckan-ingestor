@@ -68,21 +68,23 @@ resource "helm_release" "dagster" {
       {
         runLauncher = {
           type = "K8sRunLauncher"
-          k8sRunLauncher = {
-            imagePullPolicy = "IfNotPresent"
-            resources = {
-              requests = {
-                cpu    = "200m"
-                memory = "256Mi"
+          config = {
+            k8sRunLauncher = {
+              imagePullPolicy = "IfNotPresent"
+              resources = {
+                requests = {
+                  cpu    = "200m"
+                  memory = "256Mi"
+                }
+                limits = {
+                  cpu    = "200m"
+                  memory = "256Mi"
+                }
               }
-              limits = {
-                cpu    = "200m"
-                memory = "256Mi"
-              }
-            }
-            runK8sConfig = {
-              jobSpecConfig = {
-                ttlSecondsAfterFinished = 600
+              runK8sConfig = {
+                jobSpecConfig = {
+                  ttlSecondsAfterFinished = 600
+                }
               }
             }
           }

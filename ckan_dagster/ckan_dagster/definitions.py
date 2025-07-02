@@ -36,8 +36,8 @@ from ckan_ingestor.duckdb_ckan_metadata_ingestor import DuckdbCkanMetadataIngest
 
 @dg.asset()
 def ckan_datasets(
-    dataset_fetcher: dg.ResourceParam[DatasetFetcher],
-    metadata_ingestor: dg.ResourceParam[DuckdbCkanMetadataIngestor],
+        dataset_fetcher: dg.ResourceParam[DatasetFetcher],
+        metadata_ingestor: dg.ResourceParam[DuckdbCkanMetadataIngestor],
 ):
     packages = dataset_fetcher.fetch()
     metadata_ingestor.ingest_dataset(packages)
@@ -58,8 +58,8 @@ def ckan_datasets(
 
 @dg.asset(deps=[ckan_datasets])
 def ckan_resources(
-    dataset_fetcher: dg.ResourceParam[CkanDatasetFetcher],
-    metadata_ingestor: dg.ResourceParam[DuckdbCkanMetadataIngestor],
+        dataset_fetcher: dg.ResourceParam[CkanDatasetFetcher],
+        metadata_ingestor: dg.ResourceParam[DuckdbCkanMetadataIngestor],
 ):
     resources = dataset_fetcher.fetch()["resources"].combine_chunks().flatten()
     # noinspection PyArgumentList
@@ -87,8 +87,8 @@ resource_partitions = dg.DynamicPartitionsDefinition(name="resources")
 
 @dg.asset(deps=[ckan_resources], partitions_def=resource_partitions)
 def ckan_data(
-    context: dg.AssetExecutionContext,
-    ingestor: dg.ResourceParam[DuckdbCkanDataIngestor],
+        context: dg.AssetExecutionContext,
+        ingestor: dg.ResourceParam[DuckdbCkanDataIngestor],
 ):
     resource_id = context.partition_key
     resource = (
@@ -118,6 +118,7 @@ def ckan_data(
 
 
 ckan_data_job = dg.define_asset_job(
+    executor_def=dg.in_process_executor,
     name="ckan_data_job",
     selection=dg.AssetSelection.assets("ckan_data"),
 )
@@ -128,8 +129,8 @@ ckan_data_job = dg.define_asset_job(
     minimum_interval_seconds=60 * 60 * 8,  # 8 hours
 )
 def ckan_data_request_sensor(
-    _context: dg.SensorEvaluationContext,
-    metadata_ingestor: dg.ResourceParam[DuckdbCkanMetadataIngestor],
+        _context: dg.SensorEvaluationContext,
+        metadata_ingestor: dg.ResourceParam[DuckdbCkanMetadataIngestor],
 ) -> dg.SensorResult:
     resources_id = metadata_ingestor.get_outdated_resources_id()
     runs = [dg.RunRequest(run_key=r_id, partition_key=r_id) for r_id in resources_id]
