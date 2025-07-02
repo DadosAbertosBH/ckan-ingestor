@@ -66,6 +66,36 @@ resource "helm_release" "dagster" {
   values = [
     yamlencode(
       {
+        config = {
+          runK8sConfig = {
+            imagePullPolicy = "IfNotPresent"
+            resources = {
+              requests = {
+                cpu    = "200m"
+                memory = "256Mi"
+              }
+              limits = {
+                cpu    = "200m"
+                memory = "256Mi"
+              }
+            }
+          }
+        }
+        runLauncher = {
+          jobSpecConfig = {
+            ttlSecondsAfterFinished = 600
+          }
+        }
+        rabbitmq = {
+          enabled = true
+        }
+        postgres = {
+          primary = {
+            extendedConfiguration = <<-EOT
+            max_connections = 500
+            EOT
+          }
+        }
         dagsterDaemon = {
           image = {
             repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
@@ -74,12 +104,13 @@ resource "helm_release" "dagster" {
           }
         }
         dagsterWebserver = {
+          replicaCount = 2
           image = {
             repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
             tag        = "4ecbc1ce"
             pullPolicy = "IfNotPresent"
           }
-          dbPoolMaxOverflow = 150
+          dbPoolMaxOverflow = 250
         }
         dagster-user-deployments = {
           deployments = [
