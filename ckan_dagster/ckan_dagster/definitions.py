@@ -145,6 +145,7 @@ def ckan_data_request_sensor(
 ducklake_settings = DucklakeSettingsResource()
 metadata_ingestor = DuckdbMetadataIngestorResource(ducklake_settings=ducklake_settings)
 defs = dg.Definitions(
+    executor=dg.in_process_executor,
     assets=[ckan_datasets, ckan_resources, ckan_data],
     jobs=[ckan_data_job],
     sensors=[ckan_data_request_sensor],
