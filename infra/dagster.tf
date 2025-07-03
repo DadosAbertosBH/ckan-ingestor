@@ -73,11 +73,11 @@ resource "helm_release" "dagster" {
               imagePullPolicy = "IfNotPresent"
               resources = {
                 requests = {
-                  cpu    = "200m"
+                  cpu    = "300m"
                   memory = "256Mi"
                 }
                 limits = {
-                  cpu    = "200m"
+                  cpu    = "300m"
                   memory = "256Mi"
                 }
               }
