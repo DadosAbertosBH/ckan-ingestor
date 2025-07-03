@@ -71,6 +71,11 @@ resource "helm_release" "dagster" {
           config = {
             celeryK8sRunLauncher = {
               imagePullPolicy = "IfNotPresent"
+              image = {
+                repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
+                tag        = "4ecbc1ce"
+                pullPolicy = "IfNotPresent"
+              }
               resources = {
                 requests = {
                   cpu    = "500m"
@@ -104,7 +109,12 @@ resource "helm_release" "dagster" {
         }
         redis = {
           enabled  = true
-          internal = true
+          internal = false
+
+          host            = "redis-master.dagster.svc.cluster.local"
+          port            = 6379
+          brokerDbNumber  = 0
+          backendDbNumber = 0
         }
         rabbitmq = {
           enabled = false
