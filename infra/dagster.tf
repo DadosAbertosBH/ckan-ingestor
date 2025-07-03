@@ -25,7 +25,7 @@ resource "kubernetes_job_v1" "initialize_db" {
       metadata {}
       spec {
         container {
-          name  = "migrate"
+          name  = "migrate-v1"
           image = "migrate/migrate"
           args = [
             "-database",
