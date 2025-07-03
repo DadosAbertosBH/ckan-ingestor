@@ -71,7 +71,6 @@ resource "helm_release" "dagster" {
           config = {
             celeryK8sRunLauncher = {
               imagePullPolicy = "IfNotPresent"
-
               resources = {
                 requests = {
                   cpu    = "500m"
@@ -82,115 +81,116 @@ resource "helm_release" "dagster" {
                   memory = "512Mi"
                 }
               }
-              k8sRunLauncher = {
-                imagePullPolicy = "IfNotPresent"
-                resources = {
-                  requests = {
-                    cpu    = "500m"
-                    memory = "512Mi"
-                  }
-                  limits = {
-                    cpu    = "500m"
-                    memory = "512Mi"
-                  }
+            }
+            k8sRunLauncher = {
+              imagePullPolicy = "IfNotPresent"
+              resources = {
+                requests = {
+                  cpu    = "500m"
+                  memory = "512Mi"
                 }
-                runK8sConfig = {
-                  jobSpecConfig = {
-                    ttlSecondsAfterFinished = 600
-                  }
+                limits = {
+                  cpu    = "500m"
+                  memory = "512Mi"
+                }
+              }
+              runK8sConfig = {
+                jobSpecConfig = {
+                  ttlSecondsAfterFinished = 600
                 }
               }
             }
-          }
-          redis = {
-            enabled  = true
-            internal = true
-          }
-          rabbitmq = {
-            enabled = false
-          }
-          postgres = {
-            primary = {
-              extendedConfiguration = <<-EOT
-            max_connections = 500
-            EOT
-            }
-          }
-          dagsterDaemon = {
-            image = {
-              repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
-              tag        = "4ecbc1ce"
-              pullPolicy = "IfNotPresent"
-            }
-            runCoordinator = {
-              config = {
-                queuedRunCoordinator = {
-                  maxConcurrentRuns = 5
-                }
-              }
-            }
-          }
-          dagsterWebserver = {
-            replicaCount = 2
-            image = {
-              repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
-              tag        = "4ecbc1ce"
-              pullPolicy = "IfNotPresent"
-            }
-            dbPoolMaxOverflow = 250
-          }
-          dagster-user-deployments = {
-            deployments = [
-              {
-                name = "ckan-pbh"
-                port = 3030
-                image = {
-                  repository = "registry.gitlab.com/pedalin/ckan-ingestor"
-                  tag        = var.image_tag
-                  pullPolicy = "IfNotPresent"
-                }
-
-                env = [
-                  {
-                    name  = "DUCKLAKE_CATALOG_URI"
-                    value = "postgres:host=${var.ducklake_db_host} dbname=${var.ducklake_db_database} user=${var.ducklake_db_user} password=${var.ducklake_db_password}"
-                  },
-                  {
-                    name  = "DUCKLAKE_DATABASE"
-                    value = ":memory:"
-                  },
-                  {
-                    name  = "DUCKLAKE_DATA_PATH__ENDPOINT"
-                    value = var.s3_endpoint
-                  },
-                  {
-                    name  = "DUCKLAKE_DATA_PATH__URL_STYLE"
-                    value = "path"
-                  },
-                  {
-                    name  = "DUCKLAKE_DATA_PATH__ACCESS_KEY_ID"
-                    value = var.s3_access_key
-                  },
-                  {
-                    name  = "DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY"
-                    value = var.s3_secret_key
-                  },
-                  {
-                    name  = "DUCKLAKE_DATA_PATH__BUCKET"
-                    value = "public-datasets"
-                  },
-                ]
-
-                dagsterApiGrpcArgs = [
-                  "--python-file",
-                  "/app/ckan_dagster/ckan_dagster/definitions.py"
-                ]
-              }
-            ]
           }
         }
-        )
-      ]
+        redis = {
+          enabled  = true
+          internal = true
+        }
+        rabbitmq = {
+          enabled = false
+        }
+        postgres = {
+          primary = {
+            extendedConfiguration = <<-EOT
+            max_connections = 500
+            EOT
+          }
+        }
+        dagsterDaemon = {
+          image = {
+            repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
+            tag        = "4ecbc1ce"
+            pullPolicy = "IfNotPresent"
+          }
+          runCoordinator = {
+            config = {
+              queuedRunCoordinator = {
+                maxConcurrentRuns = 5
+              }
+            }
+          }
+        }
+        dagsterWebserver = {
+          replicaCount = 2
+          image = {
+            repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
+            tag        = "4ecbc1ce"
+            pullPolicy = "IfNotPresent"
+          }
+          dbPoolMaxOverflow = 250
+        }
+        dagster-user-deployments = {
+          deployments = [
+            {
+              name = "ckan-pbh"
+              port = 3030
+              image = {
+                repository = "registry.gitlab.com/pedalin/ckan-ingestor"
+                tag        = var.image_tag
+                pullPolicy = "IfNotPresent"
+              }
 
-        depends_on = [kubernetes_job_v1.initialize_db]
+              env = [
+                {
+                  name  = "DUCKLAKE_CATALOG_URI"
+                  value = "postgres:host=${var.ducklake_db_host} dbname=${var.ducklake_db_database} user=${var.ducklake_db_user} password=${var.ducklake_db_password}"
+                },
+                {
+                  name  = "DUCKLAKE_DATABASE"
+                  value = ":memory:"
+                },
+                {
+                  name  = "DUCKLAKE_DATA_PATH__ENDPOINT"
+                  value = var.s3_endpoint
+                },
+                {
+                  name  = "DUCKLAKE_DATA_PATH__URL_STYLE"
+                  value = "path"
+                },
+                {
+                  name  = "DUCKLAKE_DATA_PATH__ACCESS_KEY_ID"
+                  value = var.s3_access_key
+                },
+                {
+                  name  = "DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY"
+                  value = var.s3_secret_key
+                },
+                {
+                  name  = "DUCKLAKE_DATA_PATH__BUCKET"
+                  value = "public-datasets"
+                },
+              ]
+
+              dagsterApiGrpcArgs = [
+                "--python-file",
+                "/app/ckan_dagster/ckan_dagster/definitions.py"
+              ]
+            }
+          ]
+        }
       }
+    )
+  ]
+
+  depends_on = [kubernetes_job_v1.initialize_db]
+}
