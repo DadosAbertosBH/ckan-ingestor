@@ -90,7 +90,7 @@ resource "helm_release" "dagster" {
           }
         }
         rabbitmq = {
-          enabled = true
+          enabled = false
         }
         postgres = {
           primary = {

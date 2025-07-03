@@ -118,7 +118,6 @@ def ckan_data(
 
 
 ckan_data_job = dg.define_asset_job(
-    executor_def=dg.in_process_executor,
     name="ckan_data_job",
     selection=dg.AssetSelection.assets("ckan_data"),
 )
