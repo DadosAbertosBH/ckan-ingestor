@@ -73,12 +73,12 @@ resource "helm_release" "dagster" {
               imagePullPolicy = "IfNotPresent"
               resources = {
                 requests = {
-                  cpu    = "300m"
-                  memory = "256Mi"
+                  cpu    = "500m"
+                  memory = "512Mi"
                 }
                 limits = {
-                  cpu    = "300m"
-                  memory = "256Mi"
+                  cpu    = "500m"
+                  memory = "512Mi"
                 }
               }
               runK8sConfig = {
@@ -108,7 +108,7 @@ resource "helm_release" "dagster" {
           runCoordinator = {
             config = {
               queuedRunCoordinator = {
-                maxConcurrentRuns = 10
+                maxConcurrentRuns = 5
               }
             }
           }
