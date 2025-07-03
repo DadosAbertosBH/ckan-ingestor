@@ -115,6 +115,9 @@ resource "helm_release" "dagster" {
           port            = 6379
           brokerDbNumber  = 0
           backendDbNumber = 0
+
+          usePassword = true
+          password    = "XgSsibCa7G"
         }
         rabbitmq = {
           enabled = false
@@ -158,6 +161,25 @@ resource "helm_release" "dagster" {
                 repository = "registry.gitlab.com/pedalin/ckan-ingestor"
                 tag        = var.image_tag
                 pullPolicy = "IfNotPresent"
+              }
+
+              dagster_yaml = yamlencode({
+                run_launcher = {
+                  module = "dagster_celery_k8s.launcher"
+                  class  = "CeleryK8sRunLauncher"
+                  config = {
+                    broker = {
+                      redis_url : "redis://dagster-redis-master:6379/0"
+                    }
+                    backend = {
+                      redis_url : "redis://dagster-redis-master:6379/0"
+                    }
+                  }
+                }
+              })
+
+              exector = {
+                name = "celery"
               }
 
               env = [
