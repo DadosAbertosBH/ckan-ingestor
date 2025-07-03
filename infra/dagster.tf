@@ -105,6 +105,13 @@ resource "helm_release" "dagster" {
             tag        = "4ecbc1ce"
             pullPolicy = "IfNotPresent"
           }
+          runCoordinator = {
+            config = {
+              queuedRunCoordinator = {
+                maxConcurrentRuns = 10
+              }
+            }
+          }
         }
         dagsterWebserver = {
           replicaCount = 2
