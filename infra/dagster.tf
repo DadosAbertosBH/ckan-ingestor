@@ -18,7 +18,8 @@ resource "kubernetes_config_map_v1" "dagster_config" {
 }
 
 resource "random_password" "pg_password" {
-  length = 16
+  special = false
+  length  = 16
 }
 
 resource "helm_release" "postgresql" {
