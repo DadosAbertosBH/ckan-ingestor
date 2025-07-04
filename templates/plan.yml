@@ -239,7 +239,8 @@ include:
         echo "Planning for a destroy"
         args="-destroy"
       fi
-    - export TF_VAR_image_tag=$(sh $CI_PROJECT_DIR/find_image_tag.sh "" "dagster-dagster-user-deployments-ckan-pbh" "dagster-user-deployments")
+    # - export TF_VAR_image_tag=$(sh $CI_PROJECT_DIR/find_image_tag.sh "" "dagster-dagster-user-deployments-ckan-pbh" "dagster-user-deployments")
+    - export TF_VAR_image_tag=$CI_COMMIT_SHORT_SHA
     - gitlab-tofu plan $args
     - |
       if [ "$[[ inputs.post_mr_plan_comment ]]" == "true" ]; then
