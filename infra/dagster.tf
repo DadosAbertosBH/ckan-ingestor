@@ -101,18 +101,8 @@ resource "helm_release" "dagster" {
             allowInsecureImages = true
           }
         }
-        additionalInstanceConfig = {
-          executor = {
-            name = "celery"
-            config = {
-              broker = "redis://redis-master.dagster.svc.cluster.local:6379/0"
-              backend = "redis://redis-master.dagster.svc.cluster.local:6379/0"
-            }
-          }
-        }
         runLauncher = {
           type = "CustomRunLauncher"
-
           config = {
             customRunLauncher = {
               module = "dagster._core.launcher"
