@@ -12,7 +12,33 @@ resource "kubernetes_config_map_v1" "dagster_config" {
   data = {
     "000001_database.up.sql"   = "CREATE DATABASE ${var.ducklake_db_database};"
     "000001_database.down.sql" = ""
+    "000001_database.up.sql"   = "CREATE DATABASE dagster;"
+    "000001_database.down.sql" = ""
   }
+}
+
+resource "random_password" "pg_password" {
+  length = 16
+}
+
+resource "helm_release" "postgresql" {
+  name             = "postgresql"
+  chart            = "oci://registry-1.docker.io/bitnamicharts/postgresql"
+  create_namespace = true
+  namespace        = "bytebase"
+
+  set = [
+    {
+      name  = "auth.postgresPassword"
+      value = random_password.pg_password.result
+    },
+    {
+      name  = "primary.extendedConfiguration"
+      value = <<-EOT
+            max_connections = 500
+    EOT
+    }
+  ]
 }
 
 resource "kubernetes_job_v1" "initialize_db" {
@@ -29,7 +55,7 @@ resource "kubernetes_job_v1" "initialize_db" {
           image = "migrate/migrate"
           args = [
             "-database",
-            "postgres://${var.ducklake_db_user}:${var.ducklake_db_password}@${var.ducklake_db_host}/postgres?sslmode=disable",
+            "postgres://postgres:${random_password.pg_password.result}@postgresql/postgres?sslmode=disable",
             "-path",
             "/migrations", "up"
           ]
@@ -54,6 +80,8 @@ resource "kubernetes_job_v1" "initialize_db" {
     create = "2m"
     update = "2m"
   }
+
+  depends_on = [helm_release.postgresql]
 }
 
 resource "helm_release" "dagster" {
@@ -128,12 +156,12 @@ resource "helm_release" "dagster" {
         rabbitmq = {
           enabled = false
         }
-        postgres = {
-          primary = {
-            extendedConfiguration = <<-EOT
-            max_connections = 500
-            EOT
-          }
+        postgresql = {
+          enabled            = false
+          postgresqlHost     = "postgresql"
+          postgresqlUsername = "postgres"
+          postgresqlPassword = random_password.pg_password.result
+          postgresqlDatabase = "dagster"
         }
         dagsterDaemon = {
           image = {
