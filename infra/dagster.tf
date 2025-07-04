@@ -58,7 +58,7 @@ resource "kubernetes_job_v1" "initialize_db" {
 
 resource "helm_release" "dagster" {
   name             = "dagster"
-  repository       = "https://dagster-io.github.io/helm"
+  repository       = "https://dadosabertosbh.github.io/dagster"
   chart            = "dagster"
   namespace        = "dagster"
   create_namespace = true
