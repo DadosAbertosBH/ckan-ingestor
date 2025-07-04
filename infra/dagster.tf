@@ -73,7 +73,7 @@ resource "helm_release" "dagster" {
           }
         }
         runLauncher = {
-          type = "DefaultRunLauncher"
+          type = "CeleryK8sRunLauncher"
           config = {
             celeryK8sRunLauncher = {
               imagePullPolicy = "IfNotPresent"
