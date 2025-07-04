@@ -62,10 +62,16 @@ resource "helm_release" "dagster" {
   chart            = "dagster"
   namespace        = "dagster"
   create_namespace = true
+  version          = "0.0.2-dev"
 
   values = [
     yamlencode(
       {
+        global = {
+          security = {
+            allowInsecureImages = true
+          }
+        }
         runLauncher = {
           type = "DefaultRunLauncher"
           config = {
