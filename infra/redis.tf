@@ -14,7 +14,8 @@ resource "helm_release" "redis" {
       {
         architecture = "standalone"
         auth = {
-          password = random_password.redis_password.result
+          enabled = false
+          # password = random_password.redis_password.result
         }
       }
     )
