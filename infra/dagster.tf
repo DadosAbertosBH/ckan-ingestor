@@ -91,7 +91,7 @@ resource "helm_release" "dagster" {
   chart            = "dagster"
   namespace        = "dagster"
   create_namespace = true
-  version          = "0.0.2-dev"
+  version          = "0.0.4-dev"
 
   values = [
     yamlencode(
@@ -102,13 +102,17 @@ resource "helm_release" "dagster" {
           }
         }
         runLauncher = {
-          type = "Custom"
+          type = "CustomRunLauncher"
+          customRunLauncher = {
+            module = "dagster._core.launcher"
+            class  = "DefaultRunLauncher"
+          }
           config = {
             celeryK8sRunLauncher = {
               imagePullPolicy = "IfNotPresent"
               image = {
-                repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
-                tag        = "4ecbc1ce"
+                repository = "registry.gitlab.com/pedalin/ckan-ingestor"
+                tag        = var.image_tag
                 pullPolicy = "IfNotPresent"
               }
               resources = {
@@ -196,25 +200,6 @@ resource "helm_release" "dagster" {
                 repository = "registry.gitlab.com/pedalin/ckan-ingestor"
                 tag        = var.image_tag
                 pullPolicy = "IfNotPresent"
-              }
-
-              dagster_yaml = yamlencode({
-                run_launcher = {
-                  module = "dagster_celery_k8s.launcher"
-                  class  = "CeleryK8sRunLauncher"
-                  config = {
-                    broker = {
-                      redis_url : "redis://dagster-redis-master:6379/0"
-                    }
-                    backend = {
-                      redis_url : "redis://dagster-redis-master:6379/0"
-                    }
-                  }
-                }
-              })
-
-              exector = {
-                name = "celery"
               }
 
               env = [
