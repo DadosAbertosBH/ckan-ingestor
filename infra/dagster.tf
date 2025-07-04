@@ -114,8 +114,8 @@ resource "helm_release" "dagster" {
             celeryK8sRunLauncher = {
               imagePullPolicy = "IfNotPresent"
               image = {
-                repository = "registry.gitlab.com/pedalin/ckan-ingestor"
-                tag        = var.image_tag
+                repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
+                tag        = "4ecbc1ce"
                 pullPolicy = "IfNotPresent"
               }
               resources = {
