@@ -67,7 +67,7 @@ resource "helm_release" "dagster" {
     yamlencode(
       {
         runLauncher = {
-          type = "CeleryK8sRunLauncher"
+          type = "DefaultRunLauncher"
           config = {
             celeryK8sRunLauncher = {
               imagePullPolicy = "IfNotPresent"
@@ -130,6 +130,7 @@ resource "helm_release" "dagster" {
           }
         }
         dagsterDaemon = {
+          replicaCount = 10
           image = {
             repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
             tag        = "4ecbc1ce"
@@ -138,7 +139,7 @@ resource "helm_release" "dagster" {
           runCoordinator = {
             config = {
               queuedRunCoordinator = {
-                maxConcurrentRuns = 5
+                maxConcurrentRuns = 50
               }
             }
           }

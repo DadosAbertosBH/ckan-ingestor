@@ -15,7 +15,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import dagster as dg
 import pyarrow
-from dagster_celery import celery_executor
 
 from ckan_dagster.ckan_dagster.resources.ckan_fetcher_resource import (
     CkanFetcherResource,
@@ -146,7 +145,7 @@ def ckan_data_request_sensor(
 ducklake_settings = DucklakeSettingsResource()
 metadata_ingestor = DuckdbMetadataIngestorResource(ducklake_settings=ducklake_settings)
 defs = dg.Definitions(
-    executor=celery_executor,
+    executor=dg.in_process_executor,
     assets=[ckan_datasets, ckan_resources, ckan_data],
     jobs=[ckan_data_job],
     sensors=[ckan_data_request_sensor],
