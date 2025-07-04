@@ -59,10 +59,6 @@ build:
       --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
       --tag $CI_REGISTRY_IMAGE:latest 
       --push .
-  rules:
-    - changes:
-      - 'ckan_ingestor/**/*'
-      - 'ckan_dagster/**/*'
 
 deploy-ingestor:
   stage: deploy
