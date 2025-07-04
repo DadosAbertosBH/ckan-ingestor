@@ -25,7 +25,7 @@ resource "helm_release" "postgresql" {
   name             = "postgresql-dagster"
   chart            = "oci://registry-1.docker.io/bitnamicharts/postgresql"
   create_namespace = true
-  namespace        = "bytebase"
+  namespace        = "dagster"
 
   set = [
     {
