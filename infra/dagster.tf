@@ -103,11 +103,14 @@ resource "helm_release" "dagster" {
         }
         runLauncher = {
           type = "CustomRunLauncher"
-          customRunLauncher = {
-            module = "dagster._core.launcher"
-            class  = "DefaultRunLauncher"
-          }
+
           config = {
+            customRunLauncher = {
+              module = "dagster._core.launcher"
+              class  = "DefaultRunLauncher"
+              config = {
+              }
+            }
             celeryK8sRunLauncher = {
               imagePullPolicy = "IfNotPresent"
               image = {

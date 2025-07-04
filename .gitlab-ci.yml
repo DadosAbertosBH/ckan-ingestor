@@ -60,7 +60,6 @@ build:
       --tag $CI_REGISTRY_IMAGE:latest 
       --push .
   rules:
-    - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
     - changes:
       - 'ckan_ingestor/**/*'
       - 'ckan_dagster/**/*'
