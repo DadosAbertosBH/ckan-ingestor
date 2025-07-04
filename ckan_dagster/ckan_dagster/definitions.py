@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import dagster as dg
+import dagster_celery
 import pyarrow
 
 from ckan_dagster.ckan_dagster.resources.ckan_fetcher_resource import (
@@ -145,7 +146,7 @@ def ckan_data_request_sensor(
 ducklake_settings = DucklakeSettingsResource()
 metadata_ingestor = DuckdbMetadataIngestorResource(ducklake_settings=ducklake_settings)
 defs = dg.Definitions(
-    executor=dg.in_process_executor,
+    executor=dagster_celery.celery_executor,
     assets=[ckan_datasets, ckan_resources, ckan_data],
     jobs=[ckan_data_job],
     sensors=[ckan_data_request_sensor],
