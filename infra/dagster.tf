@@ -136,7 +136,6 @@ resource "helm_release" "dagster" {
           }
         }
         dagsterDaemon = {
-          replicaCount = 10
           image = {
             repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
             tag        = "4ecbc1ce"
