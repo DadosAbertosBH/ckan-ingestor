@@ -22,7 +22,7 @@ resource "random_password" "pg_password" {
 }
 
 resource "helm_release" "postgresql" {
-  name             = "postgresql"
+  name             = "postgresql-dagster"
   chart            = "oci://registry-1.docker.io/bitnamicharts/postgresql"
   create_namespace = true
   namespace        = "bytebase"
@@ -55,7 +55,7 @@ resource "kubernetes_job_v1" "initialize_db" {
           image = "migrate/migrate"
           args = [
             "-database",
-            "postgres://postgres:${random_password.pg_password.result}@postgresql/postgres?sslmode=disable",
+            "postgres://postgres:${random_password.pg_password.result}@postgresql-dagster/postgres?sslmode=disable",
             "-path",
             "/migrations", "up"
           ]
@@ -158,7 +158,7 @@ resource "helm_release" "dagster" {
         }
         postgresql = {
           enabled            = false
-          postgresqlHost     = "postgresql"
+          postgresqlHost     = "postgresql-dagster"
           postgresqlUsername = "postgres"
           postgresqlPassword = random_password.pg_password.result
           postgresqlDatabase = "dagster"
