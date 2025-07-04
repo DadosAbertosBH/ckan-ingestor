@@ -152,7 +152,7 @@ resource "helm_release" "dagster" {
           backendDbNumber = 0
 
           usePassword = true
-          password    = "SYbREzH3WT"
+          password    = random_password.redis_password.result
         }
         rabbitmq = {
           enabled = false
