@@ -13,7 +13,7 @@ resource "helm_release" "redis" {
     yamlencode(
       {
         architecture = "standalone"
-        auth ={
+        auth = {
           password = random_password.redis_password.result
         }
       }

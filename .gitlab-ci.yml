@@ -40,6 +40,10 @@ test:
     - uv run ruff check
     - uv run pytest
     - uv cache prune --ci
+  rules:
+    - changes:
+      - 'ckan_ingestor/**/*'
+      - 'ckan_dagster/**/*'
 
 build:
   stage: build
@@ -57,6 +61,9 @@ build:
       --push .
   rules:
     - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
+    - changes:
+      - 'ckan_ingestor/**/*'
+      - 'ckan_dagster/**/*'
 
 deploy-ingestor:
   stage: deploy
