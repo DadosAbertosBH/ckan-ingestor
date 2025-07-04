@@ -163,6 +163,9 @@ resource "helm_release" "dagster" {
         rabbitmq = {
           enabled = false
         }
+        flower = {
+          enabled = true
+        }
         postgresql = {
           enabled            = false
           postgresqlHost     = "postgresql-dagster"
