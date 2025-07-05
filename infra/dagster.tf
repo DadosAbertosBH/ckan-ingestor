@@ -165,6 +165,11 @@ resource "helm_release" "dagster" {
         }
         flower = {
           enabled = true
+          image = {
+            repository = "mher/flower"
+            tag        = "2.0"
+            pullPolicy = "IfNotPresent"
+          }
         }
         postgresql = {
           enabled            = false
