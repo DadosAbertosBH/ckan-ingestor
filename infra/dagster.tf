@@ -112,11 +112,7 @@ resource "helm_release" "dagster" {
             }
             celeryK8sRunLauncher = {
               imagePullPolicy = "IfNotPresent"
-              image = {
-                repository = "registry.gitlab.com/pedalin/ckan-ingestor"
-                tag        = var.image_tag
-                pullPolicy = "IfNotPresent"
-              }
+              image           = local.dagster_image
               resources = {
                 requests = {
                   cpu    = "500m"
@@ -179,11 +175,7 @@ resource "helm_release" "dagster" {
           postgresqlDatabase = "dagster"
         }
         dagsterDaemon = {
-          image = {
-            repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
-            tag        = "4ecbc1ce"
-            pullPolicy = "IfNotPresent"
-          }
+          image = local.dagster_image
           runCoordinator = {
             config = {
               queuedRunCoordinator = {
@@ -204,13 +196,9 @@ resource "helm_release" "dagster" {
         dagster-user-deployments = {
           deployments = [
             {
-              name = "ckan-pbh"
-              port = 3030
-              image = {
-                repository = "registry.gitlab.com/pedalin/ckan-ingestor"
-                tag        = var.image_tag
-                pullPolicy = "IfNotPresent"
-              }
+              name  = "ckan-pbh"
+              port  = 3030
+              image = local.dagster_image
 
               env = [
                 {
