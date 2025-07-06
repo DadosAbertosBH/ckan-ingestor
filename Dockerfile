@@ -1,4 +1,4 @@
-FROM python:3.12-slim-bookworm
+FROM registry.gitlab.com/pedalin/dagster-celery-k8s:4ecbc1ce
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
