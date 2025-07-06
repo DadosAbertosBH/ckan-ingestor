@@ -152,7 +152,7 @@ resource "helm_release" "dagster" {
           }
         }
         redis = {
-          enabled  = false
+          enabled  = true
           internal = false
 
           host            = "redis-master.dagster.svc.cluster.local"
@@ -164,7 +164,7 @@ resource "helm_release" "dagster" {
           # password    = random_password.redis_password.result
         }
         rabbitmq = {
-          enabled = true
+          enabled = false
           auth = {
             username = "test"
             password = "test"

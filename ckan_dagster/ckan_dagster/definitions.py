@@ -148,8 +148,8 @@ metadata_ingestor = DuckdbMetadataIngestorResource(ducklake_settings=ducklake_se
 defs = dg.Definitions(
     executor=dagster_celery.celery_executor.configured(
         {
-            "broker": "pyamqp://test:test@dagster-rabbitmq:5672//",
-            "backend": "rpc://"
+            "broker": "redis://redis-master.dagster.svc.cluster.local:6379/0",
+            "backend": "redis://redis-master.dagster.svc.cluster.local:6379/0"
         }
     ),
     assets=[ckan_datasets, ckan_resources, ckan_data],
