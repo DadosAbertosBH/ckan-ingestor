@@ -140,7 +140,7 @@ resource "helm_release" "dagster" {
               image           = local.dagster_image
               workerQueues = [{
                 name         = "dagster"
-                replicaCount = 8
+                replicaCount = 5
               }]
               envSecrets = [
                 {
@@ -149,11 +149,11 @@ resource "helm_release" "dagster" {
               ]
               resources = {
                 requests = {
-                  cpu    = "300m"
+                  cpu    = "400m"
                   memory = "2048Mi"
                 }
                 limits = {
-                  cpu    = "300m"
+                  cpu    = "400m"
                   memory = "2048Mi"
                 }
               }
