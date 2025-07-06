@@ -165,9 +165,9 @@ resource "helm_release" "dagster" {
           rabbitmq = {
             username = "test"
             password = "test"
-            service = {
-              managerPort = "15672"
-            }
+          }
+          service = {
+            managerPort = "15672"
           }
           image = {
             repository = "bitnami/rabbitmq"
@@ -176,7 +176,7 @@ resource "helm_release" "dagster" {
           }
         }
         flower = {
-          enabled = true
+          enabled = false
           image = {
             repository = "mher/flower"
             tag        = "1.2"
