@@ -114,8 +114,8 @@ resource "helm_release" "dagster" {
                 backend = {
                   env = "DAGSTER_CELERY_BACKEND_URL"
                 }
+                default_queue = "dagster"
               }
-              default_queue = "dagster"
             }
             celeryK8sRunLauncher = {
               imagePullPolicy = "IfNotPresent"
