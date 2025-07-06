@@ -145,7 +145,7 @@ resource "helm_release" "dagster" {
           }
         }
         redis = {
-          enabled  = true
+          enabled  = false
           internal = false
 
           host            = "redis-master.dagster.svc.cluster.local"
@@ -157,13 +157,18 @@ resource "helm_release" "dagster" {
           # password    = random_password.redis_password.result
         }
         rabbitmq = {
-          enabled = false
+          enabled = true
+          image = {
+            repository = "bitnami/rabbitmq"
+            tag        = "4.1.2"
+            pullPolicy = "IfNotPresent"
+          }
         }
         flower = {
           enabled = true
           image = {
             repository = "mher/flower"
-            tag        = "2.0"
+            tag        = "1.2"
             pullPolicy = "IfNotPresent"
           }
         }
