@@ -169,7 +169,7 @@ resource "helm_release" "dagster" {
           image = {
             repository = "bitnami/rabbitmq"
             tag        = "4.1.2"
-            pullPolicy = "IfNotPråesent"
+            pullPolicy = "IfNotPresent"
           }
         }
         flower = {
