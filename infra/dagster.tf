@@ -138,10 +138,10 @@ resource "helm_release" "dagster" {
             celeryK8sRunLauncher = {
               imagePullPolicy = "IfNotPresent"
               image           = local.dagster_image
-              workerQueues = {
+              workerQueues = [{
                 name         = "dagster"
                 replicaCount = 10
-              }
+              }]
               envSecrets = [
                 {
                   name = kubernetes_secret.ingest_secret.metadata[0].name
