@@ -158,7 +158,10 @@ resource "helm_release" "dagster" {
         }
         rabbitmq = {
           enabled       = true
-          auth.password = "123456"
+          username      = "test"
+          auth.username = "test"
+          password      = "test"
+          auth.password = "test"
           image = {
             repository = "bitnami/rabbitmq"
             tag        = "4.1.2"
