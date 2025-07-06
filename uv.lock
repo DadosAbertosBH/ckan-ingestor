@@ -415,7 +415,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "dagster" },
-    { name = "dagster-celery" },
+    { name = "dagster-celery", extra = ["flower", "redis"] },
     { name = "dagster-celery-k8s" },
     { name = "dagster-dask" },
     { name = "dagster-duckdb" },
@@ -447,7 +447,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "dagster", specifier = ">=1.10.19" },
-    { name = "dagster-celery", specifier = ">=0.27.0" },
+    { name = "dagster-celery", extras = ["flower", "redis"], specifier = ">=0.27.0" },
     { name = "dagster-celery-k8s", specifier = ">=0.27.0" },
     { name = "dagster-dask", specifier = ">=0.26.19" },
     { name = "dagster-duckdb", specifier = ">=0.26.19" },
@@ -641,6 +641,14 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b7/be/8f4f5b1a6f608ba29d7dbfbd8627ea5546efab473588bc8625a02a1364eb/dagster_celery-0.27.0.tar.gz", hash = "sha256:eb508d72de9b766a50c3a49abb54bcc58a288679fe675b046f88b29da3f4edbb", size = 17943 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d8/22/f64e980548aa40455cd0f2e53ac0d97953552f2b2e4626fe47d9f9219b9e/dagster_celery-0.27.0-py3-none-any.whl", hash = "sha256:f116f41812dc4dacc417d546bb3967f4f8fd049b09c0c4ad5209f9c81b401f4f", size = 21362 },
+]
+
+[package.optional-dependencies]
+flower = [
+    { name = "flower" },
+]
+redis = [
+    { name = "redis" },
 ]
 
 [[package]]
@@ -1004,6 +1012,22 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/76/37/bcfa6c7d5eec777c4c7cf45ce6b27631cebe5230caf88d85eadd63edd37a/flask_cors-6.0.1.tar.gz", hash = "sha256:d81bcb31f07b0985be7f48406247e9243aced229b7747219160a0559edd678db", size = 13463 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/17/f8/01bf35a3afd734345528f98d0353f2a978a476528ad4d7e78b70c4d149dd/flask_cors-6.0.1-py3-none-any.whl", hash = "sha256:c7b2cbfb1a31aa0d2e5341eea03a6805349f7a61647daee1a15c46bbe981494c", size = 13244 },
+]
+
+[[package]]
+name = "flower"
+version = "2.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "celery" },
+    { name = "humanize" },
+    { name = "prometheus-client" },
+    { name = "pytz" },
+    { name = "tornado" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/09/a1/357f1b5d8946deafdcfdd604f51baae9de10aafa2908d0b7322597155f92/flower-2.0.1.tar.gz", hash = "sha256:5ab717b979530770c16afb48b50d2a98d23c3e9fe39851dcf6bc4d01845a02a0", size = 3220408 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a6/ff/ee2f67c0ff146ec98b5df1df637b2bc2d17beeb05df9f427a67bd7a7d79c/flower-2.0.1-py2.py3-none-any.whl", hash = "sha256:9db2c621eeefbc844c8dd88be64aef61e84e2deb29b271e02ab2b5b9f01068e2", size = 383553 },
 ]
 
 [[package]]
@@ -1840,6 +1864,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e5/69/882ee5c9d017149285cab114ebeab373308ef0f874fcdac9beb90e0ac4da/ply-3.11.tar.gz", hash = "sha256:00c7c1aaa88358b9c765b6d3000c6eec0ba42abca5351b095321aef446081da3", size = 159130 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a3/58/35da89ee790598a0700ea49b2a66594140f44dec458c07e8e3d4979137fc/ply-3.11-py2.py3-none-any.whl", hash = "sha256:096f9b8350b65ebd2fd1346b12452efe5b9607f7482813ffca50c22722a807ce", size = 49567 },
+]
+
+[[package]]
+name = "prometheus-client"
+version = "0.22.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5e/cf/40dde0a2be27cc1eb41e333d1a674a74ce8b8b0457269cc640fd42b07cf7/prometheus_client-0.22.1.tar.gz", hash = "sha256:190f1331e783cf21eb60bca559354e0a4d4378facecf78f5428c39b675d20d28", size = 69746 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/32/ae/ec06af4fe3ee72d16973474f122541746196aaa16cea6f66d18b963c6177/prometheus_client-0.22.1-py3-none-any.whl", hash = "sha256:cca895342e308174341b2cbf99a56bef291fbc0ef7b9e5412a0f26d653ba7094", size = 58694 },
 ]
 
 [[package]]

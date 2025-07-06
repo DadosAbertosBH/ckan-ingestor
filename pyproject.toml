@@ -22,7 +22,7 @@ dependencies = [
     "pyiceberg>=0.9.1",
     "dagster-dask>=0.26.19",
     "dagster-postgres>=0.26.19",
-    "dagster-celery>=0.27.0",
+    "dagster-celery[flower,redis]>=0.27.0",
     "dagster-celery-k8s>=0.27.0",
 ]
 
