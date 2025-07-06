@@ -122,8 +122,8 @@ resource "helm_release" "dagster" {
               image           = local.dagster_image
               resources = {
                 requests = {
-                  cpu    = "1024Mi"
-                  memory = "512Mi"
+                  cpu    = "500m"
+                  memory = "1024Mi"
                 }
                 limits = {
                   cpu    = "500m"
