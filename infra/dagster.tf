@@ -157,7 +157,8 @@ resource "helm_release" "dagster" {
           # password    = random_password.redis_password.result
         }
         rabbitmq = {
-          enabled = true
+          enabled       = true
+          auth.password = "123456"
           image = {
             repository = "bitnami/rabbitmq"
             tag        = "4.1.2"
