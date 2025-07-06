@@ -165,6 +165,9 @@ resource "helm_release" "dagster" {
           rabbitmq = {
             username = "test"
             password = "test"
+            service = {
+              managerPort = "15672"
+            }
           }
           image = {
             repository = "bitnami/rabbitmq"
