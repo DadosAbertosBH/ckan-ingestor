@@ -150,11 +150,11 @@ resource "helm_release" "dagster" {
               resources = {
                 requests = {
                   cpu    = "300m"
-                  memory = "1024Mi"
+                  memory = "2048Mi"
                 }
                 limits = {
                   cpu    = "300m"
-                  memory = "1024Mi"
+                  memory = "2048Mi"
                 }
               }
             }
