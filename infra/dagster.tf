@@ -138,10 +138,12 @@ resource "helm_release" "dagster" {
             celeryK8sRunLauncher = {
               imagePullPolicy = "IfNotPresent"
               image           = local.dagster_image
-              workerQueues = [{
-                name         = "dagster"
-                replicaCount = 4
-              }]
+              workerQueues = [
+                {
+                  name         = "dagster"
+                  replicaCount = 4
+                }
+              ]
               envSecrets = [
                 {
                   name = kubernetes_secret.ingest_secret.metadata[0].name
@@ -243,7 +245,14 @@ resource "helm_release" "dagster" {
         }
 
         dagsterWebserver = {
-          replicaCount = 1
+          replicaCount = 3
+
+          envSecrets = [
+            {
+              name = kubernetes_secret.ingest_secret.metadata[0].name
+            }
+          ]
+
           image = {
             repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
             tag        = "4ecbc1ce"
