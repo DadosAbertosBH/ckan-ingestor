@@ -11,7 +11,7 @@ resource "kubernetes_config_map_v1" "dagster_config" {
   }
   data = {
     "000001_database.up.sql"   = "CREATE DATABASE ${var.ducklake_db_database};"
-    "000001_database.down.sql" = ""
+    "000001_database.down.sql" = "DROP DATABASE IF EXISTS ${var.ducklake_db_database};"
     "000001_database.up.sql"   = "CREATE DATABASE dagster;"
     "000001_database.down.sql" = ""
   }
