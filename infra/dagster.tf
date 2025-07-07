@@ -140,7 +140,7 @@ resource "helm_release" "dagster" {
               image           = local.dagster_image
               workerQueues = [{
                 name         = "dagster"
-                replicaCount = 2
+                replicaCount = 4
               }]
               envSecrets = [
                 {
@@ -150,11 +150,11 @@ resource "helm_release" "dagster" {
               resources = {
                 requests = {
                   cpu    = "600m"
-                  memory = "3Gi"
+                  memory = "2Gi"
                 }
                 limits = {
                   cpu    = "600m"
-                  memory = "3Gi"
+                  memory = "2Gi"
                 }
               }
             }
@@ -226,6 +226,12 @@ resource "helm_release" "dagster" {
         }
         dagsterDaemon = {
           image = local.dagster_image
+
+          envSecrets = [
+            {
+              name = kubernetes_secret.ingest_secret.metadata[0].name
+            }
+          ]
 
           runCoordinator = {
             config = {
