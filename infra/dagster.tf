@@ -54,7 +54,7 @@ resource "kubernetes_secret" "ingest_secret" {
     "DUCKLAKE_DATA_PATH__ACCESS_KEY_ID"     = var.s3_access_key
     "DUCKLAKE_DATA_PATH__ENDPOINT"          = var.s3_endpoint
     "DUCKLAKE_DATA_PATH__BUCKET"            = "public-datasets"
-    "DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY" = "var.s3_secret_key"
+    "DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY" = var.s3_secret_key
     "DUCKLAKE_DATA_PATH__URL_STYLE"         = "path"
     "DUCKLAKE_DATABASE"                     = ":memory:"
   }
