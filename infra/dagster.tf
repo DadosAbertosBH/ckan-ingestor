@@ -140,7 +140,7 @@ resource "helm_release" "dagster" {
               image           = local.dagster_image
               workerQueues = [{
                 name         = "dagster"
-                replicaCount = 4
+                replicaCount = 2
               }]
               envSecrets = [
                 {
@@ -179,7 +179,7 @@ resource "helm_release" "dagster" {
           }
         }
         redis = {
-          enabled  = true
+          enabled  = false
           internal = false
 
           host            = "redis-master.dagster.svc.cluster.local"
@@ -191,7 +191,7 @@ resource "helm_release" "dagster" {
           # password    = random_password.redis_password.result
         }
         rabbitmq = {
-          enabled = false
+          enabled = true
           auth = {
             username = "test"
             password = "test"
@@ -236,14 +236,8 @@ resource "helm_release" "dagster" {
           }
         }
 
-        securityContext = {
-          capabilities = {
-            add = ["SYS_PTRACE"]
-          }
-        }
-
         dagsterWebserver = {
-          replicaCount = 2
+          replicaCount = 1
           image = {
             repository = "registry.gitlab.com/pedalin/dagster-celery-k8s"
             tag        = "4ecbc1ce"
