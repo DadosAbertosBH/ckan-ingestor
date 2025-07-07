@@ -149,12 +149,12 @@ resource "helm_release" "dagster" {
               ]
               resources = {
                 requests = {
-                  cpu    = "400m"
-                  memory = "2048Mi"
+                  cpu    = "500m"
+                  memory = "3Gi"
                 }
                 limits = {
-                  cpu    = "400m"
-                  memory = "2048Mi"
+                  cpu    = "500m"
+                  memory = "3Gi"
                 }
               }
             }
