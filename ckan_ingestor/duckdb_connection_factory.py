@@ -49,7 +49,7 @@ def from_settings(settings: DucklakeSettings = DucklakeSettings()):
     conn.execute(stmt)
 
     stmt = f"""
-        CREATE SECRET (
+        CREATE OR REPLACE SECRET (
             TYPE DUCKLAKE,
             METADATA_PATH '{settings.catalog_uri}',
             DATA_PATH '{settings.data_path.protocol}://{settings.data_path.bucket}'
