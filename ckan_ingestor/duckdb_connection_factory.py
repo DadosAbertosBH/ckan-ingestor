@@ -56,6 +56,6 @@ def from_settings(settings: DucklakeSettings = DucklakeSettings()):
         );
     """
     conn.execute(stmt)
-    conn.execute("ATTACH 'ducklake:' AS lake;")
+    conn.execute("ATTACH IF NOT EXISTS 'ducklake:' AS lake;")
     conn.execute("USE lake;")
     return conn
