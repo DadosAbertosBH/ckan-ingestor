@@ -37,4 +37,3 @@ class S3Settings(BaseSettings):
     bucket: str = "warehouse"
     url_style: str = "vhost"
     use_ssl: bool = True
-    account_id: Optional[str] = None
