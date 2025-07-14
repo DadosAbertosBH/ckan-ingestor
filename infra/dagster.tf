@@ -267,6 +267,12 @@ resource "helm_release" "dagster" {
               port  = 3030
               image = local.dagster_image
 
+              envSecrets = [
+                {
+                  name = kubernetes_secret.ingest_secret.metadata[0].name
+                }
+              ]
+
               dagsterApiGrpcArgs = [
                 "--python-file",
                 "/app/ckan_dagster/ckan_dagster/definitions.py"
