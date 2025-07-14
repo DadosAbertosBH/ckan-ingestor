@@ -15,6 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import dagster as dg
 import pyarrow
+from dagster_duckdb import DuckDBResource
 
 from ckan_dagster.ckan_dagster.resources.ckan_fetcher_resource import (
     CkanFetcherResource,
@@ -25,13 +26,12 @@ from ckan_dagster.ckan_dagster.resources.duckdb_data_ingestor_resource import (
 from ckan_dagster.ckan_dagster.resources.duckdb_metadata_ingestor_resource import (
     DuckdbMetadataIngestorResource,
 )
-from ckan_dagster.ckan_dagster.resources.ducklake_settings_resource import (
-    DucklakeSettingsResource,
-)
 from ckan_ingestor.ckan_dataset_fetcher import CkanDatasetFetcher
+from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 from ckan_ingestor.dataset_fetcher import DatasetFetcher
 from ckan_ingestor.duckdb_ckan_data_ingestor import DuckdbCkanDataIngestor
 from ckan_ingestor.duckdb_ckan_metadata_ingestor import DuckdbCkanMetadataIngestor
+from ckan_ingestor.duckdb_connection_factory import from_settings
 
 
 @dg.asset()
@@ -142,14 +142,26 @@ def ckan_data_request_sensor(
     )
 
 
-ducklake_settings = DucklakeSettingsResource()
-metadata_ingestor = DuckdbMetadataIngestorResource(ducklake_settings=ducklake_settings)
+ducklake_settings = DucklakeSettings()
+# Create the DuckDB database and catalog
+with from_settings(ducklake_settings):
+    pass
+duckdb = DuckDBResource(database=f"ducklake:{ducklake_settings.catalog_uri}", connection_config={
+    "threads": 1,
+    "s3_url_style": ducklake_settings.data_path.url_style,
+    "s3_use_ssl": ducklake_settings.data_path.use_ssl,
+    "s3_endpoint": ducklake_settings.data_path.endpoint,
+    "s3_access_key_id": ducklake_settings.data_path.access_key_id,
+    "s3_secret_access_key": ducklake_settings.data_path.secret_access_key,
+})
+metadata_ingestor = DuckdbMetadataIngestorResource(duckdb=duckdb)
 defs = dg.Definitions(
     executor=dg.in_process_executor,
     assets=[ckan_datasets, ckan_resources, ckan_data],
     jobs=[ckan_data_job],
     sensors=[ckan_data_request_sensor],
     resources={
+        "duckdb": duckdb,
         "dataset_fetcher": CkanFetcherResource(),
         "metadata_ingestor": metadata_ingestor,
         "ingestor": DuckdbDataIngestorResource(

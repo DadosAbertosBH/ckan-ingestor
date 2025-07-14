@@ -1,5 +1,6 @@
 # Pedalin
 # Copyright (C) 2025  Pedalin
+from contextlib import contextmanager
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -14,21 +15,24 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import dagster as dg
-from dagster import InitResourceContext
+from dagster_duckdb import DuckDBResource
 
-from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 from ckan_ingestor.duckdb_ckan_metadata_ingestor import DuckdbCkanMetadataIngestor
 
 
 class DuckdbMetadataIngestorResource(
     dg.ConfigurableResource[DuckdbCkanMetadataIngestor]
 ):
-    ducklake_settings: dg.ResourceDependency[DucklakeSettings]
+    duckdb: DuckDBResource
 
-    def create_resource(
-        self, context: InitResourceContext
-    ) -> DuckdbCkanMetadataIngestor:
-        metadata_ingestor = DuckdbCkanMetadataIngestor.from_settings(
-            self.ducklake_settings
-        )
-        return metadata_ingestor
+
+    @contextmanager
+    def yield_for_execution(self, context: dg.InitResourceContext):
+        # keep connection open for the duration of the execution
+        with self.duckdb.get_connection() as conn:
+            # set up the connection attribute so it can be used in the execution
+            metadata_ingestor = DuckdbCkanMetadataIngestor(
+                conn
+            )
+
+            yield metadata_ingestor
