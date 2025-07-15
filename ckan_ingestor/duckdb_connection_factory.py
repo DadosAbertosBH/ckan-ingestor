@@ -38,15 +38,7 @@ def from_settings(settings: DucklakeSettings = DucklakeSettings()):
     conn.load_extension("httpfs")
     conn.execute("SET pg_debug_show_queries=false;")
 
-
-    stmt = f"""
-        CREATE OR REPLACE SECRET (
-            TYPE DUCKLAKE,
-            METADATA_PATH '{settings.catalog_uri}',
-            DATA_PATH '{settings.data_path.protocol}://{settings.data_path.bucket}'
-        );
-    """
-    conn.execute(stmt)
-    conn.execute("ATTACH IF NOT EXISTS 'ducklake:' AS lake;")
+    conn.execute(f"ATTACH IF NOT EXISTS 'ducklake:{settings.catalog_uri}' AS lake "
+                 f"(DATA_PATH '{settings.data_path.protocol}://{settings.data_path.bucket}');")
     conn.execute("USE lake;")
     return conn
