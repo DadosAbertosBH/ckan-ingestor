@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import dagster as dg
+import duckdb
 import pyarrow
 from dagster_duckdb import DuckDBResource
 
@@ -143,9 +144,15 @@ def ckan_data_request_sensor(
 
 
 ducklake_settings = DucklakeSettings()
+
 # Create the DuckDB database and catalog
-with from_settings(ducklake_settings):
+try:
+    with from_settings(ducklake_settings):
+        pass
+except duckdb.IOException:
+    # Mysql ducklake catalog throws an IOException if the catalog already exists.
     pass
+
 duckdb = DuckDBResource(database=f"ducklake:{ducklake_settings.catalog_uri}", connection_config={
     "threads": 1,
     "s3_url_style": ducklake_settings.data_path.url_style,
