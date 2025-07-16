@@ -70,7 +70,7 @@ resource "kubernetes_secret" "ingest_secret" {
 
 
   data = {
-    "DUCKLAKE_CATALOG_URI"                  = "mysql:host=postgresql-ducklake db=postgres user=portgres password=${random_password.pg_password.result}"
+    "DUCKLAKE_CATALOG_URI"                  = "postgres:host=postgresql-ducklake db=postgres user=portgres password=${random_password.pg_password.result}"
     "DUCKLAKE_DATA_PATH__ACCESS_KEY_ID"     = var.s3_access_key
     "DUCKLAKE_DATA_PATH__ENDPOINT"          = var.s3_endpoint
     "DUCKLAKE_DATA_PATH__BUCKET"            = "public-datasets"
