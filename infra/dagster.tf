@@ -70,7 +70,7 @@ resource "kubernetes_secret" "ingest_secret" {
 
 
   data = {
-    "DUCKLAKE_CATALOG_URI"                  = "postgres:host=postgresql-ducklake dbname=postgres user=portgres password=${random_password.pg_password.result}"
+    "DUCKLAKE_CATALOG_URI"                  = "postgres:host=postgresql-ducklake dbname=postgres user=postgres password=${random_password.pg_password.result}"
     "DUCKLAKE_DATA_PATH__ACCESS_KEY_ID"     = var.s3_access_key
     "DUCKLAKE_DATA_PATH__ENDPOINT"          = var.s3_endpoint
     "DUCKLAKE_DATA_PATH__BUCKET"            = "public-datasets"
@@ -172,11 +172,11 @@ resource "helm_release" "dagster" {
               resources = {
                 requests = {
                   cpu    = "600m"
-                  memory = "2Gi"
+                  memory = "3Gi"
                 }
                 limits = {
                   cpu    = "600m"
-                  memory = "2Gi"
+                  memory = "3Gi"
                 }
               }
             }

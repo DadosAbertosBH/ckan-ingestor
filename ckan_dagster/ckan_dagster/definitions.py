@@ -155,6 +155,7 @@ except duckdb.IOException:
 
 duckdb = DuckDBResource(database=f"ducklake:{ducklake_settings.catalog_uri}", connection_config={
     "threads": 1,
+    "memory_limit": "1GB",
     "s3_url_style": ducklake_settings.data_path.url_style,
     "s3_use_ssl": ducklake_settings.data_path.use_ssl,
     "s3_endpoint": ducklake_settings.data_path.endpoint,
@@ -171,8 +172,6 @@ defs = dg.Definitions(
         "duckdb": duckdb,
         "dataset_fetcher": CkanFetcherResource(),
         "metadata_ingestor": metadata_ingestor,
-        "ingestor": DuckdbDataIngestorResource(
-            metadata_ingestor=metadata_ingestor, ducklake_settings=ducklake_settings
-        ),
+        "ingestor": DuckdbDataIngestorResource(duckdb=duckdb),
     },
 )
