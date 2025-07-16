@@ -28,7 +28,7 @@ def from_settings(settings: DucklakeSettings = DucklakeSettings()):
         "s3_access_key_id": settings.data_path.access_key_id,
         "s3_secret_access_key": settings.data_path.secret_access_key
     })
-    conn.install_extension("ducklake")
+    conn.install_extension("ducklake", repository="core_nightly")
     conn.install_extension("mysql")
     conn.install_extension("postgres")
     conn.install_extension("httpfs")

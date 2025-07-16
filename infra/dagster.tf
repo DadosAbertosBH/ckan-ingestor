@@ -42,6 +42,26 @@ resource "helm_release" "postgresql" {
   ]
 }
 
+resource "helm_release" "postgresql_ducklake" {
+  name             = "postgresql-ducklake"
+  chart            = "oci://registry-1.docker.io/bitnamicharts/postgresql"
+  create_namespace = true
+  namespace        = "dagster"
+
+  set = [
+    {
+      name  = "auth.postgresPassword"
+      value = random_password.pg_password.result
+    },
+    {
+      name  = "primary.extendedConfiguration"
+      value = <<-EOT
+            max_connections = 500
+    EOT
+    }
+  ]
+}
+
 resource "kubernetes_secret" "ingest_secret" {
   metadata {
     name      = "ingest-secret"
@@ -50,7 +70,7 @@ resource "kubernetes_secret" "ingest_secret" {
 
 
   data = {
-    "DUCKLAKE_CATALOG_URI"                  = "mysql:host=${var.ducklake_db_host} db=${var.ducklake_db_database} user=${var.ducklake_db_user} password=${var.ducklake_db_password}"
+    "DUCKLAKE_CATALOG_URI"                  = "mysql:host=postgresql-ducklake db=postgres user=portgres password=${random_password.pg_password.result}"
     "DUCKLAKE_DATA_PATH__ACCESS_KEY_ID"     = var.s3_access_key
     "DUCKLAKE_DATA_PATH__ENDPOINT"          = var.s3_endpoint
     "DUCKLAKE_DATA_PATH__BUCKET"            = "public-datasets"
