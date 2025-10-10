@@ -17,7 +17,6 @@ import logging
 
 import duckdb
 import requests
-import sherlock
 
 from ckan_ingestor.csv_reader import DuckDbCsvReader
 from ckan_ingestor.datastore_reader import DatastoreReader
@@ -33,7 +32,6 @@ class DuckdbCkanDataIngestor:
 
     def __init__(
         self,
-        lock: sherlock.Lock,
         ducklake_conn: duckdb.DuckDBPyConnection,
         document_ingestor: S3DocumentIngestor,
         datastore_reader: DatastoreReader,
@@ -46,7 +44,6 @@ class DuckdbCkanDataIngestor:
             )
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
-        self.lock = lock
         self.ducklake_conn = ducklake_conn
         self.document_ingestor = document_ingestor
         self.datastore_reader = datastore_reader

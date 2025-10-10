@@ -18,7 +18,6 @@ from contextlib import contextmanager
 import dagster as dg
 from dagster import InitResourceContext
 from dagster_duckdb import DuckDBResource
-from sherlock import Lock
 
 from ckan_ingestor.csv_reader import DuckDbCsvReader
 from ckan_ingestor.datastore_reader import DatastoreReader
@@ -36,7 +35,6 @@ class DuckdbDataIngestorResource(dg.ConfigurableResource[DuckdbCkanDataIngestor]
             conn.install_extension("ducklake", force_install=True, repository="core_nightly")
             conn.load_extension("ducklake")
             yield DuckdbCkanDataIngestor(
-                lock=Lock("my_lock"),
                 ducklake_conn=conn,
                 document_ingestor=S3DocumentIngestor(
                     s3_settings=self.ducklake_settings.data_path

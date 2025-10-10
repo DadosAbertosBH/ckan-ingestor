@@ -14,7 +14,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import logging
-import threading
 from typing import List
 
 import duckdb
@@ -38,7 +37,6 @@ class DuckdbCkanMetadataIngestor:
     csv_reader: DuckDbCsvReader
     datastore_reader: DatastoreReader
     logger = logging.getLogger(__name__)
-    lock = threading.RLock()
 
     def __init__(
             self,

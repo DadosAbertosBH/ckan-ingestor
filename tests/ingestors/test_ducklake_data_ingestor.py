@@ -15,9 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import pytest
 import requests
-import sherlock
 from duckdb import DuckDBPyConnection
-from sherlock import Lock
 
 from ckan_ingestor.csv_reader import DuckDbCsvReader
 from ckan_ingestor.datastore_reader import DatastoreReader
@@ -38,13 +36,11 @@ def ingestor(
         ckman_mock_url,
         redis_client,
 ) -> DuckdbCkanDataIngestor:
-    sherlock.configure(client=redis_client)
     subject = DuckdbCkanDataIngestor(
         ducklake_conn=in_memory_duckdb_conn,
         document_ingestor=S3DocumentIngestor(ducklake_settings.data_path),
         datastore_reader=DatastoreReader(in_memory_duckdb_conn, ckman_mock_url),
         csv_reader=DuckDbCsvReader(in_memory_duckdb_conn),
-        lock=Lock("my_lock"),
     )
     subject.ducklake_conn.execute("""
     CREATE TABLE IF NOT EXISTS ckan_resource_last_update 
