@@ -61,7 +61,7 @@ def test_same_dataset_does_not_generate_changes(
         deletes=0,
     )
 
-    current_snapshot = subject.conn.execute("SELECT * FROM snapshots();").arrow()
+    current_snapshot = subject.conn.execute("SELECT * FROM snapshots();").arrow().read_all()
 
     # Run pipeline again and assert that no new rows are inserted
     subject.ingest_dataset(initial_dataset)
@@ -82,7 +82,7 @@ def test_same_dataset_does_not_generate_changes(
         deletes=0,
     )
     # Expected create schema  table
-    snapshots = subject.conn.execute("SELECT * FROM snapshots();").arrow()
+    snapshots = subject.conn.execute("SELECT * FROM snapshots();").arrow().read_all()
     # Expected no new snapshots
     assert snapshots.num_rows == current_snapshot.num_rows
 
@@ -149,7 +149,7 @@ def test_insert_new_row_dataset(ingestor, initial_dataset, dataset_with_new_row)
 
 
 def _assert_expected_table_state(conn, table_name, expected_rows, inserts=0, deletes=0):
-    assert conn.table(table_name).arrow().shape[0] == expected_rows
+    assert conn.table(table_name).arrow().read_all().shape[0] == expected_rows
     max_snapshot = conn.execute(
         " SELECT MAX(snapshot_id) FROM  snapshots()"
     ).fetchone()[0]
@@ -159,6 +159,6 @@ def _assert_expected_table_state(conn, table_name, expected_rows, inserts=0, del
     """).fetchone()[0]
     changes = conn.execute(
         f"FROM table_changes('{table_name}', {max_table_snapshot}, {max_table_snapshot});"
-    ).arrow()
+    ).arrow().read_all()
     assert changes.filter(pc.field("change_type") == "insert").num_rows == inserts
     assert changes.filter(pc.field("change_type") == "delete").num_rows == deletes

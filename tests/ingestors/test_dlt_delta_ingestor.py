@@ -47,12 +47,12 @@ def test_full_insert(
         pipeline = dlt.pipeline("ckan_datasets", destination="filesystem")
         pipeline.run(dlt_ckan.ckan_source.ckan(ckan_url="http://example.com"))
 
-        assert (2, 27) == pipeline.dataset().ckan_dataset.arrow().shape
-        assert (4, 23) == pipeline.dataset().ckan_resource.arrow().shape
+        assert (2, 27) == pipeline.dataset().ckan_dataset.arrow().read_all().shape
+        assert (4, 23) == pipeline.dataset().ckan_resource.arrow().read_all().shape
         assert (
             3,
             14,
-        ) == pipeline.dataset().f05d4bb9_3af4_4782_a85d_3b0dfe59343e.arrow().shape
+        ) == pipeline.dataset().f05d4bb9_3af4_4782_a85d_3b0dfe59343e.arrow().read_all().shape
 
         _resource_metrics = list(
             pipeline.last_trace.last_extract_info.metrics.values()
@@ -74,9 +74,9 @@ def test_full_insert(
         # Assert that no new itens are inserted again
         assert 0 == rows_count["f05d4bb9_3af4_4782_a85d_3b0dfe59343e"]
         # Assert that no items are deleted
-        assert (2, 27) == pipeline.dataset().ckan_dataset.arrow().shape
-        assert (4, 23) == pipeline.dataset().ckan_resource.arrow().shape
+        assert (2, 27) == pipeline.dataset().ckan_dataset.arrow().read_all().shape
+        assert (4, 23) == pipeline.dataset().ckan_resource.arrow().read_all().shape
         assert (
             3,
             14,
-        ) == pipeline.dataset().f05d4bb9_3af4_4782_a85d_3b0dfe59343e.arrow().shape
+        ) == pipeline.dataset().f05d4bb9_3af4_4782_a85d_3b0dfe59343e.arrow().read_all().shape

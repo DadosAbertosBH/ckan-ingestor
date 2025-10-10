@@ -141,7 +141,7 @@ def read_json(filename: str) -> pyarrow.Table:
     module_directory = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(module_directory, "fixtures" ,filename)) as f:
         with duckdb.connect(":memory:") as conn:
-            return conn.execute(f"select * from read_json('{f.name}')").arrow()
+            return conn.execute(f"select * from read_json('{f.name}')").arrow().read_all()
 
 
 @pytest.fixture

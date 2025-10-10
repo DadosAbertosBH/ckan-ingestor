@@ -96,7 +96,7 @@ def ckan_data(
         ingestor.ducklake_conn.execute(
             "select * from ckan_resource where id = ?", (resource_id,)
         )
-        .arrow()
+        .arrow().read_all()
         .to_pylist()[0]
     )
 

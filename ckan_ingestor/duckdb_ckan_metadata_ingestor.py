@@ -81,7 +81,7 @@ class DuckdbCkanMetadataIngestor:
             self, new_packages: pyarrow.Table, table_name: str, update_at_column: str
     ):
         if self.table_exists(table_name):
-            current_packages = self.conn.table(table_name).arrow()
+            current_packages = self.conn.table(table_name).arrow().read_all()
             new_packages = self._merge_schema(new_packages, current_packages)
             self.logger.info(f"{table_name} new dataset size: {new_packages.num_rows}")
             deleted_count = (
@@ -93,7 +93,7 @@ class DuckdbCkanMetadataIngestor:
                                 new_packages.{update_at_column} > current_packages.{update_at_column})
                         )
                     """)
-                .arrow()["Count"][0]
+                .arrow().read_all()["Count"][0]
                 .as_py()
             )
             self.logger.info(f"{table_name} rows to deleted:{deleted_count}")
@@ -104,7 +104,7 @@ class DuckdbCkanMetadataIngestor:
                         ANTI JOIN {table_name}
                         USING (id)
                     """)
-                .arrow()["Count"][0]
+                .arrow().read_all()["Count"][0]
                 .as_py()
             )
             self.logger.info(f"{table_name} rows inserted:{total_inserted}")

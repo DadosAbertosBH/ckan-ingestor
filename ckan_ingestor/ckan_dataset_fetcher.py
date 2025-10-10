@@ -32,4 +32,4 @@ class CkanDatasetFetcher(DatasetFetcher):
             return conn.execute(f"""
             select unnest(result, max_depth :=2) from 
             read_json('{self.url}/api/action/current_package_list_with_resources?limit=1000')
-            """).arrow()
+            """).arrow().read_all()
