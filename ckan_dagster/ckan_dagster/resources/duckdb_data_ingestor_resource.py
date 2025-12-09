@@ -32,7 +32,6 @@ class DuckdbDataIngestorResource(dg.ConfigurableResource[DuckdbCkanDataIngestor]
     def yield_for_execution(self, context: InitResourceContext):
         with self.duckdb.get_connection() as conn:
             # Use core nightly
-            conn.install_extension("ducklake", force_install=True, repository="core_nightly")
             conn.load_extension("ducklake")
             yield DuckdbCkanDataIngestor(
                 ducklake_conn=conn,
