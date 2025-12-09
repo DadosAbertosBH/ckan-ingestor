@@ -17,6 +17,7 @@ import dagster as dg
 import duckdb
 import pyarrow
 from dagster_duckdb import DuckDBResource
+from dagster_async_executor import async_executor
 
 from ckan_dagster.ckan_dagster.resources.ckan_fetcher_resource import (
     CkanFetcherResource,
@@ -119,7 +120,7 @@ def ckan_data(
 
 
 ckan_data_job = dg.define_asset_job(
-    executor_def=dg.in_process_executor,
+    executor_def=async_executor,
     name="ckan_data_job",
     selection=dg.AssetSelection.assets("ckan_data"),
 )
@@ -164,7 +165,7 @@ duckdb = DuckDBResource(database=f"ducklake:{ducklake_settings.catalog_uri}", co
 })
 metadata_ingestor = DuckdbMetadataIngestorResource(duckdb=duckdb)
 defs = dg.Definitions(
-    executor=dg.in_process_executor,
+    executor=async_executor,
     assets=[ckan_datasets, ckan_resources, ckan_data],
     jobs=[ckan_data_job],
     sensors=[ckan_data_request_sensor],
