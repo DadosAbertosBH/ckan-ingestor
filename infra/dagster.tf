@@ -267,8 +267,6 @@ resource "helm_release" "dagster" {
         dagsterWebserver = {
           replicaCount = 3
           service = {
-            type              = "LoadBalancer"
-            loadBalancerClass = "tailscale"
             annotations = {
               "tailscale.com/expose" = "true"
             }
