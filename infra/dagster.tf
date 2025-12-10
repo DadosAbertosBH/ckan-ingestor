@@ -266,7 +266,13 @@ resource "helm_release" "dagster" {
 
         dagsterWebserver = {
           replicaCount = 3
-
+          service = {
+            type              = "LoadBalancer"
+            loadBalancerClass = "tailscale"
+            annotations = {
+              "tailscale.com/expose" = "true"
+            }
+          }
           envSecrets = [
             {
               name = kubernetes_secret.ingest_secret.metadata[0].name
