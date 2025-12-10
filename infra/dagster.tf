@@ -10,10 +10,10 @@ resource "kubernetes_config_map_v1" "dagster_config" {
     namespace = "dagster"
   }
   data = {
-    "000001_database.up.sql"   = "CREATE DATABASE ${var.ducklake_db_database};"
-    "000001_database.down.sql" = "DROP DATABASE IF EXISTS ${var.ducklake_db_database};"
-    "000001_database.up.sql"   = "CREATE DATABASE dagster;"
-    "000001_database.down.sql" = ""
+    "000001_database.up.sql"           = "CREATE DATABASE ${var.ducklake_db_database};"
+    "000001_database.down.sql"         = "DROP DATABASE IF EXISTS ${var.ducklake_db_database};"
+    "000002_database_dagster.up.sql"   = "CREATE DATABASE dagster;"
+    "000002_database_dagster.down.sql" = "DROP DATABASE IF EXISTS dagster;"
   }
 }
 
