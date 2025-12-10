@@ -173,6 +173,6 @@ defs = dg.Definitions(
         "duckdb": duckdb,
         "dataset_fetcher": CkanFetcherResource(),
         "metadata_ingestor": metadata_ingestor,
-        "ingestor": DuckdbDataIngestorResource(duckdb=duckdb),
+        "ingestor": DuckdbDataIngestorResource(duckdb=duckdb, ducklake_settings=ducklake_settings),
     },
 )

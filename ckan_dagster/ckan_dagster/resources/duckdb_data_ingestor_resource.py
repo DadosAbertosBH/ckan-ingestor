@@ -19,6 +19,7 @@ import dagster as dg
 from dagster import InitResourceContext
 from dagster_duckdb import DuckDBResource
 
+from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 from ckan_ingestor.csv_reader import DuckDbCsvReader
 from ckan_ingestor.datastore_reader import DatastoreReader
 from ckan_ingestor.duckdb_ckan_data_ingestor import DuckdbCkanDataIngestor
@@ -27,6 +28,7 @@ from ckan_ingestor.s3_pdf_ingestor import S3DocumentIngestor
 
 class DuckdbDataIngestorResource(dg.ConfigurableResource[DuckdbCkanDataIngestor]):
     duckdb: DuckDBResource
+    ducklake_settings: dg.ResourceDependency[DucklakeSettings]
 
     @contextmanager
     def yield_for_execution(self, context: InitResourceContext):
