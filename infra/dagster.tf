@@ -120,7 +120,7 @@ resource "kubernetes_job_v1" "initialize_db" {
     update = "2m"
   }
 
-  depends_on = [helm_release.postgresql]
+  depends_on = [helm_release.postgresql, kubernetes_config_map_v1.dagster_config]
 }
 
 resource "helm_release" "dagster" {
