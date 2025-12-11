@@ -1,6 +1,8 @@
 FROM registry.gitlab.com/pedalin/dagster-celery-k8s:4ecbc1ce
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
+RUN apt install git -y
+
 WORKDIR /app
 
 ADD . .
