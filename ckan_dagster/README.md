@@ -13,7 +13,6 @@ pip install -e ".[dev]"
 Then, start the Dagster UI web server:
 
 ```bash
-
 DUCKLAKE_DATABASE=":memory:"
 DUCKLAKE_CATALOG_URI="postgres:dbname=postgres host=localhost user=postgres password=postgres"
 DUCKLAKE_DATA_PATH__ENDPOINT="localhost:9000"
@@ -22,6 +21,22 @@ DUCKLAKE_DATA_PATH__ACCESS_KEY_ID="admin"
 DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY="password"
 DUCKLAKE_DATA_PATH__USE_SSL=false
 DUCKLAKE_DATABASE=":memory:" DUCKLAKE_DATA_PATH__USE_SSL=false DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY="password" DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY="password" DUCKLAKE_DATA_PATH__ACCESS_KEY_ID="admin" DUCKLAKE_DATA_PATH__URL_STYLE="path" DUCKLAKE_DATA_PATH__ENDPOINT="localhost:9000" DUCKLAKE_CATALOG_URI="postgres:dbname=postgres host=localhost user=postgres password=postgres" DAGSTER_GRPC_TIMEOUT_SECONDS=600 dagster dev -f ckan_dagster/ckan_dagster/definitions.py 
+```
+
+For Fish shell
+
+```bash
+set -x DUCKLAKE_DATABASE ":memory:"
+set -x DUCKLAKE_CATALOG_URI "postgres:dbname=postgres host=localhost user=postgres password=postgres"
+set -x DUCKLAKE_DATA_PATH__ENDPOINT "localhost:9000"
+set -x DUCKLAKE_DATA_PATH__URL_STYLE "path"
+set -x DUCKLAKE_DATA_PATH__ACCESS_KEY_ID "admin"
+set -x DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY "password"
+set -x DUCKLAKE_DATA_PATH__USE_SSL false
+set -x DAGSTER_GRPC_TIMEOUT_SECONDS 600
+
+# Executar Dagster
+dagster dev -f ckan_dagster/ckan_dagster/definitions.py
 ```
 
 Open http://localhost:3000 with your browser to see the project.

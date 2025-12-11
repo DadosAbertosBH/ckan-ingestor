@@ -37,7 +37,7 @@ from ckan_ingestor.duckdb_connection_factory import from_settings
 
 
 @dg.asset()
-def ckan_datasets(
+async def ckan_datasets(
         dataset_fetcher: dg.ResourceParam[DatasetFetcher],
         metadata_ingestor: dg.ResourceParam[DuckdbCkanMetadataIngestor],
 ):
@@ -88,7 +88,7 @@ resource_partitions = dg.DynamicPartitionsDefinition(name="resources")
 
 
 @dg.asset(deps=[ckan_resources], partitions_def=resource_partitions)
-def ckan_data(
+async def ckan_data(
         context: dg.AssetExecutionContext,
         ingestor: dg.ResourceParam[DuckdbCkanDataIngestor],
 ):
@@ -120,6 +120,7 @@ def ckan_data(
 
 
 ckan_data_job = dg.define_asset_job(
+    # Usa o executor assíncrono customizado
     executor_def=async_executor,
     name="ckan_data_job",
     selection=dg.AssetSelection.assets("ckan_data"),
@@ -165,6 +166,7 @@ duckdb = DuckDBResource(database=f"ducklake:{ducklake_settings.catalog_uri}", co
 })
 metadata_ingestor = DuckdbMetadataIngestorResource(duckdb=duckdb)
 defs = dg.Definitions(
+    # Usa o executor assíncrono customizado
     executor=async_executor,
     assets=[ckan_datasets, ckan_resources, ckan_data],
     jobs=[ckan_data_job],

@@ -25,6 +25,7 @@ from flask import Flask, request, send_from_directory
 from flask_cors import CORS
 from testcontainers.minio import MinioContainer
 from testcontainers.redis import RedisContainer
+from testcontainers.core.wait_strategies import HttpWaitStrategy
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 from ckan_ingestor.duckdb_connection_factory import from_settings
@@ -70,6 +71,11 @@ def minio_url(request) -> str:
     )
     minio.with_env("MINIO_CONSOLE_ADDRESS", ":9001")
     minio.with_exposed_ports(9000, 9001)
+    # Espera estruturada: healthcheck HTTP no serviço do MinIO
+    minio.waiting_for(
+        HttpWaitStrategy(9000, "/minio/health/live")
+        .for_status_code(200)
+    )
     minio.start()
     host_ip = minio.get_container_host_ip()
     exposed_port = minio.get_exposed_port(minio.port)

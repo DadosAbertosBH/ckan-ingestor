@@ -22,7 +22,8 @@ dependencies = [
     "dagster-postgres>=0.26.19",
     "dagster-celery[flower,redis]>=0.27.0",
     "dagster-celery-k8s>=0.27.0",
-    "dagster-async-executor>=0.0.1",
+    # Use the community-integrations source so the package includes the expected module path
+    "dagster-async-executor @ git+https://github.com/dagster-io/community-integrations.git@main#subdirectory=libraries/dagster-async-executor",
 ]
 
 [dependency-groups]
@@ -32,8 +33,11 @@ dev = [
     "mock>=5.1.0,<6",
     "pytest>=8.3.2,<9",
     "ruff>=0.12.0",
-    "testcontainers[minio, postgres]>=4.10.0,<5",
+    "testcontainers[minio, postgres]>=4.13.3,<5",
 ]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.sdist]
 include = ["ckan_ingestor"]
