@@ -65,6 +65,24 @@ test:
 
 build:
   stage: build
+  before_script:
+    # Ensure git is available inside the job image; try common package managers.
+    - |
+      if command -v git >/dev/null 2>&1; then
+        echo "git already installed"
+      else
+        echo "installing git"
+        if [ -f /etc/alpine-release ]; then
+          apk add --no-cache git
+        elif command -v apt-get >/dev/null 2>&1; then
+          apt-get update && apt-get install -y git
+        elif command -v yum >/dev/null 2>&1; then
+          yum install -y git
+        else
+          echo "Could not detect package manager to install git" >&2
+          exit 1
+        fi
+      fi
   script:
     - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
     - docker pull $CI_REGISTRY_IMAGE:latest || true
