@@ -161,7 +161,7 @@ resource "helm_release" "dagster" {
               workerQueues = [
                 {
                   name         = "dagster"
-                  replicaCount = 4
+                  replicaCount = 1
                 }
               ]
               envSecrets = [
@@ -265,7 +265,7 @@ resource "helm_release" "dagster" {
         }
 
         dagsterWebserver = {
-          replicaCount = 3
+          replicaCount = 1
           service = {
             annotations = {
               "tailscale.com/expose" = "true"
