@@ -129,7 +129,7 @@ resource "helm_release" "dagster" {
   chart            = "dagster"
   namespace        = "dagster"
   create_namespace = true
-  version          = "0.0.6-dev"
+  version          = "0.0.7-dev"
 
   values = [
     yamlencode(
