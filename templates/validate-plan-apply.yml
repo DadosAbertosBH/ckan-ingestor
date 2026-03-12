@@ -356,7 +356,7 @@ stages:
 before_script:
   - curl -fsSL https://tailscale.com/install.sh | sh
   - tailscaled --state="mem:" &
-  - tailscale up --authkey=${TAIL_SCALE_EPHEMERAL_AUTH_KEY} --hostname="gitlab-$(cat /etc/hostname)" --accept-routes
+  - tailscale up --authkey='${TAIL_SCALE_EPHEMERAL_AUTH_KEY}' --hostname="gitlab-$(cat /etc/hostname)" --accept-routes
 
 
 '.$[[ inputs.job_name_prefix ]]$[[ inputs.child_pipeline_name ]]:bridge_job_stage:true':
