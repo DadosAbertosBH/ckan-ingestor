@@ -39,6 +39,6 @@ def from_settings(settings: DucklakeSettings = DucklakeSettings()):
 
     conn.execute(f"ATTACH IF NOT EXISTS 'ducklake:{settings.catalog_uri}' AS lake "
                  f"(DATA_PATH '{settings.data_path.protocol}://{settings.data_path.bucket}', "
-                 f"DATA_INLINING_ROW_LIMIT 10000);")
+                 f"DATA_INLINING_ROW_LIMIT 10000, AUTOMATIC_MIGRATION TRUE);")
     conn.execute("USE lake;")
     return conn
