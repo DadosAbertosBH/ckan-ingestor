@@ -632,7 +632,7 @@ wheels = [
 [[package]]
 name = "dagster-async-executor"
 version = "0.0.2"
-source = { git = "https://github.com/dagster-io/community-integrations.git?subdirectory=libraries%2Fdagster-async-executor&rev=main#a165cf1f54c46c7d76474457db6f24f480763a50" }
+source = { git = "https://github.com/dagster-io/community-integrations.git?subdirectory=libraries%2Fdagster-async-executor&rev=main#4689ccc885d6384f5a03c9a3a83c4f0193818e53" }
 dependencies = [
     { name = "anyio" },
     { name = "dagster" },
