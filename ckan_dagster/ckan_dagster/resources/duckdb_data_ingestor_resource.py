@@ -41,7 +41,7 @@ class DuckdbDataIngestorResource(dg.ConfigurableResource[DuckdbCkanDataIngestor]
                     s3_settings=self.ducklake_settings.data_path
                 ),
                 datastore_reader=DatastoreReader(
-                    conn=conn, dastore_url=self.ducklake_settings.datastore_url
+                    datastore_url=self.ducklake_settings.datastore_url,
                 ),
                 csv_reader=DuckDbCsvReader(conn=conn),
             )

@@ -17,11 +17,11 @@ import pytest
 import requests
 from duckdb import DuckDBPyConnection
 
+from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 from ckan_ingestor.csv_reader import DuckDbCsvReader
 from ckan_ingestor.datastore_reader import DatastoreReader
 from ckan_ingestor.duckdb_ckan_data_ingestor import DuckdbCkanDataIngestor
 from ckan_ingestor.s3_pdf_ingestor import S3DocumentIngestor
-from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 from tests.conftest import INVALID_INPUT_JSON_ID
 from tests.ingestors.test_ducklake_metadata_ingestor import (
     PDF_RESOURCE_ID,
@@ -31,19 +31,19 @@ from tests.ingestors.test_ducklake_metadata_ingestor import (
 
 @pytest.fixture
 def ingestor(
-        in_memory_duckdb_conn: DuckDBPyConnection,
-        ducklake_settings: DucklakeSettings,
-        ckman_mock_url,
-        redis_client,
+    in_memory_duckdb_conn: DuckDBPyConnection,
+    ducklake_settings: DucklakeSettings,
+    ckman_mock_url,
+    redis_client,
 ) -> DuckdbCkanDataIngestor:
     subject = DuckdbCkanDataIngestor(
         ducklake_conn=in_memory_duckdb_conn,
         document_ingestor=S3DocumentIngestor(ducklake_settings.data_path),
-        datastore_reader=DatastoreReader(in_memory_duckdb_conn, ckman_mock_url),
+        datastore_reader=DatastoreReader(datastore_url=ckman_mock_url),
         csv_reader=DuckDbCsvReader(in_memory_duckdb_conn),
     )
     subject.ducklake_conn.execute("""
-    CREATE TABLE IF NOT EXISTS ckan_resource_last_update 
+    CREATE TABLE IF NOT EXISTS ckan_resource_last_update
         (ckan_resource_id UUID, last_modified TIMESTAMP)
         """)
     return subject

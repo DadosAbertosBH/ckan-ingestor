@@ -13,7 +13,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-import duckdb
 import pyarrow
 import requests
 
@@ -21,9 +20,8 @@ MAX_RECORDS_FETCH = 100_000
 
 
 class DatastoreReader:
-    def __init__(self, conn: duckdb.DuckDBPyConnection, dastore_url: str):
-        self.datastore_url = dastore_url
-        self.conn = conn
+    def __init__(self, datastore_url: str):
+        self.datastore_url = datastore_url
 
     def read(self, resource_id: str) -> pyarrow.Table:
         """
@@ -39,7 +37,7 @@ class DatastoreReader:
             url = f"{self.datastore_url}/{resource_id}?format=json&offset={offset}&limit={MAX_RECORDS_FETCH}"
             tables.append(data)
         if not tables:
-            raise duckdb.IOException(f"Now rows from {url}")
+            raise ValueError(f"No rows from {url}")
         return pyarrow.concat_tables(tables, promote=True)
 
     @staticmethod
