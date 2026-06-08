@@ -6,27 +6,27 @@ WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/bin/uv
 
 # Copy only dependency manifests first — layers stay cached when code changes
-COPY pyproject.toml README.md /app/ckan_ingestor-project/
-COPY ingestor_orchestrator/backend/pyproject.toml /app/backend/
+COPY pyproject.toml README.md /app/
+COPY ingestor_orchestrator/backend/pyproject.toml /app/ingestor_orchestrator/backend/
 
 # Create placeholder packages so `uv pip install` can resolve local deps without source
-RUN mkdir -p /app/ckan_ingestor-project/ckan_ingestor && \
-    touch /app/ckan_ingestor-project/ckan_ingestor/__init__.py && \
-    mkdir -p /app/backend/ingestor_orchestrator && \
-    touch /app/backend/ingestor_orchestrator/__init__.py && \
-    mkdir -p /app/backend/alembic && \
-    touch /app/backend/alembic/__init__.py
+RUN mkdir -p /app/ckan_ingestor && \
+    touch /app/ckan_ingestor/__init__.py && \
+    mkdir -p /app/ingestor_orchestrator/backend/ingestor_orchestrator && \
+    touch /app/ingestor_orchestrator/backend/ingestor_orchestrator/__init__.py && \
+    mkdir -p /app/ingestor_orchestrator/backend/alembic && \
+    touch /app/ingestor_orchestrator/backend/alembic/__init__.py
 
 # Install dependencies — this layer is cached as long as pyproject.toml doesn't change
-RUN uv pip install --system /app/ckan_ingestor-project/ && \
-    uv pip install --system /app/backend/
+RUN uv pip install --system /app/ && \
+    uv pip install --system /app/ingestor_orchestrator/backend/
 
 # Now copy the actual source code (fast, only this layer is rebuilt on code changes)
-COPY ckan_ingestor/ /app/ckan_ingestor-project/ckan_ingestor/
-COPY ingestor_orchestrator/backend/ /app/backend/
+COPY ckan_ingestor/ /app/ckan_ingestor/
+COPY ingestor_orchestrator/backend/ /app/ingestor_orchestrator/backend/
 
 # Ensure the real source is used, not the stale placeholder from pip install
-ENV PYTHONPATH=/app/backend:/app/ckan_ingestor-project
+ENV PYTHONPATH=/app/ingestor_orchestrator/backend:/app
 
 EXPOSE 8000
 
