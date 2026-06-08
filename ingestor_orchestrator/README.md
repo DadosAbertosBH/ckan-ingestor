@@ -59,7 +59,7 @@ cd /caminho/para/ckan-ingestor
 uv pip install -e .
 
 # Instalar o orchestrator
-cd ckan_orchestrator/backend
+cd ingestor_orchestrator/backend
 uv pip install -e .
 ```
 

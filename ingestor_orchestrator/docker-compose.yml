@@ -79,7 +79,7 @@ services:
   api:
     build:
       context: ..
-      dockerfile: ckan_orchestrator/Dockerfile
+      dockerfile: ingestor_orchestrator/Dockerfile
     ports:
       - "8000:8000"
     depends_on:
@@ -96,7 +96,7 @@ services:
   worker:
     build:
       context: ..
-      dockerfile: ckan_orchestrator/Dockerfile
+      dockerfile: ingestor_orchestrator/Dockerfile
     depends_on:
       mysql:
         condition: service_healthy

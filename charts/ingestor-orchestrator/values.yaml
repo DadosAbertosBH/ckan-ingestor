@@ -1,0 +1,112 @@
+# -- Global settings applied to all components
+global:
+  image:
+    registry: registry.gitlab.com/pedalin/ckan-ingestor
+    tag: latest
+    pullPolicy: IfNotPresent
+  imagePullSecrets: []
+  security:
+    allowInsecureImages: true
+
+# -- API server configuration
+api:
+  enabled: true
+  replicaCount: 1
+  image:
+    registry: ""
+    repository: ingestor-orchestrator
+    tag: ""
+    pullPolicy: ""
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  service:
+    type: ClusterIP
+    port: 8000
+    annotations: {}
+  # -- Health check configuration
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 10
+    periodSeconds: 15
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+# -- Worker configuration
+worker:
+  enabled: true
+  replicaCount: 2
+  concurrency: 10
+  image:
+    registry: ""
+    repository: ingestor-orchestrator
+    tag: ""
+    pullPolicy: ""
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+# -- Scheduler configuration (runs as a CronJob)
+scheduler:
+  enabled: true
+  schedule: "0 */8 * * *"  # Every 8 hours
+  image:
+    registry: ""
+    repository: ingestor-orchestrator
+    tag: ""
+    pullPolicy: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# -- NATS configuration (external, not deployed by this chart)
+nats:
+  url: "nats://nats:4222"
+  stream: "CKAN_INGEST"
+  subject: "ckan.ingest.resource"
+
+# -- MySQL configuration (external, not deployed by this chart)
+mysql:
+  host: "mysql"
+  port: 3306
+  user: "root"
+  database: "ckan_orchestrator"
+  # password is provided via secret
+
+# -- CKAN portal configuration
+ckan:
+  url: "https://dados.pbh.gov.br/"
+
+# -- DuckLake configuration
+ducklake:
+  catalogUri: ""
+  dataPath:
+    accessKeyId: ""
+    endpoint: ""
+    bucket: "public-datasets"
+    secretAccessKey: ""
+    urlStyle: "path"
+
+# -- Existing secret name for sensitive values (if set, skips creating a new secret)
+existingSecret: ""
+
+# -- Debug mode
+debug: false

@@ -42,8 +42,9 @@ test:
     - uv cache prune --ci
   rules:
     - changes:
-      - 'ckan_ingestor/**/*'
-      - 'ckan_dagster/**/*'
+        - "ckan_ingestor/**/*"
+        - "ckan_dagster/**/*"
+        - "ingestor_orchestrator/**/*"
 
 build:
   stage: build
@@ -52,19 +53,39 @@ build:
     - docker pull $CI_REGISTRY_IMAGE:latest || true
     - docker context create builder
     - docker buildx create builder --use
-    - docker buildx build 
-      --build-arg BUILDKIT_INLINE_CACHE=1 
-      --cache-from $CI_REGISTRY_IMAGE:latest 
+    - docker buildx build
+      --build-arg BUILDKIT_INLINE_CACHE=1
+      --cache-from $CI_REGISTRY_IMAGE:latest
       --platform linux/amd64,linux/arm64
       --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
-      --tag $CI_REGISTRY_IMAGE:latest 
+      --tag $CI_REGISTRY_IMAGE:latest
       --push .
+
+build-orchestrator:
+  stage: build
+  script:
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
+    - docker pull $CI_REGISTRY_IMAGE/orchestrator:latest || true
+    - docker context create builder
+    - docker buildx create builder --use
+    - docker buildx build
+      --build-arg BUILDKIT_INLINE_CACHE=1
+      --cache-from $CI_REGISTRY_IMAGE/orchestrator:latest
+      --platform linux/amd64,linux/arm64
+      --tag $CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA
+      --tag $CI_REGISTRY_IMAGE/orchestrator:latest
+      --file ingestor_orchestrator/Dockerfile
+      --push .
+  rules:
+    - changes:
+        - "ingestor_orchestrator/**/*"
+        - "ckan_ingestor/**/*"
 
 deploy-ingestor:
   stage: deploy
   variables:
-    TF_ROOT:  "infra"
-    TF_STATE_NAME:  "ingestor"
+    TF_ROOT: "infra"
+    TF_STATE_NAME: "ingestor"
     TARGET_BRANCH: main
   trigger:
     strategy: depend
@@ -80,3 +101,27 @@ deploy-ingestor:
   rules:
     - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $TARGET_BRANCH
 
+deploy-orchestrator:
+  stage: deploy
+  image:
+    name: alpine/helm:3.16.2
+    entrypoint: [""]
+  variables:
+    TARGET_BRANCH: main
+    HELM_EXPERIMENTAL_OCI: 1
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | helm registry login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+  script:
+    - |
+      helm upgrade --install ingestor-orchestrator ./charts/ingestor-orchestrator \
+        --namespace orchestrator \
+        --create-namespace \
+        --set global.image.registry=$CI_REGISTRY_IMAGE \
+        --set global.image.tag=$CI_COMMIT_SHORT_SHA \
+        --set api.image.repository=orchestrator \
+        --set worker.image.repository=orchestrator \
+        --set scheduler.image.repository=orchestrator \
+        --wait \
+        --timeout 5m
+  rules:
+    - if: $CI_COMMIT_BRANCH == $TARGET_BRANCH

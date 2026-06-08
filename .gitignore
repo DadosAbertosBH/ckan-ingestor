@@ -11,6 +11,6 @@ _old/ingestor/.env
 .tmp_dagster*
 /.idea/workspace.xml
 
-# ckan_orchestrator frontend
-ckan_orchestrator/frontend/node_modules/
-ckan_orchestrator/frontend/dist/
+# ingestor_orchestrator frontend
+ingestor_orchestrator/frontend/node_modules/
+ingestor_orchestrator/frontend/dist/

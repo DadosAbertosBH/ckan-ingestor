@@ -6,7 +6,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/bin/uv
 
 # Copy only dependency manifests first — layers stay cached when code changes
 COPY pyproject.toml README.md /app/ckan_ingestor-project/
-COPY ckan_orchestrator/backend/pyproject.toml /app/backend/
+COPY ingestor_orchestrator/backend/pyproject.toml /app/backend/
 
 # Create placeholder packages so `uv pip install` can resolve local deps without source
 RUN mkdir -p /app/ckan_ingestor-project/ckan_ingestor && \
@@ -22,7 +22,7 @@ RUN uv pip install --system /app/ckan_ingestor-project/ && \
 
 # Now copy the actual source code (fast, only this layer is rebuilt on code changes)
 COPY ckan_ingestor/ /app/ckan_ingestor-project/ckan_ingestor/
-COPY ckan_orchestrator/backend/ /app/backend/
+COPY ingestor_orchestrator/backend/ /app/backend/
 
 # Ensure the real source is used, not the stale placeholder from pip install
 ENV PYTHONPATH=/app/backend:/app/ckan_ingestor-project

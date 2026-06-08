@@ -1,0 +1,40 @@
+{{- if .Values.worker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ingestor-orchestrator.fullname" . }}-worker
+  labels:
+    {{- include "ingestor-orchestrator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ingestor-orchestrator.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "ingestor-orchestrator.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker
+          image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "worker") }}
+          imagePullPolicy: {{ .Values.worker.image.pullPolicy | default .Values.global.image.pullPolicy }}
+          command: ["python", "-m", "ckan_orchestrator.worker.consumer"]
+          env:
+            - name: WORKER_CONCURRENCY
+              value: {{ .Values.worker.concurrency | quote }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "ingestor-orchestrator.fullname" . }}
+            - secretRef:
+                name: {{ include "ingestor-orchestrator.secretName" . }}
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+{{- end }}
