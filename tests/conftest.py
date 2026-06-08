@@ -1,6 +1,7 @@
 # Pedalin
 # Copyright (C) 2025  Pedalin
 import json
+
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -23,14 +24,14 @@ import pyarrow
 import pytest
 from flask import Flask, request, send_from_directory
 from flask_cors import CORS
-from testcontainers.minio import MinioContainer
-from testcontainers.redis import RedisContainer
 from testcontainers.core.wait_strategies import HttpWaitStrategy
+from testcontainers.minio import MinioContainer
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 from ckan_ingestor.duckdb_connection_factory import from_settings
 
 INVALID_INPUT_JSON_ID = "e3bce367-2e62-41c2-840f-b1df6255e7e5"
+
 
 @pytest.fixture(scope="session")
 def ckman_mock_url():
@@ -50,7 +51,7 @@ def ckman_mock_url():
             return {"fields": [{"id": "_id", "type": "int"}], "records": []}
 
         module_directory = os.path.dirname(os.path.abspath(__file__))
-        file_name =  f"{resource_id}.{format_param.lower()}"
+        file_name = f"{resource_id}.{format_param.lower()}"
         file_dir = os.path.join(module_directory, "fixtures", "data")
         return send_from_directory(file_dir, file_name)
 
@@ -60,6 +61,7 @@ def ckman_mock_url():
     thread.start()
 
     yield "http://localhost:5001"
+
 
 @pytest.fixture(scope="session")
 def minio_url(request) -> str:
@@ -72,10 +74,7 @@ def minio_url(request) -> str:
     minio.with_env("MINIO_CONSOLE_ADDRESS", ":9001")
     minio.with_exposed_ports(9000, 9001)
     # Espera estruturada: healthcheck HTTP no serviço do MinIO
-    minio.waiting_for(
-        HttpWaitStrategy(9000, "/minio/health/live")
-        .for_status_code(200)
-    )
+    minio.waiting_for(HttpWaitStrategy(9000, "/minio/health/live").for_status_code(200))
     minio.start()
     host_ip = minio.get_container_host_ip()
     exposed_port = minio.get_exposed_port(minio.port)
@@ -109,19 +108,6 @@ def minio_url(request) -> str:
 
     return f"{host_ip}:{exposed_port}"
 
-@pytest.fixture(scope="session")
-def redis_client(request):
-    # ...existing code from infrastructure.py...
-    container = RedisContainer()
-    container.start()
-    client = container.get_client()
-
-    def remove_container():
-        # minio.stop()
-        pass
-
-    request.addfinalizer(remove_container)
-    return client
 
 @pytest.fixture
 def ducklake_settings(minio_url) -> DucklakeSettings:
@@ -133,6 +119,7 @@ def ducklake_settings(minio_url) -> DucklakeSettings:
     os.environ["DUCKLAKE_DATA_PATH__USE_SSL"] = "false"
     return DucklakeSettings()
 
+
 @pytest.fixture
 def in_memory_duckdb_conn(
     ducklake_settings: DucklakeSettings,
@@ -140,14 +127,17 @@ def in_memory_duckdb_conn(
     # ...existing code from infrastructure.py...
     return from_settings(ducklake_settings)
 
+
 def read_json(filename: str) -> pyarrow.Table:
     """
     Returns the directory of the current module.
     """
     module_directory = os.path.dirname(os.path.abspath(__file__))
-    with open(os.path.join(module_directory, "fixtures" ,filename)) as f:
+    with open(os.path.join(module_directory, "fixtures", filename)) as f:
         with duckdb.connect(":memory:") as conn:
-            return conn.execute(f"select * from read_json('{f.name}')").arrow().read_all()
+            return (
+                conn.execute(f"select * from read_json('{f.name}')").arrow().read_all()
+            )
 
 
 @pytest.fixture
@@ -187,12 +177,16 @@ def dataset_with_pdf() -> pyarrow.Table:
 @pytest.fixture
 def latin_encoded_csv_file() -> str:
     module_directory = os.path.dirname(os.path.abspath(__file__))
-    with open(os.path.join(module_directory, "fixtures/data/csv_with_latin_encode.csv")) as f:
+    with open(
+        os.path.join(module_directory, "fixtures/data/csv_with_latin_encode.csv")
+    ) as f:
         return f.name
 
 
 @pytest.fixture
 def non_latin1_and_non_utf8() -> str:
     module_directory = os.path.dirname(os.path.abspath(__file__))
-    with open(os.path.join(module_directory, "fixtures/data/non_latin1_and_non_utf8.csv")) as f:
+    with open(
+        os.path.join(module_directory, "fixtures/data/non_latin1_and_non_utf8.csv")
+    ) as f:
         return f.name

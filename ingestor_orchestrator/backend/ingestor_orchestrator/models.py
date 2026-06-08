@@ -18,7 +18,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ckan_orchestrator.db import Base
+from ingestor_orchestrator.db import Base
 
 
 class JobStatus(str, Enum):

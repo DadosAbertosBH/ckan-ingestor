@@ -63,7 +63,7 @@ worker:
 # -- Scheduler configuration (runs as a CronJob)
 scheduler:
   enabled: true
-  schedule: "0 */8 * * *"  # Every 8 hours
+  schedule: "0 */8 * * *" # Every 8 hours
   image:
     registry: ""
     repository: ingestor-orchestrator
@@ -77,18 +77,34 @@ scheduler:
       cpu: 500m
       memory: 512Mi
 
-# -- NATS configuration (external, not deployed by this chart)
+# -- NATS configuration (deployed by this chart)
 nats:
-  url: "nats://nats:4222"
+  enabled: true
+  image:
+    repository: nats
+    tag: 2.10-alpine
+    pullPolicy: IfNotPresent
   stream: "CKAN_INGEST"
   subject: "ckan.ingest.resource"
+  # -- Persistence for JetStream data
+  persistence:
+    enabled: true
+    size: 8Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
 
 # -- MySQL configuration (external, not deployed by this chart)
 mysql:
   host: "mysql"
   port: 3306
   user: "root"
-  database: "ckan_orchestrator"
+  database: "ingestor_orchestrator"
   # password is provided via secret
 
 # -- CKAN portal configuration

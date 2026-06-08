@@ -11,8 +11,8 @@ COPY ingestor_orchestrator/backend/pyproject.toml /app/backend/
 # Create placeholder packages so `uv pip install` can resolve local deps without source
 RUN mkdir -p /app/ckan_ingestor-project/ckan_ingestor && \
     touch /app/ckan_ingestor-project/ckan_ingestor/__init__.py && \
-    mkdir -p /app/backend/ckan_orchestrator && \
-    touch /app/backend/ckan_orchestrator/__init__.py && \
+    mkdir -p /app/backend/ingestor_orchestrator && \
+    touch /app/backend/ingestor_orchestrator/__init__.py && \
     mkdir -p /app/backend/alembic && \
     touch /app/backend/alembic/__init__.py
 
@@ -29,4 +29,4 @@ ENV PYTHONPATH=/app/backend:/app/ckan_ingestor-project
 
 EXPOSE 8000
 
-CMD ["uvicorn", "ckan_orchestrator.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "ingestor_orchestrator.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -12,8 +12,8 @@ import datetime
 import json
 
 import pytest
-from ckan_orchestrator.json_utils import sanitize_json_preview
-from ckan_orchestrator.models import CkanDataJobResult
+from ingestor_orchestrator.json_utils import sanitize_json_preview
+from ingestor_orchestrator.models import CkanDataJobResult
 
 
 def _make_preview_with_datetimes():

@@ -3,14 +3,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="CKAN_ORCH_")
+    model_config = SettingsConfigDict(env_prefix="INGEST_ORCH_")
 
     # MySQL
     mysql_host: str = "localhost"
     mysql_port: int = 3306
     mysql_user: str = "root"
     mysql_password: str = ""
-    mysql_database: str = "ckan_orchestrator"
+    mysql_database: str = "ingestor_orchestrator"
 
     # NATS
     nats_url: str = "nats://localhost:4222"

@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ckan_orchestrator.db import get_db
-from ckan_orchestrator.models import CkanDataJob, JobStatus
-from ckan_orchestrator.schemas import JobCreate, JobListResponse, JobResponse
-from ckan_orchestrator.services.job_service import JobService
+from ingestor_orchestrator.db import get_db
+from ingestor_orchestrator.models import CkanDataJob, JobStatus
+from ingestor_orchestrator.schemas import JobCreate, JobListResponse, JobResponse
+from ingestor_orchestrator.services.job_service import JobService
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 

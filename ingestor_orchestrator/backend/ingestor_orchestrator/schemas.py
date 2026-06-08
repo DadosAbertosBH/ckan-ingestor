@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from ckan_orchestrator.models import JobStatus
+from ingestor_orchestrator.models import JobStatus
 
 
 class JobCreate(BaseModel):

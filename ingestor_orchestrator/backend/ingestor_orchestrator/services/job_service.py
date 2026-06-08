@@ -8,10 +8,10 @@ import nats as nats_lib
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ckan_orchestrator.config import settings
-from ckan_orchestrator.json_utils import sanitize_json_preview
-from ckan_orchestrator.models import CkanDataJob, CkanDataJobResult, JobStatus
-from ckan_orchestrator.schemas import JobCreate
+from ingestor_orchestrator.config import settings
+from ingestor_orchestrator.json_utils import sanitize_json_preview
+from ingestor_orchestrator.models import CkanDataJob, CkanDataJobResult, JobStatus
+from ingestor_orchestrator.schemas import JobCreate
 
 logger = logging.getLogger(__name__)
 

@@ -1,5 +1,5 @@
 [project]
-name = "ckan-orchestrator"
+name = "ingestor-orchestrator"
 version = "0.1.0"
 description = "Lightweight CKAN data pipeline orchestrator replacing Dagster"
 requires-python = ">=3.11"
@@ -18,10 +18,13 @@ dependencies = [
 ]
 
 [project.scripts]
-orchestrator-api = "ckan_orchestrator.main:run"
-orchestrator-worker = "ckan_orchestrator.worker.consumer:run_standalone"
-orchestrator-scheduler = "ckan_orchestrator.services.scheduler:run_standalone"
-orchestrator-sync-metadata = "ckan_orchestrator.services.metadata_sync:run_standalone"
+orchestrator-api = "ingestor_orchestrator.main:run"
+orchestrator-worker = "ingestor_orchestrator.worker.consumer:run_standalone"
+orchestrator-scheduler = "ingestor_orchestrator.services.scheduler:run_standalone"
+orchestrator-sync-metadata = "ingestor_orchestrator.services.metadata_sync:run_standalone"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ingestor_orchestrator"]
 
 [build-system]
 requires = ["hatchling"]

@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi import APIRouter
 
-from ckan_orchestrator.services.metadata_sync import sync_metadata
+from ingestor_orchestrator.services.metadata_sync import sync_metadata
 
 router = APIRouter(prefix="/api/metadata", tags=["metadata"])
 

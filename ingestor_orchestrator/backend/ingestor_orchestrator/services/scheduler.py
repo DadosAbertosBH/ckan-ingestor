@@ -2,10 +2,10 @@ import asyncio
 import logging
 import signal
 
-from ckan_orchestrator.config import settings
-from ckan_orchestrator.db import async_session
-from ckan_orchestrator.schemas import JobCreate
-from ckan_orchestrator.services.job_service import JobService
+from ingestor_orchestrator.config import settings
+from ingestor_orchestrator.db import async_session
+from ingestor_orchestrator.schemas import JobCreate
+from ingestor_orchestrator.services.job_service import JobService
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class Scheduler:
     async def _sync_and_enqueue(self):
         """Sync CKAN metadata, then enqueue outdated resources."""
         logger.info("Syncing CKAN metadata...")
-        from ckan_orchestrator.services.metadata_sync import sync_metadata
+        from ingestor_orchestrator.services.metadata_sync import sync_metadata
 
         result = await asyncio.to_thread(sync_metadata)
         logger.info(

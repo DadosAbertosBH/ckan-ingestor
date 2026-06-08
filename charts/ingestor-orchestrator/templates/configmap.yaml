@@ -5,15 +5,15 @@ metadata:
   labels:
     {{- include "ingestor-orchestrator.labels" . | nindent 4 }}
 data:
-  CKAN_ORCH_MYSQL_HOST: {{ .Values.mysql.host | quote }}
-  CKAN_ORCH_MYSQL_PORT: {{ .Values.mysql.port | quote }}
-  CKAN_ORCH_MYSQL_USER: {{ .Values.mysql.user | quote }}
-  CKAN_ORCH_MYSQL_DATABASE: {{ .Values.mysql.database | quote }}
-  CKAN_ORCH_NATS_URL: {{ .Values.nats.url | quote }}
-  CKAN_ORCH_NATS_STREAM: {{ .Values.nats.stream | quote }}
-  CKAN_ORCH_NATS_SUBJECT: {{ .Values.nats.subject | quote }}
-  CKAN_ORCH_CKAN_URL: {{ .Values.ckan.url | quote }}
-  CKAN_ORCH_DEBUG: {{ .Values.debug | quote }}
+  INGEST_ORCH_MYSQL_HOST: {{ .Values.mysql.host | quote }}
+  INGEST_ORCH_MYSQL_PORT: {{ .Values.mysql.port | quote }}
+  INGEST_ORCH_MYSQL_USER: {{ .Values.mysql.user | quote }}
+  INGEST_ORCH_MYSQL_DATABASE: {{ .Values.mysql.database | quote }}
+  INGEST_ORCH_NATS_URL: {{ printf "nats://%s-nats:4222" .Release.Name | quote }}
+  INGEST_ORCH_NATS_STREAM: {{ .Values.nats.stream | quote }}
+  INGEST_ORCH_NATS_SUBJECT: {{ .Values.nats.subject | quote }}
+  INGEST_ORCH_CKAN_URL: {{ .Values.ckan.url | quote }}
+  INGEST_ORCH_DEBUG: {{ .Values.debug | quote }}
   {{- if .Values.ducklake.dataPath.endpoint }}
   DUCKLAKE_DATA_PATH__ENDPOINT: {{ .Values.ducklake.dataPath.endpoint | quote }}
   {{- end }}

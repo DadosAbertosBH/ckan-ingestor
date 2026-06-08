@@ -68,7 +68,7 @@ uv pip install -e .
 ```bash
 # API
 orchestrator-api
-# ou: uvicorn ckan_orchestrator.main:app --host 0.0.0.0 --port 8000
+# ou: uvicorn ingestor_orchestrator.main:app --host 0.0.0.0 --port 8000
 
 # Worker
 orchestrator-worker
@@ -135,20 +135,20 @@ Cada job usa `resource_id` como chave de idempotência:
 
 ## Configuração
 
-Todas as variáveis de ambiente usam o prefixo `CKAN_ORCH_`.
+Todas as variáveis de ambiente usam o prefixo `INGEST_ORCH_`.
 
 | Variável | Padrão | Descrição |
 |---|---|---|
-| `CKAN_ORCH_MYSQL_HOST` | `localhost` | Host do MySQL |
-| `CKAN_ORCH_MYSQL_PORT` | `3306` | Porta do MySQL |
-| `CKAN_ORCH_MYSQL_USER` | `root` | Usuário do MySQL |
-| `CKAN_ORCH_MYSQL_PASSWORD` | (vazio) | Senha do MySQL |
-| `CKAN_ORCH_MYSQL_DATABASE` | `ckan_orchestrator` | Database do MySQL |
-| `CKAN_ORCH_NATS_URL` | `nats://localhost:4222` | URL do NATS |
-| `CKAN_ORCH_NATS_STREAM` | `CKAN_INGEST` | Nome do stream JetStream |
-| `CKAN_ORCH_NATS_SUBJECT` | `ckan.ingest.resource` | Subject NATS para publicar jobs |
-| `CKAN_ORCH_CKAN_URL` | `https://dados.pbh.gov.br/` | URL do portal CKAN |
-| `CKAN_ORCH_SCHEDULER_INTERVAL_MINUTES` | `480` | Intervalo do scheduler em minutos (padrão: 8h) |
-| `CKAN_ORCH_DEBUG` | `false` | Modo debug |
+| `INGEST_ORCH_MYSQL_HOST` | `localhost` | Host do MySQL |
+| `INGEST_ORCH_MYSQL_PORT` | `3306` | Porta do MySQL |
+| `INGEST_ORCH_MYSQL_USER` | `root` | Usuário do MySQL |
+| `INGEST_ORCH_MYSQL_PASSWORD` | (vazio) | Senha do MySQL |
+| `INGEST_ORCH_MYSQL_DATABASE` | `ingestor_orchestrator` | Database do MySQL |
+| `INGEST_ORCH_NATS_URL` | `nats://localhost:4222` | URL do NATS |
+| `INGEST_ORCH_NATS_STREAM` | `CKAN_INGEST` | Nome do stream JetStream |
+| `INGEST_ORCH_NATS_SUBJECT` | `ckan.ingest.resource` | Subject NATS para publicar jobs |
+| `INGEST_ORCH_CKAN_URL` | `https://dados.pbh.gov.br/` | URL do portal CKAN |
+| `INGEST_ORCH_SCHEDULER_INTERVAL_MINUTES` | `480` | Intervalo do scheduler em minutos (padrão: 8h) |
+| `INGEST_ORCH_DEBUG` | `false` | Modo debug |
 
 Variáveis do `ckan_ingestor` (prefixo `DUCKLAKE_` e `S3_`) também são necessárias para o Worker e Scheduler.

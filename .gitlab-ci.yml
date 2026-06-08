@@ -43,7 +43,6 @@ test:
   rules:
     - changes:
         - "ckan_ingestor/**/*"
-        - "ckan_dagster/**/*"
         - "ingestor_orchestrator/**/*"
 
 build:

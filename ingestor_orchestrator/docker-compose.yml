@@ -4,8 +4,8 @@ services:
     ports:
       - "3306:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: ${CKAN_ORCH_MYSQL_PASSWORD:-ckan_orch_pass}
-      MYSQL_DATABASE: ${CKAN_ORCH_MYSQL_DATABASE:-ckan_orchestrator}
+      MYSQL_ROOT_PASSWORD: ${INGEST_ORCH_MYSQL_PASSWORD:-ckan_orch_pass}
+      MYSQL_DATABASE: ${INGEST_ORCH_MYSQL_DATABASE:-ingestor_orchestrator}
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
@@ -89,7 +89,7 @@ services:
         condition: service_started
     env_file:
       - .env
-    command: uvicorn ckan_orchestrator.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn ingestor_orchestrator.main:app --host 0.0.0.0 --port 8000
     networks:
       - orchestrator_net
 
@@ -106,7 +106,7 @@ services:
       - .env
     environment:
       - WORKER_CONCURRENCY=10
-    command: python -m ckan_orchestrator.worker.consumer
+    command: python -m ingestor_orchestrator.worker.consumer
     networks:
       - orchestrator_net
 

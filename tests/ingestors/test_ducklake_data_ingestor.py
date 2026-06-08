@@ -34,7 +34,6 @@ def ingestor(
     in_memory_duckdb_conn: DuckDBPyConnection,
     ducklake_settings: DucklakeSettings,
     ckman_mock_url,
-    redis_client,
 ) -> DuckdbCkanDataIngestor:
     subject = DuckdbCkanDataIngestor(
         ducklake_conn=in_memory_duckdb_conn,

@@ -26,7 +26,7 @@ spec:
         - name: worker
           image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "worker") }}
           imagePullPolicy: {{ .Values.worker.image.pullPolicy | default .Values.global.image.pullPolicy }}
-          command: ["python", "-m", "ckan_orchestrator.worker.consumer"]
+          command: ["python", "-m", "ingestor_orchestrator.worker.consumer"]
           env:
             - name: WORKER_CONCURRENCY
               value: {{ .Values.worker.concurrency | quote }}

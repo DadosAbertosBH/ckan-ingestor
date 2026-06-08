@@ -1,6 +1,6 @@
 import logging
 
-from ckan_orchestrator.config import settings
+from ingestor_orchestrator.config import settings
 
 logger = logging.getLogger(__name__)
 

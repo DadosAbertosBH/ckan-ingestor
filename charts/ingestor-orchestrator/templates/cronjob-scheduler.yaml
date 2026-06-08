@@ -28,7 +28,7 @@ spec:
             - name: scheduler
               image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "scheduler") }}
               imagePullPolicy: {{ .Values.scheduler.image.pullPolicy | default .Values.global.image.pullPolicy }}
-              command: ["python", "-m", "ckan_orchestrator.services.scheduler"]
+              command: ["python", "-m", "ingestor_orchestrator.services.scheduler"]
               envFrom:
                 - configMapRef:
                     name: {{ include "ingestor-orchestrator.fullname" . }}

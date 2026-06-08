@@ -7,10 +7,10 @@ import nats as nats_lib
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from ckan_orchestrator.api import dashboard, jobs, metadata
-from ckan_orchestrator.config import settings
-from ckan_orchestrator.db import init_db
-from ckan_orchestrator.services.scheduler import Scheduler
+from ingestor_orchestrator.api import dashboard, jobs, metadata
+from ingestor_orchestrator.config import settings
+from ingestor_orchestrator.db import init_db
+from ingestor_orchestrator.services.scheduler import Scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ def run():
     import uvicorn
 
     uvicorn.run(
-        "ckan_orchestrator.main:app",
+        "ingestor_orchestrator.main:app",
         host="0.0.0.0",
         port=8000,
         reload=settings.debug,

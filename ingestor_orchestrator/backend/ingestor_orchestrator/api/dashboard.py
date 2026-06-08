@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ckan_orchestrator.db import get_db
-from ckan_orchestrator.models import CkanDataJob, JobStatus
-from ckan_orchestrator.schemas import DashboardStats
+from ingestor_orchestrator.db import get_db
+from ingestor_orchestrator.models import CkanDataJob, JobStatus
+from ingestor_orchestrator.schemas import DashboardStats
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
