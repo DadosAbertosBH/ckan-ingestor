@@ -1,6 +1,7 @@
 image: docker
 
 stages:
+  - lint
   - test
   - build
   - deploy
@@ -17,6 +18,25 @@ variables:
   DOCKER_TLS_CERTDIR: ""
   # Improve performance with overlayfs.
   DOCKER_DRIVER: overlay2
+
+license-check:
+  stage: lint
+  image: alpine:latest
+  script:
+    - |
+      missing=0
+      for f in $(find . -name '*.py' -not -path './.venv/*' -not -path '*/site-packages/*' -not -path '*/.venv/*'); do
+        if ! grep -q 'GNU AFFERO' "$f"; then
+          echo "MISSING LICENSE HEADER: $f"
+          missing=1
+        fi
+      done
+      if [ "$missing" -eq 1 ]; then
+        echo ""
+        echo "Run ./add_license.sh to add missing headers."
+        exit 1
+      fi
+      echo "All files have AGPL license headers."
 
 test:
   stage: test
