@@ -18,11 +18,15 @@ export function jobDuration(job: Job, now: Date = new Date()): Duration | null {
   if (!job.started_at) return null;
 
   const start = parseAsUTC(job.started_at).getTime();
-  const end = job.completed_at
-    ? parseAsUTC(job.completed_at).getTime()
-    : now.getTime();
+  // Only use completed_at if the job is actually finished — a stale
+  // completed_at from a previous run must be ignored for active jobs.
+  const isFinished = job.status === "completed" || job.status === "failed";
+  const end =
+    isFinished && job.completed_at
+      ? parseAsUTC(job.completed_at).getTime()
+      : now.getTime();
 
-  return { ms: end - start, finished: job.completed_at != null };
+  return { ms: Math.max(0, end - start), finished: isFinished };
 }
 
 export function formatDuration(ms: number): string {

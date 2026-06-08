@@ -85,6 +85,7 @@ class JobService:
 
         job.status = JobStatus.PROCESSING
         job.started_at = datetime.now(timezone.utc)
+        job.completed_at = None
         job.updated_at = datetime.now(timezone.utc)
         await self.db.commit()
 
