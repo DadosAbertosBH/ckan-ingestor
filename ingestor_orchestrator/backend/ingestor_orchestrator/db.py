@@ -14,7 +14,11 @@ class Base(DeclarativeBase):
 
 
 async def get_db() -> AsyncSession:
-    """FastAPI dependency that yields a database session."""
+    """FastAPI dependency that yields a database session.
+
+    Schema migrations are handled via init container (alembic upgrade head)
+    in the Helm chart, not at application startup.
+    """
     async with async_session() as session:
         try:
             yield session
