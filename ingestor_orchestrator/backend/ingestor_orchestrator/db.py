@@ -3,6 +3,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 from ingestor_orchestrator.config import settings
 
+# Database engine configured from INGEST_ORCH_ env vars (see config.py)
 engine = create_async_engine(
     settings.database_url, echo=settings.debug, pool_pre_ping=True
 )

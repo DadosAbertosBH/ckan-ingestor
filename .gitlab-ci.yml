@@ -37,7 +37,7 @@ test:
         - $UV_CACHE_DIR
   script:
     - uv sync
-    - uv sync --directory ingestor_orchestrator/backend
+    - uv pip install -e "ingestor_orchestrator/backend"
     - uv run ruff check
     - uv run pytest
     - uv cache prune --ci
