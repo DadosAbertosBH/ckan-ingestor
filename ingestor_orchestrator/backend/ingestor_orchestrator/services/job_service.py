@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import traceback
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 
 import nats as nats_lib
 from sqlalchemy import select

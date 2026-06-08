@@ -28,6 +28,17 @@ spec:
           - name: net.ipv4.ip_unprivileged_port_start
             value: "0"
         {{- end }}
+      initContainers:
+        - name: alembic-migrate
+          image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "api") }}
+          imagePullPolicy: {{ .Values.api.image.pullPolicy | default .Values.global.image.pullPolicy }}
+          command:
+            ["alembic", "-c", "/app/backend/alembic.ini", "upgrade", "head"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "ingestor-orchestrator.fullname" . }}
+            - secretRef:
+                name: {{ include "ingestor-orchestrator.secretName" . }}
       containers:
         - name: api
           image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "api") }}

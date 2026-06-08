@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 from contextlib import asynccontextmanager
 
@@ -9,7 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ingestor_orchestrator.api import dashboard, jobs, metadata
 from ingestor_orchestrator.config import settings
-from ingestor_orchestrator.db import init_db
 from ingestor_orchestrator.services.scheduler import Scheduler
 
 logger = logging.getLogger(__name__)
@@ -18,8 +16,8 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    await init_db()
-    logger.info("Database tables ready")
+    # Database migrations run via init container (alembic upgrade head)
+    logger.info("Starting API server")
 
     nc = await nats_lib.connect(settings.nats_url)
     js = nc.jetstream()

@@ -7,7 +7,6 @@ Create Date: 2025-01-01 00:00:00.000000
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import mysql
 
 revision = "001"
 down_revision = None

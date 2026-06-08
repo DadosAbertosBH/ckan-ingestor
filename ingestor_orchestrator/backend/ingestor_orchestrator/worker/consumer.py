@@ -7,10 +7,10 @@ import signal
 import nats as nats_lib
 
 from ingestor_orchestrator.config import settings
-
-WORKER_CONCURRENCY = int(os.environ.get("WORKER_CONCURRENCY", "4"))
 from ingestor_orchestrator.db import async_session
 from ingestor_orchestrator.services.job_service import JobService
+
+WORKER_CONCURRENCY = int(os.environ.get("WORKER_CONCURRENCY", "4"))
 
 logger = logging.getLogger(__name__)
 
