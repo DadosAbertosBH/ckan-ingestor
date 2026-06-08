@@ -26,7 +26,7 @@ license-check:
     - |
       missing=0
       for f in $(find . -name '*.py' -not -path './.venv/*' -not -path '*/site-packages/*' -not -path '*/.venv/*'); do
-        if ! grep -q 'GNU AFFERO' "$f"; then
+        if ! grep -qi 'GNU AFFERO' "$f"; then
           echo "MISSING LICENSE HEADER: $f"
           missing=1
         fi
