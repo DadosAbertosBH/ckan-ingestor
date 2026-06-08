@@ -24,7 +24,7 @@ test:
   variables:
     UV_VERSION: "0.5"
     UV_CACHE_DIR: .uv-cache
-    PYTHON_VERSION: "3.12"
+    PYTHON_VERSION: "3.13"
     BASE_LAYER: bookworm-slim
     # GitLab CI creates a separate mountpoint for the build directory,
     # so we need to copy instead of using hard links.

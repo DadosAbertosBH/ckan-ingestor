@@ -2,7 +2,7 @@
 name = "ingestor-orchestrator"
 version = "0.1.0"
 description = "Lightweight CKAN data pipeline orchestrator replacing Dagster"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 license = "AGPL-3.0"
 dependencies = [
     "ckan-ingestor",

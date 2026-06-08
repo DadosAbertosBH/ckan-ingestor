@@ -3,7 +3,7 @@ name = "ckan-ingestor"
 version = "0.1.0"
 description = "Core CKAN data ingestion library"
 authors = [{ name = "guilhermecastro", email = "guilherme.castro@protonmail.com" }]
-requires-python = ">=3.11.9,<3.13"
+requires-python = ">=3.13"
 readme = "README.md"
 dependencies = [
     "pyarrow>=18.0.0,<19",
