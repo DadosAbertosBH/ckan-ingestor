@@ -1,0 +1,136 @@
+services:
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${CKAN_ORCH_MYSQL_PASSWORD:-ckan_orch_pass}
+      MYSQL_DATABASE: ${CKAN_ORCH_MYSQL_DATABASE:-ckan_orchestrator}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - orchestrator_net
+
+  nats:
+    image: nats:2.10-alpine
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: --jetstream --store_dir /data
+    volumes:
+      - nats_data:/data
+    networks:
+      - orchestrator_net
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-08-03T04-33-23Z
+    ports:
+      - "9100:9000"
+      - "9101:9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password
+      MINIO_ADDRESS: ":9000"
+      MINIO_CONSOLE_ADDRESS: ":9001"
+    command: server /data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 2s
+      retries: 15
+    networks:
+      - orchestrator_net
+
+  minio-setup:
+    image: quay.io/minio/minio:RELEASE.2024-08-03T04-33-23Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc config host add minio http://minio:9000 admin password;
+      /usr/bin/mc mb --ignore-existing minio/warehouse/;
+      /usr/bin/mc policy set public minio/warehouse/;
+      "
+    networks:
+      - orchestrator_net
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ducklake_catalog
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 10s
+      retries: 5
+    networks:
+      - orchestrator_net
+
+  api:
+    build:
+      context: ..
+      dockerfile: ckan_orchestrator/Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    env_file:
+      - .env
+    command: uvicorn ckan_orchestrator.main:app --host 0.0.0.0 --port 8000
+    networks:
+      - orchestrator_net
+
+  worker:
+    build:
+      context: ..
+      dockerfile: ckan_orchestrator/Dockerfile
+    depends_on:
+      mysql:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      - WORKER_CONCURRENCY=20
+    command: python -m ckan_orchestrator.worker.consumer
+    networks:
+      - orchestrator_net
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    environment:
+      - VITE_API_URL=http://api:8000
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    networks:
+      - orchestrator_net
+
+volumes:
+  mysql_data:
+  nats_data:
+  frontend_node_modules:
+
+networks:
+  orchestrator_net:
+    driver: bridge
