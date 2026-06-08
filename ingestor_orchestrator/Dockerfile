@@ -1,3 +1,4 @@
+# Orchestrator image — API, worker, and scheduler
 FROM python:3.13-slim
 
 WORKDIR /app
