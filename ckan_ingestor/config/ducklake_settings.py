@@ -13,6 +13,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+from pydantic import Field
 from pydantic_settings import (
     BaseSettings,
     SettingsConfigDict,
@@ -28,4 +29,8 @@ class DucklakeSettings(BaseSettings):
     catalog_uri: str = ":memory:"  # "postgres:dbname=ducklake_catalog host=localhost"
     data_path: S3Settings = S3Settings()
 
-    datastore_url: str = "https://dados.pbh.gov.br/datastore/dump"
+    ckan_url: str = Field(default="https://dados.pbh.gov.br", alias="CKAN_URL")
+
+    @property
+    def datastore_url(self) -> str:
+        return f"{self.ckan_url.rstrip('/')}/datastore/dump"

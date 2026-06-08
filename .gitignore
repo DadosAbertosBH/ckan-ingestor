@@ -10,3 +10,7 @@ _old/ingestor/.env
 *.wal
 .tmp_dagster*
 /.idea/workspace.xml
+
+# ckan_orchestrator frontend
+ckan_orchestrator/frontend/node_modules/
+ckan_orchestrator/frontend/dist/
