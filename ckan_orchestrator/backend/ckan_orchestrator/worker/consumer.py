@@ -35,24 +35,31 @@ class Worker:
         except Exception:
             pass  # Stream already exists
 
-        # Push subscriber — NATS delivers messages individually via callback.
-        # Each message is acked/nacked independently, so a stuck job won't block others.
-        await js.subscribe(
+        # Pull consumer — gives us full control over dispatch and flow.
+        # We fetch batches and dispatch each message as a background task.
+        # The semaphore limits concurrency without blocking the fetch loop.
+        psub = await js.pull_subscribe(
             subject=settings.nats_subject,
-            queue="ckan-workers",
             durable="ckan-worker",
             stream=settings.nats_stream,
-            cb=self._on_message,
-            manual_ack=True,
         )
 
-        logger.info("Worker started, waiting for messages...")
+        logger.info(
+            f"Worker started (pull, concurrency={WORKER_CONCURRENCY}), waiting for messages..."
+        )
 
-        # Keep the event loop alive until stopped
         while self._running:
-            await asyncio.sleep(1)
+            try:
+                msgs = await psub.fetch(batch=WORKER_CONCURRENCY, timeout=5)
+                for msg in msgs:
+                    asyncio.create_task(self._process(msg))
+            except nats_lib.errors.TimeoutError:
+                continue
+            except Exception as e:
+                logger.error(f"Fetch error: {e}")
+                await asyncio.sleep(1)
 
-    async def _on_message(self, msg):
+    async def _process(self, msg):
         async with self._semaphore:
             await self._handle_message(msg)
 
@@ -103,3 +110,5 @@ def run_standalone():
 
 if __name__ == "__main__":
     run_standalone()
+# cache test
+# cache test

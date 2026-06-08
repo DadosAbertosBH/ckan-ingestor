@@ -105,7 +105,7 @@ services:
     env_file:
       - .env
     environment:
-      - WORKER_CONCURRENCY=20
+      - WORKER_CONCURRENCY=10
     command: python -m ckan_orchestrator.worker.consumer
     networks:
       - orchestrator_net

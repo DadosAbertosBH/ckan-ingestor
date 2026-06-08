@@ -28,9 +28,13 @@ class DuckDbCsvReader:
     def read(self, url: str) -> pyarrow.Table:
         for encoding in ["utf-8", "latin-1", "utf-16"]:
             try:
-                return self.conn.execute(
-                    f"SELECT * FROM read_csv('{url}', sample_size=-1, encoding='{encoding}')"
-                ).arrow().read_all()
+                return (
+                    self.conn.execute(
+                        f"SELECT * FROM read_csv('{url}', sample_size=100000, encoding='{encoding}')"
+                    )
+                    .arrow()
+                    .read_all()
+                )
             except duckdb.InvalidInputException:
                 pass
 

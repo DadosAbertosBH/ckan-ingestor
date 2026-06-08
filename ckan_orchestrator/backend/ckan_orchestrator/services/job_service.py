@@ -107,8 +107,8 @@ class JobService:
             result = CkanDataJobResult(
                 job_id=job.id,
                 success=False,
-                error_message=str(e),
-                error_trace=error_trace,
+                error_message=str(e)[:16_000],
+                error_trace=error_trace[:16_000],
             )
             self.db.add(result)
             job.status = JobStatus.FAILED

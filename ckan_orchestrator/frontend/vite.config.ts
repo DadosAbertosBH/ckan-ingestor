@@ -10,7 +10,7 @@ export default defineConfig({
     },
   },
   server: {
-    allowedHosts: [".orb.local"],
+    allowedHosts: [".orb.local", ".ckan-orchestrator.orb.local"],
     proxy: {
       "/api": {
         target: process.env.VITE_API_URL || "http://localhost:8000",
