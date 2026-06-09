@@ -144,6 +144,34 @@ describe("useApi — success cases", () => {
       }),
     });
   });
+
+  it("syncMetadata calls POST with instance_id", async () => {
+    const result = {
+      instance_id: "inst-1",
+      dataset_count: 5,
+      resource_count: 20,
+    };
+    const fn = mockFetch({ ok: true, body: result });
+
+    const { syncMetadata } = useApi();
+    const data = await syncMetadata("inst-1");
+    expect(data).toEqual(result);
+    expect(fn).toHaveBeenCalledWith("/api/metadata/sync?instance_id=inst-1", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+
+  it("syncMetadata calls POST without instance_id to sync all", async () => {
+    const fn = mockFetch({ ok: true, body: [] });
+
+    const { syncMetadata } = useApi();
+    await syncMetadata();
+    expect(fn).toHaveBeenCalledWith("/api/metadata/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+  });
 });
 
 describe("useApi — error handling", () => {

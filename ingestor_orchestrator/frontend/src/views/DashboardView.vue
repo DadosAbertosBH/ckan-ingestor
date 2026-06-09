@@ -7,7 +7,9 @@
                 v-for="s in instanceStats"
                 :key="s.instance.id"
                 :stats="s"
+                :syncing="syncingInstanceId === s.instance.id"
                 @click="goToInstanceJobs(s.instance.id)"
+                @sync="handleSync(s.instance.id)"
             />
         </div>
 
@@ -65,13 +67,14 @@ import { useApi } from "@/composables/useApi";
 import type { InstanceStats, Job } from "@/types";
 
 const router = useRouter();
-const { fetchInstanceStats, fetchJobs } = useApi();
+const { fetchInstanceStats, fetchJobs, syncMetadata } = useApi();
 
 const instanceStats = ref<InstanceStats[]>([]);
 const recentJobs = ref<Job[]>([]);
 const loading = ref(true);
 const statsError = ref<string | null>(null);
 const jobsError = ref<string | null>(null);
+const syncingInstanceId = ref<string | null>(null);
 let interval: ReturnType<typeof setInterval> | null = null;
 
 async function loadInstanceStats() {
@@ -104,6 +107,18 @@ function goToJob(id: string) {
 
 function goToInstanceJobs(instanceId: string) {
     router.push({ name: "jobs", query: { instance_id: instanceId } });
+}
+
+async function handleSync(instanceId: string) {
+    syncingInstanceId.value = instanceId;
+    try {
+        await syncMetadata(instanceId);
+        await loadInstanceStats();
+    } catch (e: any) {
+        statsError.value = e.message || "Sync failed";
+    } finally {
+        syncingInstanceId.value = null;
+    }
 }
 
 function formatTime(iso: string): string {

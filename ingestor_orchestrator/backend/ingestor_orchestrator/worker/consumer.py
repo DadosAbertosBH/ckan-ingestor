@@ -68,10 +68,12 @@ class Worker:
                 msgs = await psub.fetch(batch=WORKER_CONCURRENCY, timeout=5)
                 for msg in msgs:
                     asyncio.create_task(self._process(msg))
+            except asyncio.TimeoutError:
+                continue
             except nats_lib.errors.TimeoutError:
                 continue
             except Exception as e:
-                logger.error(f"Fetch error: {e}")
+                logger.error(f"Fetch error: {type(e).__name__}: {e}", exc_info=True)
                 await asyncio.sleep(1)
 
     async def _process(self, msg):
@@ -125,5 +127,3 @@ def run_standalone():
 
 if __name__ == "__main__":
     run_standalone()
-# cache test
-# cache test

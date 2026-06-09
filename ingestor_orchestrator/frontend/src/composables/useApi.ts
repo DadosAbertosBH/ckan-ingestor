@@ -53,6 +53,12 @@ export function useApi() {
     request<Job>(`/jobs/${id}/retry`, { method: "POST" });
   const deleteJob = (id: string) =>
     request<void>(`/jobs/${id}`, { method: "DELETE" });
+  const syncMetadata = (instanceId?: string) => {
+    const qs = instanceId ? `?instance_id=${instanceId}` : "";
+    return request<Record<string, unknown>>(`/metadata/sync${qs}`, {
+      method: "POST",
+    });
+  };
 
   return {
     loading,
@@ -64,5 +70,6 @@ export function useApi() {
     createJob,
     retryJob,
     deleteJob,
+    syncMetadata,
   };
 }

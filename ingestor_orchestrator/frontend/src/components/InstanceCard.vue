@@ -2,28 +2,40 @@
     <div class="instance-card clickable" @click="$emit('click')">
         <div class="card-header">
             <span class="instance-name">{{ stats.instance.name }}</span>
-            <a
-                :href="stats.instance.url"
-                target="_blank"
-                class="instance-link"
-                @click.stop
-                title="Open CKAN instance"
-            >
-                <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
+            <div class="header-actions">
+                <button
+                    class="btn-sync"
+                    :disabled="syncing"
+                    @click.stop="$emit('sync')"
+                    title="Sync metadata"
                 >
-                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                    <polyline points="15 3 21 3 21 9" />
-                    <line x1="10" y1="14" x2="21" y2="3" />
-                </svg>
-            </a>
+                    {{ syncing ? "Syncing…" : "Sync" }}
+                </button>
+                <a
+                    :href="stats.instance.url"
+                    target="_blank"
+                    class="instance-link"
+                    @click.stop
+                    title="Open CKAN instance"
+                >
+                    <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                    >
+                        <path
+                            d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
+                        />
+                        <polyline points="15 3 21 3 21 9" />
+                        <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                </a>
+            </div>
         </div>
 
         <div class="meta-row">
@@ -33,11 +45,15 @@
             </div>
             <div class="meta-item">
                 <span class="meta-label">Datasets</span>
-                <span class="meta-value">{{ stats.instance.dataset_count }}</span>
+                <span class="meta-value">{{
+                    stats.instance.dataset_count
+                }}</span>
             </div>
             <div class="meta-item">
                 <span class="meta-label">Resources</span>
-                <span class="meta-value">{{ stats.instance.resource_count }}</span>
+                <span class="meta-value">{{
+                    stats.instance.resource_count
+                }}</span>
             </div>
         </div>
 
@@ -46,16 +62,28 @@
         <div class="jobs-section">
             <span class="jobs-title">Jobs</span>
             <div class="job-stats">
-                <span class="stat-pill" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">
+                <span
+                    class="stat-pill"
+                    style="background: rgba(245, 158, 11, 0.15); color: #f59e0b"
+                >
                     Pending {{ stats.pending }}
                 </span>
-                <span class="stat-pill" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;">
+                <span
+                    class="stat-pill"
+                    style="background: rgba(59, 130, 246, 0.15); color: #3b82f6"
+                >
                     Processing {{ stats.processing }}
                 </span>
-                <span class="stat-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">
+                <span
+                    class="stat-pill"
+                    style="background: rgba(16, 185, 129, 0.15); color: #10b981"
+                >
                     Completed {{ stats.completed }}
                 </span>
-                <span class="stat-pill" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">
+                <span
+                    class="stat-pill"
+                    style="background: rgba(239, 68, 68, 0.15); color: #ef4444"
+                >
                     Failed {{ stats.failed }}
                 </span>
             </div>
@@ -69,10 +97,12 @@ import type { InstanceStats } from "@/types";
 
 const props = defineProps<{
     stats: InstanceStats;
+    syncing?: boolean;
 }>();
 
 defineEmits<{
     click: [];
+    sync: [];
 }>();
 
 const formattedLastSynced = computed(() => {
@@ -111,6 +141,35 @@ const formattedLastSynced = computed(() => {
     font-size: 18px;
     font-weight: 700;
     color: #f3f4f6;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.btn-sync {
+    background: #3b82f6;
+    color: #fff;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+
+.btn-sync:hover {
+    background: #2563eb;
+}
+
+.btn-sync:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .instance-link {
