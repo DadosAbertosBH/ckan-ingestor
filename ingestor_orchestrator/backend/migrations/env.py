@@ -16,10 +16,15 @@
 import asyncio
 from logging.config import fileConfig
 
-import ingestor_orchestrator.models  # noqa: F401 — register models with Base.metadata
 from alembic import context
 from ingestor_orchestrator.config import settings
 from ingestor_orchestrator.db import Base
+from ingestor_orchestrator.models import (  # noqa: F401 — register with Base.metadata
+    CkanDataJob,
+    CkanDataJobResult,
+    CkanInstance,
+    ResourceMetadataLabel,
+)
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
