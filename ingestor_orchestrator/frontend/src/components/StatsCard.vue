@@ -1,5 +1,9 @@
 <template>
-    <div class="stats-card" :style="{ borderLeftColor: color }">
+    <div
+        class="stats-card clickable"
+        :style="{ borderLeftColor: color }"
+        @click="$emit('click')"
+    >
         <div class="card-title">{{ title }}</div>
         <div class="card-value">{{ value }}</div>
     </div>
@@ -10,6 +14,10 @@ defineProps<{
     title: string;
     value: number;
     color: string;
+}>();
+
+defineEmits<{
+    click: [];
 }>();
 </script>
 
@@ -27,6 +35,10 @@ defineProps<{
 .stats-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.clickable {
+    cursor: pointer;
 }
 
 .card-title {

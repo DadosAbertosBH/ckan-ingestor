@@ -7,21 +7,25 @@
                 title="Pending"
                 :value="stats?.pending ?? 0"
                 color="#f59e0b"
+                @click="goToJobs('pending')"
             />
             <StatsCard
                 title="Processing"
                 :value="stats?.processing ?? 0"
                 color="#3b82f6"
+                @click="goToJobs('processing')"
             />
             <StatsCard
                 title="Completed"
                 :value="stats?.completed ?? 0"
                 color="#10b981"
+                @click="goToJobs('completed')"
             />
             <StatsCard
                 title="Failed"
                 :value="stats?.failed ?? 0"
                 color="#ef4444"
+                @click="goToJobs('failed')"
             />
         </div>
 
@@ -97,6 +101,10 @@ async function loadData() {
 
 function goToJob(id: string) {
     router.push({ name: "job-detail", params: { id } });
+}
+
+function goToJobs(status: string) {
+    router.push({ name: "jobs", query: { status } });
 }
 
 function formatTime(iso: string): string {

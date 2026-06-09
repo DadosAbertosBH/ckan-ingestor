@@ -11,12 +11,16 @@ vi.mock("@/composables/useApi", () => ({
   }),
 }));
 
-function createTestRouter(initialQuery: Record<string, string> = {}) {
+function createTestRouter(_initialQuery: Record<string, string> = {}) {
   return createRouter({
     history: createMemoryHistory(),
     routes: [
       { path: "/jobs", name: "jobs", component: { template: "<div/>" } },
-      { path: "/jobs/:id", name: "job-detail", component: { template: "<div/>" } },
+      {
+        path: "/jobs/:id",
+        name: "job-detail",
+        component: { template: "<div/>" },
+      },
     ],
   });
 }
@@ -44,13 +48,15 @@ describe("JobsView — filter URL persistence", () => {
   });
 
   it("initializes filters from URL query params", async () => {
-    const { wrapper, router } = await mountWithRouter({
+    const { wrapper } = await mountWithRouter({
       status: "failed",
       resource_id: "abc-123",
     });
 
-    const statusSelect = wrapper.find(".filter-select").element as HTMLSelectElement;
-    const resourceIdInput = wrapper.find(".filter-input").element as HTMLInputElement;
+    const statusSelect = wrapper.find(".filter-select")
+      .element as HTMLSelectElement;
+    const resourceIdInput = wrapper.find(".filter-input")
+      .element as HTMLInputElement;
 
     expect(statusSelect.value).toBe("failed");
     expect(resourceIdInput.value).toBe("abc-123");
@@ -59,8 +65,10 @@ describe("JobsView — filter URL persistence", () => {
   it("defaults to empty filters when no query params", async () => {
     const { wrapper } = await mountWithRouter();
 
-    const statusSelect = wrapper.find(".filter-select").element as HTMLSelectElement;
-    const resourceIdInput = wrapper.find(".filter-input").element as HTMLInputElement;
+    const statusSelect = wrapper.find(".filter-select")
+      .element as HTMLSelectElement;
+    const resourceIdInput = wrapper.find(".filter-input")
+      .element as HTMLInputElement;
 
     expect(statusSelect.value).toBe("");
     expect(resourceIdInput.value).toBe("");

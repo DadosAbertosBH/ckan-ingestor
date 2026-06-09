@@ -10,7 +10,8 @@ function mockFetch(response: {
   const fn = vi.fn().mockResolvedValue({
     ok: response.ok,
     status: response.status ?? (response.ok ? 200 : 500),
-    statusText: response.statusText ?? (response.ok ? "OK" : "Internal Server Error"),
+    statusText:
+      response.statusText ?? (response.ok ? "OK" : "Internal Server Error"),
     json: () => Promise.resolve(response.body),
   });
   vi.stubGlobal("fetch", fn);
@@ -107,7 +108,6 @@ describe("useApi — success cases", () => {
     const result = await createJob({
       resource_id: "abc",
       resource_name: "test",
-      dataset_name: "my-dataset",
     });
 
     expect(result).toEqual(job);
@@ -117,7 +117,6 @@ describe("useApi — success cases", () => {
       body: JSON.stringify({
         resource_id: "abc",
         resource_name: "test",
-        dataset_name: "my-dataset",
       }),
     });
   });
@@ -152,7 +151,7 @@ describe("useApi — error handling", () => {
   it("throws on network error (fetch rejects)", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockRejectedValue(new TypeError("Failed to fetch"))
+      vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
     );
 
     const { fetchJobs } = useApi();
@@ -206,7 +205,7 @@ describe("useApi — error handling", () => {
 
     const { deleteJob } = useApi();
     await expect(deleteJob("1")).rejects.toThrow(
-      "Can only delete pending or failed jobs"
+      "Can only delete pending or failed jobs",
     );
   });
 
@@ -228,9 +227,14 @@ describe("useApi — query params", () => {
     const fn = mockFetch({ ok: true, body: [] });
 
     const { fetchJobs } = useApi();
-    await fetchJobs({ status: "failed", resource_id: "abc", limit: 10, offset: 20 });
+    await fetchJobs({
+      status: "failed",
+      resource_id: "abc",
+      limit: 10,
+      offset: 20,
+    });
 
-    const calledUrl = fn.mock.calls[0][0] as string;
+    const calledUrl = fn.mock.calls[0]![0] as string;
     expect(calledUrl).toContain("status=failed");
     expect(calledUrl).toContain("resource_id=abc");
     expect(calledUrl).toContain("limit=10");
@@ -243,7 +247,7 @@ describe("useApi — query params", () => {
     const { fetchJobs } = useApi();
     await fetchJobs({});
 
-    const calledUrl = fn.mock.calls[0][0] as string;
+    const calledUrl = fn.mock.calls[0]![0] as string;
     expect(calledUrl).toBe("/api/jobs/");
   });
 });

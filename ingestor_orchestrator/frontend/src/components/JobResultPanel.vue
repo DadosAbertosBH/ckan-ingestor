@@ -33,7 +33,7 @@
                             <tr>
                                 <th
                                     v-for="key in Object.keys(
-                                        result.dataset_preview[0],
+                                        result.dataset_preview?.[0] ?? {},
                                     )"
                                     :key="key"
                                 >
@@ -48,7 +48,7 @@
                             >
                                 <td
                                     v-for="key in Object.keys(
-                                        result.dataset_preview[0],
+                                        result.dataset_preview?.[0] ?? {},
                                     )"
                                     :key="key"
                                 >

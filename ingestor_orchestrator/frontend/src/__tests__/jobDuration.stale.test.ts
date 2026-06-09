@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { jobDuration, formatDuration } from "@/utils/jobDuration";
+import { jobDuration } from "@/utils/jobDuration";
 import type { Job } from "@/types";
 
 function makeJob(overrides: Partial<Job> = {}): Job {
