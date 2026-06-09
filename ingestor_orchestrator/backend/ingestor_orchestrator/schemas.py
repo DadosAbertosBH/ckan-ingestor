@@ -15,10 +15,35 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from datetime import datetime
 
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel
 
-from ingestor_orchestrator.config import settings
 from ingestor_orchestrator.models import JobStatus
+
+
+class CkanInstanceResponse(BaseModel):
+    id: str
+    name: str
+    url: str
+    last_metadata_synced: datetime | None = None
+    dataset_count: int = 0
+    resource_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class InstanceStats(BaseModel):
+    instance: CkanInstanceResponse
+    pending: int = 0
+    processing: int = 0
+    completed: int = 0
+    failed: int = 0
+
+
+class InstanceCreate(BaseModel):
+    name: str
+    url: str
 
 
 class JobCreate(BaseModel):
@@ -27,6 +52,7 @@ class JobCreate(BaseModel):
     resource_name: str | None = None
     resource_url: str | None = None
     resource_format: str | None = None
+    instance_id: str | None = None
 
 
 class JobResultResponse(BaseModel):
@@ -51,6 +77,8 @@ class JobListResponse(BaseModel):
     dataset_name: str
     status: JobStatus
     idempotency_key: str
+    instance_id: str | None = None
+    ckan_resource_url: str = ""
     created_at: datetime
     updated_at: datetime
     started_at: datetime | None
@@ -59,24 +87,8 @@ class JobListResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
-    @computed_field
-    @property
-    def ckan_resource_url(self) -> str:
-        """Link to the resource page on the CKAN portal."""
-        base = settings.ckan_url.rstrip("/")
-        return f"{base}/dataset/{self.dataset_name}/resource/{self.resource_id}"
-
 
 class JobResponse(JobListResponse):
     results: list[JobResultResponse] = []
 
     model_config = {"from_attributes": True}
-
-
-class DashboardStats(BaseModel):
-    total_jobs: int
-    pending: int
-    processing: int
-    completed: int
-    failed: int
-    last_24h: int

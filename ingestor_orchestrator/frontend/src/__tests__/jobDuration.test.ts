@@ -5,6 +5,7 @@ import type { Job } from "@/types";
 function makeJob(overrides: Partial<Job> = {}): Job {
   return {
     id: "1",
+    instance_id: null,
     resource_id: "abc",
     resource_name: null,
     resource_url: null,

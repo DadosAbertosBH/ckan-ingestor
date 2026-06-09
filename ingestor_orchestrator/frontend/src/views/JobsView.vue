@@ -19,6 +19,20 @@
                 <option value="completed">Completed</option>
                 <option value="failed">Failed</option>
             </select>
+            <select
+                v-model="filterInstanceId"
+                class="filter-select"
+                @change="resetAndLoad"
+            >
+                <option value="">All instances</option>
+                <option
+                    v-for="inst in instances"
+                    :key="inst.id"
+                    :value="inst.id"
+                >
+                    {{ inst.name }}
+                </option>
+            </select>
             <input
                 v-model="filterResourceId"
                 type="text"
@@ -172,18 +186,20 @@ import JobStatusBadge from "@/components/JobStatusBadge.vue";
 import ResourceLabelBadge from "@/components/ResourceLabelBadge.vue";
 import { useApi } from "@/composables/useApi";
 import { jobDuration, formatDuration } from "@/utils/jobDuration";
-import type { Job, JobStatus } from "@/types";
+import type { CkanInstance, Job, JobStatus } from "@/types";
 
 const router = useRouter();
 const route = useRoute();
-const { fetchJobs, createJob } = useApi();
+const { fetchJobs, createJob, fetchInstances } = useApi();
 
 const jobs = ref<Job[]>([]);
+const instances = ref<CkanInstance[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const filterStatus = ref<JobStatus | "">(
     (route.query.status as JobStatus) || "",
 );
+const filterInstanceId = ref((route.query.instance_id as string) || "");
 const filterResourceId = ref((route.query.resource_id as string) || "");
 const limit = 50;
 const offset = ref(Number(route.query.offset) || 0);
@@ -201,12 +217,16 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 function syncQueryParams() {
     const query: Record<string, string> = {};
     if (filterStatus.value) query.status = filterStatus.value;
+    if (filterInstanceId.value) query.instance_id = filterInstanceId.value;
     if (filterResourceId.value) query.resource_id = filterResourceId.value;
     if (offset.value) query.offset = String(offset.value);
     router.replace({ query });
 }
 
-watch([filterStatus, filterResourceId, offset], syncQueryParams);
+watch(
+    [filterStatus, filterInstanceId, filterResourceId, offset],
+    syncQueryParams,
+);
 
 async function loadJobs() {
     loading.value = true;
@@ -215,6 +235,7 @@ async function loadJobs() {
         jobs.value = await fetchJobs({
             status: filterStatus.value || undefined,
             resource_id: filterResourceId.value || undefined,
+            instance_id: filterInstanceId.value || undefined,
             limit,
             offset: offset.value,
         } as any);
@@ -289,7 +310,14 @@ function formatJobDuration(job: Job): string {
     return d.finished ? label : `${label}…`;
 }
 
-onMounted(loadJobs);
+onMounted(async () => {
+    try {
+        instances.value = await fetchInstances();
+    } catch {
+        // Non-fatal: instance filter will just show IDs
+    }
+    loadJobs();
+});
 </script>
 
 <style scoped>

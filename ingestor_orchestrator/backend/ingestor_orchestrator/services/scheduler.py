@@ -18,9 +18,7 @@ import logging
 import signal
 
 from ingestor_orchestrator.config import settings
-from ingestor_orchestrator.db import async_session
 from ingestor_orchestrator.schemas import JobCreate
-from ingestor_orchestrator.services.job_service import JobService
 
 logger = logging.getLogger(__name__)
 
@@ -46,31 +44,63 @@ class Scheduler:
         self._running = False
 
     async def _sync_and_enqueue(self):
-        """Sync CKAN metadata, then enqueue outdated resources."""
-        logger.info("Syncing CKAN metadata...")
-        from ingestor_orchestrator.services.metadata_sync import sync_metadata
+        """Sync CKAN metadata for all instances, then enqueue outdated resources."""
+        from datetime import datetime, timezone
 
-        result = await asyncio.to_thread(sync_metadata)
-        logger.info(
-            f"Sync done: {result['dataset_count']} datasets, {result['resource_count']} resources"
+        from sqlalchemy import select
+
+        from ingestor_orchestrator.db import async_session
+        from ingestor_orchestrator.models import CkanInstance
+        from ingestor_orchestrator.services.metadata_sync import (
+            sync_metadata_for_instance,
         )
 
-        await self._enqueue_outdated_resources()
+        async with async_session() as db:
+            instance_result = await db.execute(select(CkanInstance))
+            instances = instance_result.scalars().all()
 
-    async def _enqueue_outdated_resources(self):
-        """Find outdated resources and create jobs for them (same logic as Dagster sensor)."""
+            for inst in instances:
+                logger.info(f"Syncing CKAN metadata for {inst.name}...")
+                try:
+                    result = await asyncio.to_thread(
+                        sync_metadata_for_instance,
+                        instance_id=inst.id,
+                        instance_name=inst.name,
+                        instance_url=inst.url,
+                    )
+                    # Update MySQL instance metadata
+                    inst.last_metadata_synced = datetime.now(timezone.utc)
+                    inst.dataset_count = result.get("dataset_count", 0)
+                    inst.resource_count = result.get("resource_count", 0)
+                    await db.commit()
+                    logger.info(
+                        f"Sync done for {inst.name}: {result['dataset_count']} datasets, {result['resource_count']} resources"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to sync instance {inst.name}: {e}", exc_info=True
+                    )
+
+                await self._enqueue_outdated_resources(inst)
+
+    async def _enqueue_outdated_resources(self, instance):
+        """Find outdated resources for an instance and create jobs for them."""
         from ckan_ingestor.config.ducklake_settings import DucklakeSettings
         from ckan_ingestor.duckdb_ckan_metadata_ingestor import (
             DuckdbCkanMetadataIngestor,
         )
         from ckan_ingestor.duckdb_connection_factory import from_settings
+        from ingestor_orchestrator.db import async_session
+        from ingestor_orchestrator.services.job_service import JobService
 
         ducklake_settings = DucklakeSettings()
         conn = from_settings(ducklake_settings)
         try:
             metadata_ingestor = DuckdbCkanMetadataIngestor(conn)
             outdated_ids = metadata_ingestor.get_outdated_resources_id()
-            logger.info(f"Found {len(outdated_ids)} outdated resources")
+            logger.info(
+                f"Found {len(outdated_ids)} outdated resources for {instance.name}"
+            )
 
             async with async_session() as db:
                 service = JobService(db)
@@ -96,6 +126,7 @@ class Scheduler:
                                 resource_name=resource_name,
                                 resource_url=resource_url,
                                 resource_format=resource_format,
+                                instance_id=instance.id,
                             )
                         )
                     except Exception as e:

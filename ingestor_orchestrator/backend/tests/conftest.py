@@ -18,9 +18,12 @@
 Uses in-memory SQLite (aiosqlite) so tests don't need a real MySQL server.
 """
 
+from datetime import datetime, timezone
+
 import pytest
 import pytest_asyncio
 from ingestor_orchestrator.db import Base
+from ingestor_orchestrator.models import CkanInstance
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 
@@ -39,6 +42,21 @@ async def _create_tables(engine):
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+
+
+@pytest_asyncio.fixture
+async def default_instance(db_session):
+    """Create a default CkanInstance for tests."""
+    instance = CkanInstance(
+        id="inst-default",
+        name="Default",
+        url="https://dados.pbh.gov.br",
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(instance)
+    await db_session.flush()
+    return instance
 
 
 @pytest_asyncio.fixture

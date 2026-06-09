@@ -107,10 +107,6 @@ mysql:
   database: "ingestor_orchestrator"
   # password is provided via secret
 
-# -- CKAN portal configuration
-ckan:
-  url: "https://dados.pbh.gov.br/"
-
 # -- DuckLake configuration
 ducklake:
   catalogUri: ""

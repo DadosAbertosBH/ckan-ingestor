@@ -13,9 +13,7 @@ COPY ingestor_orchestrator/backend/pyproject.toml /app/ingestor_orchestrator/bac
 RUN mkdir -p /app/ckan_ingestor && \
     touch /app/ckan_ingestor/__init__.py && \
     mkdir -p /app/ingestor_orchestrator/backend/ingestor_orchestrator && \
-    touch /app/ingestor_orchestrator/backend/ingestor_orchestrator/__init__.py && \
-    mkdir -p /app/ingestor_orchestrator/backend/alembic && \
-    touch /app/ingestor_orchestrator/backend/alembic/__init__.py
+    touch /app/ingestor_orchestrator/backend/ingestor_orchestrator/__init__.py
 
 # Install dependencies — this layer is cached as long as pyproject.toml doesn't change
 RUN uv pip install --system /app/ && \

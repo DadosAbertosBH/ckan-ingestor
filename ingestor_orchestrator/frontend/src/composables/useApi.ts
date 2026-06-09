@@ -1,5 +1,11 @@
 import { ref } from "vue";
-import type { DashboardStats, Job, JobCreateRequest, JobStatus } from "@/types";
+import type {
+  CkanInstance,
+  InstanceStats,
+  Job,
+  JobCreateRequest,
+  JobStatus,
+} from "@/types";
 
 const API_BASE = "/api";
 
@@ -22,16 +28,19 @@ export function useApi() {
   const loading = ref(false);
   const error = ref<string | null>(null);
 
-  const fetchStats = () => request<DashboardStats>("/dashboard/stats");
+  const fetchInstanceStats = () => request<InstanceStats[]>("/dashboard/stats");
+  const fetchInstances = () => request<CkanInstance[]>("/instances/");
   const fetchJobs = (params?: {
     status?: JobStatus;
     resource_id?: string;
+    instance_id?: string;
     limit?: number;
     offset?: number;
   }) => {
     const query = new URLSearchParams();
     if (params?.status) query.set("status", params.status);
     if (params?.resource_id) query.set("resource_id", params.resource_id);
+    if (params?.instance_id) query.set("instance_id", params.instance_id);
     if (params?.limit) query.set("limit", String(params.limit));
     if (params?.offset) query.set("offset", String(params.offset));
     const qs = query.toString();
@@ -48,7 +57,8 @@ export function useApi() {
   return {
     loading,
     error,
-    fetchStats,
+    fetchInstanceStats,
+    fetchInstances,
     fetchJobs,
     fetchJob,
     createJob,

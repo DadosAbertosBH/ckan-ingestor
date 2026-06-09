@@ -13,64 +13,48 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from datetime import datetime, timedelta, timezone
-
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ingestor_orchestrator.db import get_db
-from ingestor_orchestrator.models import CkanDataJob, JobStatus
-from ingestor_orchestrator.schemas import DashboardStats
+from ingestor_orchestrator.models import CkanDataJob, CkanInstance, JobStatus
+from ingestor_orchestrator.schemas import CkanInstanceResponse, InstanceStats
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
-@router.get("/stats", response_model=DashboardStats)
+@router.get("/stats", response_model=list[InstanceStats])
 async def get_stats(db: AsyncSession = Depends(get_db)):
-    total = (await db.execute(select(func.count(CkanDataJob.id)))).scalar() or 0
-    pending = (
-        await db.execute(
-            select(func.count(CkanDataJob.id)).where(
-                CkanDataJob.status == JobStatus.PENDING
-            )
-        )
-    ).scalar() or 0
-    processing = (
-        await db.execute(
-            select(func.count(CkanDataJob.id)).where(
-                CkanDataJob.status == JobStatus.PROCESSING
-            )
-        )
-    ).scalar() or 0
-    completed = (
-        await db.execute(
-            select(func.count(CkanDataJob.id)).where(
-                CkanDataJob.status == JobStatus.COMPLETED
-            )
-        )
-    ).scalar() or 0
-    failed = (
-        await db.execute(
-            select(func.count(CkanDataJob.id)).where(
-                CkanDataJob.status == JobStatus.FAILED
-            )
-        )
-    ).scalar() or 0
-    yesterday = datetime.now(timezone.utc) - timedelta(hours=24)
-    last_24h = (
-        await db.execute(
-            select(func.count(CkanDataJob.id)).where(
-                CkanDataJob.created_at >= yesterday
-            )
-        )
-    ).scalar() or 0
+    # Fetch all instances
+    instance_result = await db.execute(select(CkanInstance).order_by(CkanInstance.name))
+    instances = instance_result.scalars().all()
 
-    return DashboardStats(
-        total_jobs=total,
-        pending=pending,
-        processing=processing,
-        completed=completed,
-        failed=failed,
-        last_24h=last_24h,
+    # Fetch job counts grouped by instance_id and status
+    job_counts = await db.execute(
+        select(
+            CkanDataJob.instance_id,
+            CkanDataJob.status,
+            func.count(CkanDataJob.id),
+        ).group_by(CkanDataJob.instance_id, CkanDataJob.status)
     )
+    # Build a lookup: {instance_id: {status: count}}
+    counts_by_instance: dict[str, dict[JobStatus, int]] = {}
+    for row in job_counts:
+        inst_id, status, count = row
+        counts_by_instance.setdefault(inst_id, {})[status] = count
+
+    result = []
+    for inst in instances:
+        counts = counts_by_instance.get(inst.id, {})
+        result.append(
+            InstanceStats(
+                instance=CkanInstanceResponse.model_validate(inst),
+                pending=counts.get(JobStatus.PENDING, 0),
+                processing=counts.get(JobStatus.PROCESSING, 0),
+                completed=counts.get(JobStatus.COMPLETED, 0),
+                failed=counts.get(JobStatus.FAILED, 0),
+            )
+        )
+
+    return result

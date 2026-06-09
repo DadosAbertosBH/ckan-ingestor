@@ -21,7 +21,7 @@ import nats as nats_lib
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from ingestor_orchestrator.api import dashboard, jobs, metadata
+from ingestor_orchestrator.api import dashboard, instances, jobs, metadata
 from ingestor_orchestrator.config import settings
 from ingestor_orchestrator.services.scheduler import Scheduler
 
@@ -81,6 +81,7 @@ app.add_middleware(
 app.include_router(jobs.router)
 app.include_router(dashboard.router)
 app.include_router(metadata.router)
+app.include_router(instances.router)
 
 
 @app.get("/health")

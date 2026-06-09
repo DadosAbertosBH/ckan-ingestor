@@ -12,7 +12,6 @@ data:
   INGEST_ORCH_NATS_URL: {{ printf "nats://%s-nats:4222" .Release.Name | quote }}
   INGEST_ORCH_NATS_STREAM: {{ .Values.nats.stream | quote }}
   INGEST_ORCH_NATS_SUBJECT: {{ .Values.nats.subject | quote }}
-  INGEST_ORCH_CKAN_URL: {{ .Values.ckan.url | quote }}
   INGEST_ORCH_DEBUG: {{ .Values.debug | quote }}
   {{- if .Values.ducklake.dataPath.endpoint }}
   DUCKLAKE_DATA_PATH__ENDPOINT: {{ .Values.ducklake.dataPath.endpoint | quote }}

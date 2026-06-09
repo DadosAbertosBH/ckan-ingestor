@@ -65,6 +65,7 @@ class JobService:
             dataset_name=data.dataset_name,
             idempotency_key=idempotency_key,
             status=JobStatus.PENDING,
+            instance_id=data.instance_id or "",
         )
         self.db.add(job)
         await self.db.commit()

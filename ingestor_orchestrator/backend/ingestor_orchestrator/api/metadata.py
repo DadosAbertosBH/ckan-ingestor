@@ -14,16 +14,50 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import asyncio
+from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
-from ingestor_orchestrator.services.metadata_sync import sync_metadata
+from ingestor_orchestrator.services.metadata_sync import (
+    sync_all_instances,
+    sync_metadata_for_instance,
+)
 
 router = APIRouter(prefix="/api/metadata", tags=["metadata"])
 
 
 @router.post("/sync")
-async def sync():
+async def sync(instance_id: Optional[str] = Query(None)):
     """Sync CKAN datasets and resources metadata into DuckLake."""
-    result = await asyncio.to_thread(sync_metadata)
+    if instance_id:
+        from sqlalchemy import select
+
+        from ingestor_orchestrator.db import async_session
+        from ingestor_orchestrator.models import CkanInstance
+
+        async with async_session() as db:
+            instance = (
+                await db.execute(
+                    select(CkanInstance).where(CkanInstance.id == instance_id)
+                )
+            ).scalar_one_or_none()
+            if not instance:
+                return {"error": f"Instance {instance_id} not found"}
+
+            result = await asyncio.to_thread(
+                sync_metadata_for_instance,
+                instance_id=instance.id,
+                instance_name=instance.name,
+                instance_url=instance.url,
+            )
+            # Update MySQL instance metadata
+            from datetime import datetime, timezone
+
+            instance.last_metadata_synced = datetime.now(timezone.utc)
+            instance.dataset_count = result.get("dataset_count", 0)
+            instance.resource_count = result.get("resource_count", 0)
+            await db.commit()
+            return result
+
+    result = await asyncio.to_thread(sync_all_instances)
     return result

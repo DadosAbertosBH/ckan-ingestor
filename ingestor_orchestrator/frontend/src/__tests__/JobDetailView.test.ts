@@ -19,6 +19,7 @@ vi.mock("@/composables/useApi", () => ({
 function makeJob(overrides: Partial<Job> = {}): Job {
   return {
     id: "job-1",
+    instance_id: null,
     resource_id: "abc-123",
     resource_name: "Population Data",
     resource_url: "https://example.com/data.csv",

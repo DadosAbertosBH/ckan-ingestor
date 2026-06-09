@@ -33,7 +33,7 @@ spec:
           image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "api") }}
           imagePullPolicy: {{ .Values.api.image.pullPolicy | default .Values.global.image.pullPolicy }}
           command:
-            ["alembic", "-c", "/app/backend/alembic.ini", "upgrade", "head"]
+            ["alembic", "-c", "/app/ingestor_orchestrator/backend/alembic.ini", "upgrade", "head"]
           envFrom:
             - configMapRef:
                 name: {{ include "ingestor-orchestrator.fullname" . }}

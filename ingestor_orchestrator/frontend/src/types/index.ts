@@ -1,7 +1,27 @@
 export type JobStatus = "pending" | "processing" | "completed" | "failed";
 
+export interface CkanInstance {
+  id: string;
+  name: string;
+  url: string;
+  last_metadata_synced: string | null;
+  dataset_count: number;
+  resource_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InstanceStats {
+  instance: CkanInstance;
+  pending: number;
+  processing: number;
+  completed: number;
+  failed: number;
+}
+
 export interface Job {
   id: string;
+  instance_id: string | null;
   resource_id: string;
   resource_name: string | null;
   resource_url: string | null;
@@ -27,15 +47,6 @@ export interface JobResult {
   dataset_preview: Record<string, unknown>[] | null;
   rows_processed: number | null;
   created_at: string;
-}
-
-export interface DashboardStats {
-  total_jobs: number;
-  pending: number;
-  processing: number;
-  completed: number;
-  failed: number;
-  last_24h: number;
 }
 
 export interface JobCreateRequest {

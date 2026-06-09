@@ -28,7 +28,9 @@ from sqlalchemy import select
 pytestmark = pytest.mark.asyncio
 
 
-async def _create_job(db_session, resource_id="r1", dataset_name="d1"):
+async def _create_job(
+    db_session, resource_id="r1", dataset_name="d1", instance_id="inst-default"
+):
     """Helper to create a CkanDataJob directly in the DB for testing."""
     job = CkanDataJob(
         resource_id=resource_id,
@@ -38,6 +40,7 @@ async def _create_job(db_session, resource_id="r1", dataset_name="d1"):
         dataset_name=dataset_name,
         idempotency_key=resource_id,
         status=JobStatus.COMPLETED,
+        instance_id=instance_id,
     )
     db_session.add(job)
     await db_session.flush()
@@ -120,7 +123,7 @@ class TestJobServiceLabelResource:
 
 
 class TestJobSchemaWithLabels:
-    async def test_job_response_with_labels(self, db_session):
+    async def test_job_response_with_labels(self, db_session, default_instance):
         """JobResponse serialization includes labels from the resource."""
         job_id = "job-1"
         resource_id = "r-labeled"
@@ -134,6 +137,7 @@ class TestJobSchemaWithLabels:
             dataset_name="labeled-ds",
             status=JobStatus.COMPLETED,
             idempotency_key=resource_id,
+            instance_id=default_instance.id,
         )
         db_session.add(job)
 

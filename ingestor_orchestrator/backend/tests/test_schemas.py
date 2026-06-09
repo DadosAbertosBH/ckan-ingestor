@@ -13,13 +13,118 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-"""Tests for Pydantic schemas — labels, ckan_resource_url, and JobCreate."""
+"""Tests for Pydantic schemas — labels, instances, JobCreate, and responses."""
 
 from datetime import datetime, timezone
 
 import pytest
 from ingestor_orchestrator.models import JobStatus
-from ingestor_orchestrator.schemas import JobCreate, JobListResponse, JobResponse
+from ingestor_orchestrator.schemas import (
+    CkanInstanceResponse,
+    InstanceCreate,
+    InstanceStats,
+    JobCreate,
+    JobListResponse,
+    JobResponse,
+)
+
+
+def _make_datetime():
+    return datetime.now(timezone.utc)
+
+
+class TestCkanInstanceResponse:
+    def test_from_attributes(self):
+        """CkanInstanceResponse can be created from dict (ORM-compatible)."""
+        now = _make_datetime()
+        resp = CkanInstanceResponse(
+            id="inst-1",
+            name="PBH",
+            url="https://dados.pbh.gov.br",
+            last_metadata_synced=now,
+            dataset_count=10,
+            resource_count=50,
+            created_at=now,
+            updated_at=now,
+        )
+        assert resp.id == "inst-1"
+        assert resp.name == "PBH"
+        assert resp.url == "https://dados.pbh.gov.br"
+        assert resp.dataset_count == 10
+        assert resp.resource_count == 50
+
+    def test_defaults(self):
+        """Default values for optional fields."""
+        now = _make_datetime()
+        resp = CkanInstanceResponse(
+            id="inst-1",
+            name="Test",
+            url="https://example.com",
+            created_at=now,
+            updated_at=now,
+        )
+        assert resp.last_metadata_synced is None
+        assert resp.dataset_count == 0
+        assert resp.resource_count == 0
+
+
+class TestInstanceStats:
+    def test_instance_stats_creation(self):
+        """InstanceStats wraps CkanInstanceResponse with job counts."""
+        now = _make_datetime()
+        inst = CkanInstanceResponse(
+            id="inst-1",
+            name="PBH",
+            url="https://dados.pbh.gov.br",
+            created_at=now,
+            updated_at=now,
+        )
+        stats = InstanceStats(
+            instance=inst,
+            pending=3,
+            processing=1,
+            completed=10,
+            failed=2,
+        )
+        assert stats.instance.name == "PBH"
+        assert stats.pending == 3
+        assert stats.processing == 1
+        assert stats.completed == 10
+        assert stats.failed == 2
+
+    def test_defaults_to_zero(self):
+        """Job counts default to 0."""
+        now = _make_datetime()
+        inst = CkanInstanceResponse(
+            id="inst-1",
+            name="Empty",
+            url="https://example.com",
+            created_at=now,
+            updated_at=now,
+        )
+        stats = InstanceStats(instance=inst)
+        assert stats.pending == 0
+        assert stats.processing == 0
+        assert stats.completed == 0
+        assert stats.failed == 0
+
+
+class TestInstanceCreate:
+    def test_required_fields(self):
+        """name and url are required."""
+        ic = InstanceCreate(name="PBH", url="https://dados.pbh.gov.br")
+        assert ic.name == "PBH"
+        assert ic.url == "https://dados.pbh.gov.br"
+
+    def test_name_is_required(self):
+        """name is required."""
+        with pytest.raises(Exception):
+            InstanceCreate(url="https://example.com")
+
+    def test_url_is_required(self):
+        """url is required."""
+        with pytest.raises(Exception):
+            InstanceCreate(name="Test")
 
 
 class TestJobListResponse:
@@ -34,8 +139,8 @@ class TestJobListResponse:
             dataset_name="my-dataset",
             status=JobStatus.COMPLETED,
             idempotency_key="ik",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=_make_datetime(),
+            updated_at=_make_datetime(),
             started_at=None,
             completed_at=None,
         )
@@ -52,8 +157,8 @@ class TestJobListResponse:
             dataset_name="my-dataset",
             status=JobStatus.COMPLETED,
             idempotency_key="ik",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=_make_datetime(),
+            updated_at=_make_datetime(),
             started_at=None,
             completed_at=None,
             labels=["empty"],
@@ -71,20 +176,53 @@ class TestJobListResponse:
             dataset_name="my-dataset",
             status=JobStatus.COMPLETED,
             idempotency_key="ik",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=_make_datetime(),
+            updated_at=_make_datetime(),
             started_at=None,
             completed_at=None,
             labels=["empty", "stale"],
         )
         assert resp.labels == ["empty", "stale"]
 
-    def test_ckan_resource_url_is_computed(self, monkeypatch):
-        """ckan_resource_url is a computed property from settings."""
-        monkeypatch.setattr(
-            "ingestor_orchestrator.schemas.settings.ckan_url",
-            "https://dados.pbh.gov.br",
+    def test_instance_id_is_optional(self):
+        """instance_id defaults to None."""
+        resp = JobListResponse(
+            id="abc",
+            resource_id="r1",
+            resource_name="test",
+            resource_url=None,
+            resource_format=None,
+            dataset_name="my-dataset",
+            status=JobStatus.PENDING,
+            idempotency_key="ik",
+            created_at=_make_datetime(),
+            updated_at=_make_datetime(),
+            started_at=None,
+            completed_at=None,
         )
+        assert resp.instance_id is None
+
+    def test_instance_id_can_be_set(self):
+        """instance_id can be set explicitly."""
+        resp = JobListResponse(
+            id="abc",
+            resource_id="r1",
+            resource_name="test",
+            resource_url=None,
+            resource_format=None,
+            dataset_name="my-dataset",
+            status=JobStatus.PENDING,
+            idempotency_key="ik",
+            created_at=_make_datetime(),
+            updated_at=_make_datetime(),
+            started_at=None,
+            completed_at=None,
+            instance_id="inst-1",
+        )
+        assert resp.instance_id == "inst-1"
+
+    def test_ckan_resource_url_defaults_to_empty_string(self):
+        """ckan_resource_url is a plain field defaulting to empty string."""
         resp = JobListResponse(
             id="abc",
             resource_id="res-123",
@@ -94,21 +232,15 @@ class TestJobListResponse:
             dataset_name="my-dataset",
             status=JobStatus.PENDING,
             idempotency_key="ik",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=_make_datetime(),
+            updated_at=_make_datetime(),
             started_at=None,
             completed_at=None,
         )
-        assert resp.ckan_resource_url == (
-            "https://dados.pbh.gov.br/dataset/my-dataset/resource/res-123"
-        )
+        assert resp.ckan_resource_url == ""
 
-    def test_ckan_resource_url_strips_trailing_slash(self, monkeypatch):
-        """Trailing slash in ckan_url is stripped before building the link."""
-        monkeypatch.setattr(
-            "ingestor_orchestrator.schemas.settings.ckan_url",
-            "https://dados.pbh.gov.br/",
-        )
+    def test_ckan_resource_url_can_be_set(self):
+        """ckan_resource_url can be set explicitly by the API layer."""
         resp = JobListResponse(
             id="abc",
             resource_id="res-456",
@@ -118,8 +250,10 @@ class TestJobListResponse:
             dataset_name="other-dataset",
             status=JobStatus.FAILED,
             idempotency_key="ik",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            instance_id="inst-1",
+            ckan_resource_url="https://dados.pbh.gov.br/dataset/other-dataset/resource/res-456",
+            created_at=_make_datetime(),
+            updated_at=_make_datetime(),
             started_at=None,
             completed_at=None,
         )
@@ -145,6 +279,7 @@ class TestJobCreate:
         assert jc.resource_name is None
         assert jc.resource_url is None
         assert jc.resource_format is None
+        assert jc.instance_id is None
 
     def test_all_fields_populated(self):
         """All fields can be set."""
@@ -154,21 +289,19 @@ class TestJobCreate:
             resource_name="My Resource",
             resource_url="https://example.com/data.csv",
             resource_format="CSV",
+            instance_id="inst-1",
         )
         assert jc.resource_id == "r1"
         assert jc.dataset_name == "d1"
         assert jc.resource_name == "My Resource"
         assert jc.resource_url == "https://example.com/data.csv"
         assert jc.resource_format == "CSV"
+        assert jc.instance_id == "inst-1"
 
 
 class TestJobResponse:
-    def test_job_response_inherits_labels_and_ckan_url(self, monkeypatch):
-        """JobResponse inherits labels+ckan_resource_url from JobListResponse."""
-        monkeypatch.setattr(
-            "ingestor_orchestrator.schemas.settings.ckan_url",
-            "https://dados.pbh.gov.br",
-        )
+    def test_job_response_inherits_fields(self):
+        """JobResponse inherits all fields from JobListResponse."""
         resp = JobResponse(
             id="abc",
             resource_id="r1",
@@ -178,14 +311,16 @@ class TestJobResponse:
             dataset_name="ds",
             status=JobStatus.COMPLETED,
             idempotency_key="ik",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            instance_id="inst-1",
+            ckan_resource_url="https://example.com/dataset/ds/resource/r1",
+            created_at=_make_datetime(),
+            updated_at=_make_datetime(),
             started_at=None,
             completed_at=None,
             labels=["empty"],
             results=[],
         )
         assert resp.labels == ["empty"]
-        assert resp.ckan_resource_url == (
-            "https://dados.pbh.gov.br/dataset/ds/resource/r1"
-        )
+        assert resp.ckan_resource_url == ("https://example.com/dataset/ds/resource/r1")
+        assert resp.instance_id == "inst-1"
+        assert resp.results == []

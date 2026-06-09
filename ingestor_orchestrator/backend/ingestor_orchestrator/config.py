@@ -13,7 +13,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,9 +30,6 @@ class Settings(BaseSettings):
     nats_url: str = "nats://localhost:4222"
     nats_stream: str = "CKAN_INGEST"
     nats_subject: str = "ckan.ingest.resource"
-
-    # CKAN
-    ckan_url: str = Field(default="https://dados.pbh.gov.br", alias="CKAN_URL")
 
     # Scheduler
     scheduler_interval_minutes: int = 480  # 8 hours, same as Dagster sensor

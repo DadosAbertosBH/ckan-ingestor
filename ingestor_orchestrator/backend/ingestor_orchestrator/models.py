@@ -52,6 +52,27 @@ def _uuid():
     return str(uuid.uuid4())
 
 
+class CkanInstance(Base):
+    __tablename__ = "ckan_instance"
+
+    id: Mapped[str] = mapped_column(CHAR(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    url: Mapped[str] = mapped_column(String(512), nullable=False)
+    last_metadata_synced: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    dataset_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    resource_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, onupdate=_utcnow, nullable=False
+    )
+
+    jobs: Mapped[list["CkanDataJob"]] = relationship(back_populates="instance")
+
+
 class CkanDataJob(Base):
     __tablename__ = "ckan_data_job"
     __table_args__ = (Index("ix_job_status_resource", "status", "resource_id"),)
@@ -68,6 +89,9 @@ class CkanDataJob(Base):
     idempotency_key: Mapped[str] = mapped_column(
         String(255), unique=True, nullable=False, index=True
     )
+    instance_id: Mapped[str] = mapped_column(
+        CHAR(36), ForeignKey("ckan_instance.id"), nullable=False, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, nullable=False
     )
@@ -77,6 +101,7 @@ class CkanDataJob(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    instance: Mapped["CkanInstance"] = relationship(back_populates="jobs")
     results: Mapped[list["CkanDataJobResult"]] = relationship(
         back_populates="job", cascade="all, delete-orphan", lazy="selectin"
     )

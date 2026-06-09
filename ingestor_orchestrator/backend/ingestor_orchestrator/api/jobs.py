@@ -18,6 +18,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from ingestor_orchestrator.db import get_db
 from ingestor_orchestrator.models import (
@@ -31,19 +32,33 @@ from ingestor_orchestrator.services.job_service import JobService
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 
+def _build_ckan_resource_url(
+    instance_url: str, dataset_name: str, resource_id: str
+) -> str:
+    base = instance_url.rstrip("/")
+    return f"{base}/dataset/{dataset_name}/resource/{resource_id}"
+
+
 @router.get("/", response_model=list[JobListResponse])
 async def list_jobs(
     status: Optional[JobStatus] = None,
     resource_id: Optional[str] = None,
+    instance_id: Optional[str] = None,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
-    query = select(CkanDataJob).order_by(CkanDataJob.created_at.desc())
+    query = (
+        select(CkanDataJob)
+        .options(selectinload(CkanDataJob.instance))
+        .order_by(CkanDataJob.created_at.desc())
+    )
     if status:
         query = query.where(CkanDataJob.status == status)
     if resource_id:
         query = query.where(CkanDataJob.resource_id == resource_id)
+    if instance_id:
+        query = query.where(CkanDataJob.instance_id == instance_id)
     query = query.limit(limit).offset(offset)
     result = await db.execute(query)
     jobs = result.scalars().all()
@@ -66,15 +81,43 @@ async def list_jobs(
         for lbl in label_rows:
             labels_map.setdefault(lbl.resource_id, []).append(lbl.label)
 
+    response_jobs = []
     for j in jobs:
-        j.labels = labels_map.get(j.resource_id, [])
+        job_dict = {
+            "id": j.id,
+            "resource_id": j.resource_id,
+            "resource_name": j.resource_name,
+            "resource_url": j.resource_url,
+            "resource_format": j.resource_format,
+            "dataset_name": j.dataset_name,
+            "status": j.status,
+            "idempotency_key": j.idempotency_key,
+            "instance_id": j.instance_id,
+            "ckan_resource_url": _build_ckan_resource_url(
+                j.instance.url, j.dataset_name, j.resource_id
+            )
+            if j.instance
+            else "",
+            "created_at": j.created_at,
+            "updated_at": j.updated_at,
+            "started_at": j.started_at,
+            "completed_at": j.completed_at,
+            "labels": labels_map.get(j.resource_id, []),
+        }
+        response_jobs.append(JobListResponse(**job_dict))
 
-    return jobs
+    return response_jobs
 
 
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job(job_id: str, db: AsyncSession = Depends(get_db)):
-    job = await db.get(CkanDataJob, job_id)
+    query = (
+        select(CkanDataJob)
+        .options(selectinload(CkanDataJob.instance))
+        .where(CkanDataJob.id == job_id)
+    )
+    result = await db.execute(query)
+    job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -90,23 +133,89 @@ async def get_job(job_id: str, db: AsyncSession = Depends(get_db)):
         .scalars()
         .all()
     )
-    job.labels = [lbl.label for lbl in label_rows]
+    labels = [lbl.label for lbl in label_rows]
 
-    return job
+    return JobResponse(
+        id=job.id,
+        resource_id=job.resource_id,
+        resource_name=job.resource_name,
+        resource_url=job.resource_url,
+        resource_format=job.resource_format,
+        dataset_name=job.dataset_name,
+        status=job.status,
+        idempotency_key=job.idempotency_key,
+        instance_id=job.instance_id,
+        ckan_resource_url=_build_ckan_resource_url(
+            job.instance.url, job.dataset_name, job.resource_id
+        )
+        if job.instance
+        else "",
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+        labels=labels,
+        results=job.results,
+    )
 
 
 @router.post("/", response_model=JobResponse, status_code=201)
 async def create_job(data: JobCreate, db: AsyncSession = Depends(get_db)):
     service = JobService(db)
     job = await service.create_job(data)
-    return job
+    # Reload with instance relationship
+    await db.refresh(job, attribute_names=["instance"])
+    return JobResponse(
+        id=job.id,
+        resource_id=job.resource_id,
+        resource_name=job.resource_name,
+        resource_url=job.resource_url,
+        resource_format=job.resource_format,
+        dataset_name=job.dataset_name,
+        status=job.status,
+        idempotency_key=job.idempotency_key,
+        instance_id=job.instance_id,
+        ckan_resource_url=_build_ckan_resource_url(
+            job.instance.url, job.dataset_name, job.resource_id
+        )
+        if job.instance
+        else "",
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+        labels=[],
+        results=[],
+    )
 
 
 @router.post("/{job_id}/retry", response_model=JobResponse)
 async def retry_job(job_id: str, db: AsyncSession = Depends(get_db)):
     service = JobService(db)
     job = await service.retry_job(job_id)
-    return job
+    await db.refresh(job, attribute_names=["instance"])
+    return JobResponse(
+        id=job.id,
+        resource_id=job.resource_id,
+        resource_name=job.resource_name,
+        resource_url=job.resource_url,
+        resource_format=job.resource_format,
+        dataset_name=job.dataset_name,
+        status=job.status,
+        idempotency_key=job.idempotency_key,
+        instance_id=job.instance_id,
+        ckan_resource_url=_build_ckan_resource_url(
+            job.instance.url, job.dataset_name, job.resource_id
+        )
+        if job.instance
+        else "",
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+        labels=[],
+        results=[],
+    )
 
 
 @router.delete("/{job_id}", status_code=204)

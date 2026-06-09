@@ -27,6 +27,7 @@ describe("useApi — success cases", () => {
     const jobs = [
       {
         id: "1",
+        instance_id: null,
         resource_id: "abc",
         resource_name: "test",
         resource_url: null,
@@ -53,6 +54,7 @@ describe("useApi — success cases", () => {
   it("fetchJob returns a single job with labels", async () => {
     const job = {
       id: "1",
+      instance_id: null,
       resource_id: "abc",
       resource_name: "test",
       resource_url: null,
@@ -76,25 +78,36 @@ describe("useApi — success cases", () => {
     expect(result).toEqual(job);
   });
 
-  it("fetchStats returns dashboard stats", async () => {
-    const stats = {
-      total_jobs: 10,
-      pending: 2,
-      processing: 1,
-      completed: 6,
-      failed: 1,
-      last_24h: 5,
-    };
-    mockFetch({ ok: true, body: stats });
+  it("fetchInstanceStats returns per-instance stats", async () => {
+    const instanceStats = [
+      {
+        instance: {
+          id: "inst-1",
+          name: "CKAN Prod",
+          url: "https://dados.pbh.gov.br",
+          last_metadata_synced: "2025-01-01T00:00:00Z",
+          dataset_count: 50,
+          resource_count: 200,
+          created_at: "2025-01-01T00:00:00Z",
+          updated_at: "2025-01-01T00:00:00Z",
+        },
+        pending: 2,
+        processing: 1,
+        completed: 6,
+        failed: 1,
+      },
+    ];
+    mockFetch({ ok: true, body: instanceStats });
 
-    const { fetchStats } = useApi();
-    const result = await fetchStats();
-    expect(result).toEqual(stats);
+    const { fetchInstanceStats } = useApi();
+    const result = await fetchInstanceStats();
+    expect(result).toEqual(instanceStats);
   });
 
   it("createJob posts and returns the created job", async () => {
     const job = {
       id: "1",
+      instance_id: null,
       resource_id: "abc",
       resource_name: "test",
       resource_url: null,
@@ -189,8 +202,10 @@ describe("useApi — error handling", () => {
       body: { detail: "Database connection failed" },
     });
 
-    const { fetchStats } = useApi();
-    await expect(fetchStats()).rejects.toThrow("Database connection failed");
+    const { fetchInstanceStats } = useApi();
+    await expect(fetchInstanceStats()).rejects.toThrow(
+      "Database connection failed",
+    );
   });
 
   it("deleteJob returns null on 204", async () => {
