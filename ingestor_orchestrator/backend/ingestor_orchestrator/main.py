@@ -31,7 +31,10 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    # Database migrations run via init container (alembic upgrade head)
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    )
+    logging.getLogger("ingestor_orchestrator").setLevel(logging.INFO)
     logger.info("Starting API server")
 
     nc = await nats_lib.connect(settings.nats_url)

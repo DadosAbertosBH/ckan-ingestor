@@ -13,51 +13,78 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-import asyncio
-from typing import Optional
+import logging
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ingestor_orchestrator.db import get_db
+from ingestor_orchestrator.services.metadata_service import MetadataService
 from ingestor_orchestrator.services.metadata_sync import (
+    enqueue_outdated_resources,
     sync_all_instances,
     sync_metadata_for_instance,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/metadata", tags=["metadata"])
 
 
 @router.post("/sync")
-async def sync(instance_id: Optional[str] = Query(None)):
-    """Sync CKAN datasets and resources metadata into DuckLake."""
-    if instance_id:
-        from sqlalchemy import select
+async def sync_all(
+    db: AsyncSession = Depends(get_db),
+):
+    """Sync metadata for all CKAN instances."""
+    logger.info("Sync started for all instances...")
+    try:
+        result = sync_all_instances()
+    except Exception as e:
+        logger.error(f"Sync all failed: {e}", exc_info=True)
+        return {"error": str(e)}
+    logger.info("Sync all instances complete")
+    return result
 
-        from ingestor_orchestrator.db import async_session
-        from ingestor_orchestrator.models import CkanInstance
 
-        async with async_session() as db:
-            instance = (
-                await db.execute(
-                    select(CkanInstance).where(CkanInstance.id == instance_id)
-                )
-            ).scalar_one_or_none()
-            if not instance:
-                return {"error": f"Instance {instance_id} not found"}
+@router.post("/sync/{instance_id}")
+async def sync_instance(
+    instance_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Sync metadata for a specific CKAN instance and enqueue outdated resources."""
+    service = MetadataService(db)
+    instance = await service.get_instance(instance_id)
+    if not instance:
+        return {"error": f"Instance {instance_id} not found"}
 
-            result = await asyncio.to_thread(
-                sync_metadata_for_instance,
-                instance_id=instance.id,
-                instance_name=instance.name,
-                instance_url=instance.url,
-            )
-            # Update MySQL instance metadata
-            from datetime import datetime, timezone
+    logger.info(f"Sync started for {instance.name} ({instance.url})...")
+    try:
+        result = sync_metadata_for_instance(
+            instance_id=instance.id,
+            instance_name=instance.name,
+            instance_url=instance.url,
+        )
+    except Exception as e:
+        logger.error(f"Sync failed for {instance.name}: {e}", exc_info=True)
+        return {"error": str(e)}
 
-            instance.last_metadata_synced = datetime.now(timezone.utc)
-            instance.dataset_count = result.get("dataset_count", 0)
-            instance.resource_count = result.get("resource_count", 0)
-            await db.commit()
-            return result
+    dataset_count = result.get("dataset_count", 0)
+    resource_count = result.get("resource_count", 0)
 
-    result = await asyncio.to_thread(sync_all_instances)
+    try:
+        enqueued = await enqueue_outdated_resources(instance.id, instance.name)
+    except Exception as e:
+        logger.error(f"Enqueue failed for {instance.name}: {e}", exc_info=True)
+        enqueued = 0
+    await service.update_sync_result(instance, dataset_count, resource_count)
+    # result = {}
+    # enqueued = 0
+    # dataset_count = 0
+    # resource_count = 0
+
+    result["jobs_enqueued"] = enqueued
+    logger.info(
+        f"Sync done for {instance.name}: "
+        f"{dataset_count} datasets, {resource_count} resources, "
+        f"{enqueued} jobs enqueued"
+    )
     return result

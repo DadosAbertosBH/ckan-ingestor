@@ -54,10 +54,8 @@ export function useApi() {
   const deleteJob = (id: string) =>
     request<void>(`/jobs/${id}`, { method: "DELETE" });
   const syncMetadata = (instanceId?: string) => {
-    const qs = instanceId ? `?instance_id=${instanceId}` : "";
-    return request<Record<string, unknown>>(`/metadata/sync${qs}`, {
-      method: "POST",
-    });
+    const path = instanceId ? `/metadata/sync/${instanceId}` : "/metadata/sync";
+    return request<Record<string, unknown>>(path, { method: "POST" });
   };
 
   return {

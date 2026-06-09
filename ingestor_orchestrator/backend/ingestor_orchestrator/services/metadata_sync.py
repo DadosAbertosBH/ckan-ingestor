@@ -139,3 +139,111 @@ def sync_all_instances() -> list[dict]:
         asyncio.run(_run())
 
     return results
+
+
+async def enqueue_outdated_resources(
+    instance_id: str, instance_name: str, db=None
+) -> int:
+    """Find outdated resources for an instance and create jobs for them."""
+    import asyncio
+
+    from ckan_ingestor.config.ducklake_settings import DucklakeSettings
+    from ckan_ingestor.duckdb_ckan_metadata_ingestor import (
+        DuckdbCkanMetadataIngestor,
+    )
+    from ckan_ingestor.duckdb_connection_factory import from_settings
+    from ingestor_orchestrator.db import async_session
+    from ingestor_orchestrator.schemas import JobCreate
+    from ingestor_orchestrator.services.job_service import JobService
+
+    def _get_outdated():
+        ducklake_settings = DucklakeSettings()
+        conn = from_settings(ducklake_settings)
+        try:
+            metadata_ingestor = DuckdbCkanMetadataIngestor(conn)
+            outdated_ids = metadata_ingestor.get_outdated_resources_id()
+            return outdated_ids, conn
+        except Exception:
+            conn.close()
+            raise
+
+    outdated_ids, conn = await asyncio.to_thread(_get_outdated)
+    logger.info(f"Found {len(outdated_ids)} outdated resources for {instance_name}")
+    if not outdated_ids:
+        conn.close()
+        return 0
+
+    enqueued = 0
+
+    async def _enqueue(db_session):
+        nonlocal enqueued
+        from sqlalchemy import select
+
+        from ingestor_orchestrator.models import CkanDataJob, JobStatus
+
+        # 1) Single MySQL query: all resource_ids already PENDING/PROCESSING
+        in_flight = {
+            r[0]
+            for r in (
+                await db_session.execute(
+                    select(CkanDataJob.idempotency_key).where(
+                        CkanDataJob.status.in_(
+                            [JobStatus.PENDING, JobStatus.PROCESSING]
+                        )
+                    )
+                )
+            ).fetchall()
+        }
+
+        # 2) Filter out already in-flight resources
+        to_enqueue = [rid for rid in outdated_ids if rid not in in_flight]
+        skipped = len(outdated_ids) - len(to_enqueue)
+        if skipped:
+            logger.info(f"Skipping {skipped} resources already PENDING/PROCESSING")
+
+        if not to_enqueue:
+            return
+
+        # 3) Batch query DuckDB for resource metadata
+        placeholders = ",".join(["?"] * len(to_enqueue))
+        rows = conn.execute(
+            f"SELECT r.name, r.url, r.format, d.name AS dataset_name, r.id "
+            f"FROM ckan_resource r "
+            f"JOIN ckan_dataset d ON r.package_id = d.id "
+            f"WHERE r.id IN ({placeholders})",
+            to_enqueue,
+        ).fetchall()
+        metadata_map = {r[4]: r[:4] for r in rows}
+
+        # 4) Create jobs
+        service = JobService(db_session)
+        for resource_id in to_enqueue:
+            try:
+                row = metadata_map.get(resource_id)
+                resource_name = row[0] if row else None
+                resource_url = row[1] if row else None
+                resource_format = row[2] if row else None
+                dataset_name = row[3] if row else "unknown"
+
+                await service.create_job(
+                    JobCreate(
+                        resource_id=resource_id,
+                        dataset_name=dataset_name,
+                        resource_name=resource_name,
+                        resource_url=resource_url,
+                        resource_format=resource_format,
+                        instance_id=instance_id,
+                    )
+                )
+                enqueued += 1
+            except Exception as e:
+                logger.error(f"Failed to enqueue resource {resource_id}: {e}")
+
+    if db is not None:
+        await _enqueue(db)
+    else:
+        async with async_session() as db_session:
+            await _enqueue(db_session)
+    conn.close()
+    logger.info(f"Enqueued {enqueued} jobs for {instance_name}")
+    return enqueued

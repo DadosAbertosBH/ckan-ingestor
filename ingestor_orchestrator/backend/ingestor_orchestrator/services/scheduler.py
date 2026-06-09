@@ -18,7 +18,6 @@ import logging
 import signal
 
 from ingestor_orchestrator.config import settings
-from ingestor_orchestrator.schemas import JobCreate
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +51,7 @@ class Scheduler:
         from ingestor_orchestrator.db import async_session
         from ingestor_orchestrator.models import CkanInstance
         from ingestor_orchestrator.services.metadata_sync import (
+            enqueue_outdated_resources,
             sync_metadata_for_instance,
         )
 
@@ -68,7 +68,6 @@ class Scheduler:
                         instance_name=inst.name,
                         instance_url=inst.url,
                     )
-                    # Update MySQL instance metadata
                     inst.last_metadata_synced = datetime.now(timezone.utc)
                     inst.dataset_count = result.get("dataset_count", 0)
                     inst.resource_count = result.get("resource_count", 0)
@@ -81,58 +80,15 @@ class Scheduler:
                         f"Failed to sync instance {inst.name}: {e}", exc_info=True
                     )
 
-                await self._enqueue_outdated_resources(inst)
+                await self._enqueue(inst)
 
-    async def _enqueue_outdated_resources(self, instance):
-        """Find outdated resources for an instance and create jobs for them."""
-        from ckan_ingestor.config.ducklake_settings import DucklakeSettings
-        from ckan_ingestor.duckdb_ckan_metadata_ingestor import (
-            DuckdbCkanMetadataIngestor,
+    async def _enqueue(self, instance):
+        from ingestor_orchestrator.services.metadata_sync import (
+            enqueue_outdated_resources,
         )
-        from ckan_ingestor.duckdb_connection_factory import from_settings
-        from ingestor_orchestrator.db import async_session
-        from ingestor_orchestrator.services.job_service import JobService
 
-        ducklake_settings = DucklakeSettings()
-        conn = from_settings(ducklake_settings)
-        try:
-            metadata_ingestor = DuckdbCkanMetadataIngestor(conn)
-            outdated_ids = metadata_ingestor.get_outdated_resources_id()
-            logger.info(
-                f"Found {len(outdated_ids)} outdated resources for {instance.name}"
-            )
-
-            async with async_session() as db:
-                service = JobService(db)
-                for resource_id in outdated_ids:
-                    try:
-                        # Fetch resource metadata for the job record
-                        row = conn.execute(
-                            "SELECT r.name, r.url, r.format, d.name AS dataset_name "
-                            "FROM ckan_resource r "
-                            "JOIN ckan_dataset d ON r.package_id = d.id "
-                            "WHERE r.id = ?",
-                            (resource_id,),
-                        ).fetchone()
-                        resource_name = row[0] if row else None
-                        resource_url = row[1] if row else None
-                        resource_format = row[2] if row else None
-                        dataset_name = row[3] if row else "unknown"
-
-                        await service.create_job(
-                            JobCreate(
-                                resource_id=resource_id,
-                                dataset_name=dataset_name,
-                                resource_name=resource_name,
-                                resource_url=resource_url,
-                                resource_format=resource_format,
-                                instance_id=instance.id,
-                            )
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to enqueue resource {resource_id}: {e}")
-        finally:
-            conn.close()
+        count = await enqueue_outdated_resources(instance.id, instance.name)
+        logger.info(f"Enqueued {count} jobs for {instance.name}")
 
 
 async def run():

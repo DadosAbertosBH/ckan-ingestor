@@ -43,20 +43,6 @@ class JobService:
     async def create_job(self, data: JobCreate) -> CkanDataJob:
         idempotency_key = data.resource_id
 
-        # Idempotency: skip if pending or processing job exists for same resource
-        existing = await self.db.execute(
-            select(CkanDataJob).where(
-                CkanDataJob.idempotency_key == idempotency_key,
-                CkanDataJob.status.in_([JobStatus.PENDING, JobStatus.PROCESSING]),
-            )
-        )
-        existing_job = existing.scalar_one_or_none()
-        if existing_job:
-            logger.info(
-                f"Job already exists for resource {data.resource_id} (id={existing_job.id})"
-            )
-            return existing_job
-
         job = CkanDataJob(
             resource_id=data.resource_id,
             resource_name=data.resource_name,

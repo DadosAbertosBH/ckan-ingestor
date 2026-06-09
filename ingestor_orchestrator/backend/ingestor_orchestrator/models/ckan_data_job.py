@@ -15,9 +15,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from datetime import datetime
 
-from ingestor_orchestrator.db import Base
-from ingestor_orchestrator.models.base import new_uuid, utcnow
-from ingestor_orchestrator.models.job_status import JobStatus
 from sqlalchemy import (
     CHAR,
     DateTime,
@@ -30,6 +27,10 @@ from sqlalchemy import (
     Enum as SAEnum,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from ingestor_orchestrator.db import Base
+from ingestor_orchestrator.models.base import new_uuid, utcnow
+from ingestor_orchestrator.models.job_status import JobStatus
 
 
 class CkanDataJob(Base):
@@ -49,7 +50,7 @@ class CkanDataJob(Base):
         index=True,
     )
     idempotency_key: Mapped[str] = mapped_column(
-        String(255), unique=True, nullable=False, index=True
+        String(255), nullable=False, index=True
     )
     instance_id: Mapped[str] = mapped_column(
         CHAR(36), ForeignKey("ckan_instance.id"), nullable=False, index=True

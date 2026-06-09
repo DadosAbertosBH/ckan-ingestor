@@ -156,7 +156,7 @@ describe("useApi — success cases", () => {
     const { syncMetadata } = useApi();
     const data = await syncMetadata("inst-1");
     expect(data).toEqual(result);
-    expect(fn).toHaveBeenCalledWith("/api/metadata/sync?instance_id=inst-1", {
+    expect(fn).toHaveBeenCalledWith("/api/metadata/sync/inst-1", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
