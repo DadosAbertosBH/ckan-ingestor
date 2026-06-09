@@ -3,11 +3,14 @@ import { mount, flushPromises } from "@vue/test-utils";
 import { createRouter, createMemoryHistory } from "vue-router";
 import JobsView from "@/views/JobsView.vue";
 
+const mockFetchJobs = vi.fn().mockResolvedValue([]);
+const mockCreateJob = vi.fn();
+
 // Mock useApi so we don't need real HTTP
 vi.mock("@/composables/useApi", () => ({
   useApi: () => ({
-    fetchJobs: vi.fn().mockResolvedValue([]),
-    createJob: vi.fn(),
+    fetchJobs: mockFetchJobs,
+    createJob: mockCreateJob,
   }),
 }));
 
@@ -45,6 +48,7 @@ async function mountWithRouter(query: Record<string, string> = {}) {
 describe("JobsView — filter URL persistence", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    mockFetchJobs.mockResolvedValue([]);
   });
 
   it("initializes filters from URL query params", async () => {
@@ -99,5 +103,106 @@ describe("JobsView — filter URL persistence", () => {
     await flushPromises();
 
     expect(router.currentRoute.value.query.status).toBeUndefined();
+  });
+});
+
+describe("JobsView — labels column", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockFetchJobs.mockResolvedValue([]);
+  });
+
+  it("renders Labels column header", async () => {
+    const { wrapper } = await mountWithRouter();
+    await flushPromises();
+
+    const ths = wrapper.findAll("th");
+    const labelsHeader = ths.find((th) => th.text() === "Labels");
+    expect(labelsHeader).toBeTruthy();
+  });
+
+  it("renders ResourceLabelBadge when jobs have labels", async () => {
+    mockFetchJobs.mockResolvedValue([
+      {
+        id: "1",
+        resource_id: "abc-123",
+        resource_name: "Test Resource",
+        resource_url: null,
+        resource_format: "CSV",
+        dataset_name: "test-ds",
+        status: "completed",
+        idempotency_key: "abc-123",
+        created_at: "2025-01-01T00:00:00Z",
+        updated_at: "2025-01-01T00:00:00Z",
+        started_at: null,
+        completed_at: null,
+        ckan_resource_url:
+          "https://dados.pbh.gov.br/dataset/test-ds/resource/abc-123",
+        labels: ["empty"],
+      },
+    ]);
+
+    const { wrapper } = await mountWithRouter();
+    await flushPromises();
+
+    const badge = wrapper.find(".label-badge");
+    expect(badge.exists()).toBe(true);
+    expect(badge.text()).toBe("empty");
+  });
+
+  it("renders multiple labels in a row", async () => {
+    mockFetchJobs.mockResolvedValue([
+      {
+        id: "1",
+        resource_id: "abc-123",
+        resource_name: "Test Resource",
+        resource_url: null,
+        resource_format: "CSV",
+        dataset_name: "test-ds",
+        status: "completed",
+        idempotency_key: "abc-123",
+        created_at: "2025-01-01T00:00:00Z",
+        updated_at: "2025-01-01T00:00:00Z",
+        started_at: null,
+        completed_at: null,
+        ckan_resource_url:
+          "https://dados.pbh.gov.br/dataset/test-ds/resource/abc-123",
+        labels: ["empty", "stale"],
+      },
+    ]);
+
+    const { wrapper } = await mountWithRouter();
+    await flushPromises();
+
+    const badges = wrapper.findAll(".label-badge");
+    expect(badges).toHaveLength(2);
+  });
+
+  it("shows dataset_name / resource_name in Resource column", async () => {
+    mockFetchJobs.mockResolvedValue([
+      {
+        id: "1",
+        resource_id: "abc-123",
+        resource_name: "My Resource",
+        resource_url: null,
+        resource_format: "CSV",
+        dataset_name: "my-dataset",
+        status: "completed",
+        idempotency_key: "abc-123",
+        created_at: "2025-01-01T00:00:00Z",
+        updated_at: "2025-01-01T00:00:00Z",
+        started_at: null,
+        completed_at: null,
+        ckan_resource_url:
+          "https://dados.pbh.gov.br/dataset/my-dataset/resource/abc-123",
+        labels: [],
+      },
+    ]);
+
+    const { wrapper } = await mountWithRouter();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("my-dataset");
+    expect(wrapper.text()).toContain("My Resource");
   });
 });

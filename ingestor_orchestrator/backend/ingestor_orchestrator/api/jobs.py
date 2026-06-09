@@ -20,7 +20,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ingestor_orchestrator.db import get_db
-from ingestor_orchestrator.models import CkanDataJob, JobStatus
+from ingestor_orchestrator.models import (
+    CkanDataJob,
+    JobStatus,
+    ResourceMetadataLabel,
+)
 from ingestor_orchestrator.schemas import JobCreate, JobListResponse, JobResponse
 from ingestor_orchestrator.services.job_service import JobService
 
@@ -42,7 +46,30 @@ async def list_jobs(
         query = query.where(CkanDataJob.resource_id == resource_id)
     query = query.limit(limit).offset(offset)
     result = await db.execute(query)
-    return result.scalars().all()
+    jobs = result.scalars().all()
+
+    # Fetch labels for these resource_ids
+    resource_ids = list({j.resource_id for j in jobs})
+    labels_map: dict[str, list[str]] = {}
+    if resource_ids:
+        label_rows = (
+            (
+                await db.execute(
+                    select(ResourceMetadataLabel).where(
+                        ResourceMetadataLabel.resource_id.in_(resource_ids)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for lbl in label_rows:
+            labels_map.setdefault(lbl.resource_id, []).append(lbl.label)
+
+    for j in jobs:
+        j.labels = labels_map.get(j.resource_id, [])
+
+    return jobs
 
 
 @router.get("/{job_id}", response_model=JobResponse)
@@ -50,6 +77,21 @@ async def get_job(job_id: str, db: AsyncSession = Depends(get_db)):
     job = await db.get(CkanDataJob, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    # Fetch labels for this job's resource
+    label_rows = (
+        (
+            await db.execute(
+                select(ResourceMetadataLabel).where(
+                    ResourceMetadataLabel.resource_id == job.resource_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    job.labels = [lbl.label for lbl in label_rows]
+
     return job
 
 

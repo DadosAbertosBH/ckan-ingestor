@@ -27,6 +27,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy import (
     Enum as SAEnum,
@@ -101,3 +102,17 @@ class CkanDataJobResult(Base):
     )
 
     job: Mapped["CkanDataJob"] = relationship(back_populates="results")
+
+
+class ResourceMetadataLabel(Base):
+    __tablename__ = "resource_metadata_label"
+    __table_args__ = (
+        UniqueConstraint("resource_id", "label", name="uq_resource_label"),
+    )
+
+    id: Mapped[str] = mapped_column(CHAR(36), primary_key=True, default=_uuid)
+    resource_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, nullable=False
+    )

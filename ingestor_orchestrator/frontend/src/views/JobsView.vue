@@ -39,6 +39,7 @@
                     <th>Resource</th>
                     <th>Resource ID</th>
                     <th>Format</th>
+                    <th>Labels</th>
                     <th>Status</th>
                     <th>Duration</th>
                     <th>Created</th>
@@ -60,12 +61,13 @@
                     </td>
                     <td class="mono">{{ job.resource_id.substring(0, 8) }}…</td>
                     <td>{{ job.resource_format || "—" }}</td>
+                    <td><ResourceLabelBadge :labels="job.labels ?? []" /></td>
                     <td><JobStatusBadge :status="job.status" /></td>
                     <td class="mono">{{ formatJobDuration(job) }}</td>
                     <td>{{ formatTime(job.created_at) }}</td>
                 </tr>
                 <tr v-if="jobs.length === 0">
-                    <td colspan="5" class="empty-state">No jobs found</td>
+                    <td colspan="7" class="empty-state">No jobs found</td>
                 </tr>
             </tbody>
         </table>
@@ -167,6 +169,7 @@
 import { ref, onMounted, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import JobStatusBadge from "@/components/JobStatusBadge.vue";
+import ResourceLabelBadge from "@/components/ResourceLabelBadge.vue";
 import { useApi } from "@/composables/useApi";
 import { jobDuration, formatDuration } from "@/utils/jobDuration";
 import type { Job, JobStatus } from "@/types";

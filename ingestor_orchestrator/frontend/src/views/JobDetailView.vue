@@ -46,8 +46,17 @@
                 <div class="info-item">
                     <span class="info-label">Format</span>
                     <span class="info-value">{{
-                        job.resource_format || "—"
+                        job.resource_format || "\u2014"
                     }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Labels</span>
+                    <span class="info-value">
+                        <ResourceLabelBadge :labels="job.labels ?? []" />
+                        <span v-if="!job.labels?.length" style="color: #9ca3af"
+                            >\u2014</span
+                        >
+                    </span>
                 </div>
                 <div class="info-item">
                     <span class="info-label">Created</span>
@@ -109,6 +118,7 @@ import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import JobStatusBadge from "@/components/JobStatusBadge.vue";
 import JobResultPanel from "@/components/JobResultPanel.vue";
+import ResourceLabelBadge from "@/components/ResourceLabelBadge.vue";
 import { useApi } from "@/composables/useApi";
 import type { Job } from "@/types";
 

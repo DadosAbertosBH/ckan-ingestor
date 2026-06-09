@@ -40,6 +40,7 @@ describe("useApi — success cases", () => {
         updated_at: "2025-01-01T00:00:00Z",
         started_at: null,
         completed_at: null,
+        labels: ["empty"],
       },
     ];
     mockFetch({ ok: true, body: jobs });
@@ -49,7 +50,7 @@ describe("useApi — success cases", () => {
     expect(result).toEqual(jobs);
   });
 
-  it("fetchJob returns a single job", async () => {
+  it("fetchJob returns a single job with labels", async () => {
     const job = {
       id: "1",
       resource_id: "abc",
@@ -65,6 +66,7 @@ describe("useApi — success cases", () => {
       updated_at: "2025-01-01T00:00:00Z",
       started_at: null,
       completed_at: null,
+      labels: ["empty"],
       results: [],
     };
     mockFetch({ ok: true, body: job });
@@ -106,6 +108,7 @@ describe("useApi — success cases", () => {
       updated_at: "2025-01-01T00:00:00Z",
       started_at: null,
       completed_at: null,
+      labels: ["empty"],
       results: [],
     };
     const fetchFn = mockFetch({ ok: true, status: 201, body: job });

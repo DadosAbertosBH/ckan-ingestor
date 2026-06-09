@@ -49,7 +49,9 @@ class DuckdbCkanDataIngestor:
         self.datastore_reader = datastore_reader
         self.csv_reader = csv_reader
 
-    def ingest_ckan_data(self, ckan_resource: dict[str:any], attempt_formats=None):
+    def ingest_ckan_data(
+        self, ckan_resource: dict[str:any], attempt_formats=None
+    ) -> bool:
         # thread_name = str(current_thread().name)
         # print(f"threads write_thread_{thread_name}")
         resource_id = ckan_resource["id"]
@@ -66,6 +68,12 @@ class DuckdbCkanDataIngestor:
             ):
                 attempt_formats.append("DATA_STORE")
                 _datastore_table = self.datastore_reader.read(resource_id)
+                if _datastore_table is None:
+                    self._label_resource(resource_id, "empty")
+                    self.logger.info(
+                        f"Resource {resource_id} is empty, skipping ingestion"
+                    )
+                    return False
                 query = "SELECT * FROM _datastore_table"
             elif ckan_resource["format"] == "CSV" and "CSV" not in attempt_formats:
                 attempt_formats.append("CSV")
@@ -95,16 +103,19 @@ class DuckdbCkanDataIngestor:
                     f"Resource {resource_id} from resource {ckan_resource['name']} "
                     f"have a unsupported format {ckan_resource['format']}"
                 )
-                return
+                return False
             self.ducklake_conn.execute(
                 f'CREATE OR REPLACE TABLE "{resource_id}" AS {query}'
             )
             self.ducklake_conn.execute(
-                "DELETE FROM ckan_resource_last_update where ckan_resource_id = ?", (resource_id,)
+                "DELETE FROM ckan_resource_last_update where ckan_resource_id = ?",
+                (resource_id,),
             )
-            self.ducklake_conn.execute("""
+            self.ducklake_conn.execute(
+                """
                 INSERT INTO ckan_resource_last_update (ckan_resource_id, last_modified) VALUES (?, NOW())
-                """, (resource_id,)
+                """,
+                (resource_id,),
             )
         except (
             duckdb.InvalidInputException,
@@ -119,3 +130,14 @@ class DuckdbCkanDataIngestor:
             self.ingest_ckan_data(ckan_resource, attempt_formats)
 
         self.logger.info(f"Finished working on {ckan_resource['id']}")
+        return True
+
+    def _label_resource(self, resource_id: str, label: str):
+        self.ducklake_conn.execute(
+            "CREATE TABLE IF NOT EXISTS ckan_resource_label "
+            "(resource_id VARCHAR, label VARCHAR)"
+        )
+        self.ducklake_conn.execute(
+            "INSERT INTO ckan_resource_label (resource_id, label) VALUES (?, ?)",
+            (resource_id, label),
+        )

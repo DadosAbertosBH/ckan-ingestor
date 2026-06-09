@@ -14,6 +14,7 @@ export interface Job {
   started_at: string | null;
   completed_at: string | null;
   ckan_resource_url: string;
+  labels?: string[];
   results?: JobResult[];
 }
 

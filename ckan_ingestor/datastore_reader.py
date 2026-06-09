@@ -37,8 +37,8 @@ class DatastoreReader:
             url = f"{self.datastore_url}/{resource_id}?format=json&offset={offset}&limit={MAX_RECORDS_FETCH}"
             tables.append(data)
         if not tables:
-            raise ValueError(f"No rows from {url}")
-        return pyarrow.concat_tables(tables, promote=True)
+            return None
+        return pyarrow.concat_tables(tables, promote_options="default")
 
     @staticmethod
     def _read_json(url):

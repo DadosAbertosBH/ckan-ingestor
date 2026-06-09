@@ -55,6 +55,7 @@ class JobListResponse(BaseModel):
     updated_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
+    labels: list[str] = []
 
     model_config = {"from_attributes": True}
 

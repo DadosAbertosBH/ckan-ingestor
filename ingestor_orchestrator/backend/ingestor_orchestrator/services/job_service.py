@@ -25,7 +25,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ingestor_orchestrator.config import settings
 from ingestor_orchestrator.json_utils import sanitize_json_preview
-from ingestor_orchestrator.models import CkanDataJob, CkanDataJobResult, JobStatus
+from ingestor_orchestrator.models import (
+    CkanDataJob,
+    CkanDataJobResult,
+    JobStatus,
+    ResourceMetadataLabel,
+)
 from ingestor_orchestrator.schemas import JobCreate
 
 logger = logging.getLogger(__name__)
@@ -118,6 +123,9 @@ class JobService:
             job.status = JobStatus.COMPLETED
             job.completed_at = datetime.now(timezone.utc)
             logger.info(f"Job {job.id} completed successfully ({rows_processed} rows)")
+
+            if rows_processed == 0:
+                await self._label_resource(job.resource_id, "empty")
         except Exception as e:
             error_trace = traceback.format_exc()
             result = CkanDataJobResult(
@@ -168,7 +176,10 @@ class JobService:
                 )
 
             resource = resource_row[0]
-            ingestor.ingest_ckan_data(resource)
+            ingested = ingestor.ingest_ckan_data(resource)
+
+            if not ingested:
+                return 0, []
 
             # Get row count and preview
             count = conn.execute(f'SELECT COUNT(*) FROM "{resource_id}"').fetchone()[0]
@@ -187,6 +198,19 @@ class JobService:
     def _sanitize_preview(preview: list[dict] | None) -> list[dict] | None:
         """Delegate to sanitize_json_preview for backward compatibility."""
         return sanitize_json_preview(preview)
+
+    async def _label_resource(self, resource_id: str, label: str) -> None:
+        """Attach a label to a resource, idempotently."""
+        existing = await self.db.execute(
+            select(ResourceMetadataLabel).where(
+                ResourceMetadataLabel.resource_id == resource_id,
+                ResourceMetadataLabel.label == label,
+            )
+        )
+        if existing.scalar_one_or_none():
+            return
+        self.db.add(ResourceMetadataLabel(resource_id=resource_id, label=label))
+        await self.db.flush()
 
     async def _publish_job(self, job_id: str) -> None:
         """Publish job to NATS JetStream."""
