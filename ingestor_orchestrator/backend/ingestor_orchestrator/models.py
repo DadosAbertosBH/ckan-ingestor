@@ -60,7 +60,7 @@ class CkanDataJob(Base):
     resource_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
     resource_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     resource_format: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    dataset_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    dataset_name: Mapped[str] = mapped_column(String(512), nullable=False)
     status: Mapped[JobStatus] = mapped_column(
         SAEnum(JobStatus), default=JobStatus.PENDING, nullable=False, index=True
     )

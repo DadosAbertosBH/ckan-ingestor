@@ -109,6 +109,15 @@
                         />
                     </div>
                     <div class="form-group">
+                        <label>Dataset Name *</label>
+                        <input
+                            v-model="form.dataset_name"
+                            type="text"
+                            required
+                            placeholder="CKAN dataset slug"
+                        />
+                    </div>
+                    <div class="form-group">
                         <label>Resource Name</label>
                         <input
                             v-model="form.resource_name"
@@ -179,6 +188,7 @@ const showModal = ref(false);
 const submitting = ref(false);
 const form = ref({
     resource_id: "",
+    dataset_name: "",
     resource_name: "",
     resource_url: "",
     resource_format: "",
@@ -244,6 +254,7 @@ async function submitJob() {
     try {
         await createJob({
             resource_id: form.value.resource_id,
+            dataset_name: form.value.dataset_name,
             resource_name: form.value.resource_name || undefined,
             resource_url: form.value.resource_url || undefined,
             resource_format: form.value.resource_format || undefined,
@@ -251,6 +262,7 @@ async function submitJob() {
         showModal.value = false;
         form.value = {
             resource_id: "",
+            dataset_name: "",
             resource_name: "",
             resource_url: "",
             resource_format: "",

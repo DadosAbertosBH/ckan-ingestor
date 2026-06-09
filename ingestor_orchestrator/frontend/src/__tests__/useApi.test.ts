@@ -31,7 +31,9 @@ describe("useApi — success cases", () => {
         resource_name: "test",
         resource_url: null,
         resource_format: "CSV",
-        dataset_name: null,
+        dataset_name: "test-dataset",
+        ckan_resource_url:
+          "https://dados.pbh.gov.br/dataset/test-dataset/resource/abc",
         status: "completed",
         idempotency_key: "abc",
         created_at: "2025-01-01T00:00:00Z",
@@ -54,7 +56,9 @@ describe("useApi — success cases", () => {
       resource_name: "test",
       resource_url: null,
       resource_format: "CSV",
-      dataset_name: null,
+      dataset_name: "test-dataset",
+      ckan_resource_url:
+        "https://dados.pbh.gov.br/dataset/test-dataset/resource/abc",
       status: "completed",
       idempotency_key: "abc",
       created_at: "2025-01-01T00:00:00Z",
@@ -94,6 +98,8 @@ describe("useApi — success cases", () => {
       resource_url: null,
       resource_format: "CSV",
       dataset_name: "my-dataset",
+      ckan_resource_url:
+        "https://dados.pbh.gov.br/dataset/my-dataset/resource/abc",
       status: "pending",
       idempotency_key: "abc",
       created_at: "2025-01-01T00:00:00Z",
@@ -107,6 +113,7 @@ describe("useApi — success cases", () => {
     const { createJob } = useApi();
     const result = await createJob({
       resource_id: "abc",
+      dataset_name: "my-dataset",
       resource_name: "test",
     });
 
@@ -116,6 +123,7 @@ describe("useApi — success cases", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         resource_id: "abc",
+        dataset_name: "my-dataset",
         resource_name: "test",
       }),
     });

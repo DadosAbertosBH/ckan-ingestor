@@ -13,6 +13,7 @@ export interface Job {
   updated_at: string;
   started_at: string | null;
   completed_at: string | null;
+  ckan_resource_url: string;
   results?: JobResult[];
 }
 
@@ -38,6 +39,7 @@ export interface DashboardStats {
 
 export interface JobCreateRequest {
   resource_id: string;
+  dataset_name: string;
   resource_name?: string;
   resource_url?: string;
   resource_format?: string;

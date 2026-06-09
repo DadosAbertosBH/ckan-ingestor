@@ -67,6 +67,15 @@
                         job.completed_at ? formatTime(job.completed_at) : "—"
                     }}</span>
                 </div>
+                <div class="info-item">
+                    <span class="info-label">CKAN</span>
+                    <a
+                        :href="job.ckan_resource_url"
+                        target="_blank"
+                        class="info-link"
+                        >View on CKAN ↗</a
+                    >
+                </div>
                 <div v-if="job.resource_url" class="info-item">
                     <span class="info-label">URL</span>
                     <a

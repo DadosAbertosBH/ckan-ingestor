@@ -15,17 +15,18 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
+from ingestor_orchestrator.config import settings
 from ingestor_orchestrator.models import JobStatus
 
 
 class JobCreate(BaseModel):
     resource_id: str
+    dataset_name: str
     resource_name: str | None = None
     resource_url: str | None = None
     resource_format: str | None = None
-    dataset_name: str | None = None
 
 
 class JobResultResponse(BaseModel):
@@ -47,7 +48,7 @@ class JobListResponse(BaseModel):
     resource_name: str | None
     resource_url: str | None
     resource_format: str | None
-    dataset_name: str | None
+    dataset_name: str
     status: JobStatus
     idempotency_key: str
     created_at: datetime
@@ -56,6 +57,13 @@ class JobListResponse(BaseModel):
     completed_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+    @computed_field
+    @property
+    def ckan_resource_url(self) -> str:
+        """Link to the resource page on the CKAN portal."""
+        base = settings.ckan_url.rstrip("/")
+        return f"{base}/dataset/{self.dataset_name}/resource/{self.resource_id}"
 
 
 class JobResponse(JobListResponse):

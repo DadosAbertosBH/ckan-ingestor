@@ -78,16 +78,21 @@ class Scheduler:
                     try:
                         # Fetch resource metadata for the job record
                         row = conn.execute(
-                            "SELECT name, url, format FROM ckan_resource WHERE id = ?",
+                            "SELECT r.name, r.url, r.format, d.name AS dataset_name "
+                            "FROM ckan_resource r "
+                            "JOIN ckan_dataset d ON r.package_id = d.id "
+                            "WHERE r.id = ?",
                             (resource_id,),
                         ).fetchone()
                         resource_name = row[0] if row else None
                         resource_url = row[1] if row else None
                         resource_format = row[2] if row else None
+                        dataset_name = row[3] if row else "unknown"
 
                         await service.create_job(
                             JobCreate(
                                 resource_id=resource_id,
+                                dataset_name=dataset_name,
                                 resource_name=resource_name,
                                 resource_url=resource_url,
                                 resource_format=resource_format,

@@ -9,7 +9,9 @@ function makeJob(overrides: Partial<Job> = {}): Job {
     resource_name: null,
     resource_url: null,
     resource_format: null,
-    dataset_name: null,
+    dataset_name: "test-dataset",
+    ckan_resource_url:
+      "https://dados.pbh.gov.br/dataset/test-dataset/resource/abc",
     status: "completed",
     idempotency_key: "abc",
     created_at: "2025-01-01T00:00:00Z",
