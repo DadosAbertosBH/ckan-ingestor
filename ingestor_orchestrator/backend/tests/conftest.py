@@ -19,12 +19,30 @@ Uses in-memory SQLite (aiosqlite) so tests don't need a real MySQL server.
 """
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
 from ingestor_orchestrator.db import Base
 from ingestor_orchestrator.models import CkanInstance
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+
+@pytest.fixture(autouse=True)
+def _mock_nats():
+    """Mock NATS publishing so tests don't need a real NATS server."""
+    mock_js = MagicMock()
+    mock_js.publish = AsyncMock()
+    # Create a regular MagicMock for nc, but make connect() async
+    mock_nc = MagicMock()
+    mock_nc.jetstream.return_value = mock_js
+    mock_nc.close = AsyncMock()
+    async_connect = AsyncMock(return_value=mock_nc)
+    with patch(
+        "ingestor_orchestrator.services.job_service.nats_lib.connect",
+        async_connect,
+    ):
+        yield
 
 
 @pytest.fixture(scope="session")

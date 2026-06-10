@@ -12,6 +12,12 @@
                 <router-link to="/jobs" class="nav-link" active-class="active"
                     >Jobs</router-link
                 >
+                <router-link
+                    to="/resources"
+                    class="nav-link"
+                    active-class="active"
+                    >Resources</router-link
+                >
             </div>
         </nav>
         <main class="main-content">

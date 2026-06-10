@@ -56,3 +56,23 @@ export interface JobCreateRequest {
   resource_url?: string;
   resource_format?: string;
 }
+
+export interface Resource {
+  resource_id: string;
+  resource_name: string | null;
+  resource_url: string | null;
+  resource_format: string | null;
+  dataset_name: string;
+  status: JobStatus;
+  instance_id: string;
+  ckan_resource_url: string;
+  labels: string[];
+  job_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ResourceDetail extends Resource {
+  latest_job: Job | null;
+  jobs: Job[];
+}

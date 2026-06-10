@@ -5,6 +5,8 @@ import type {
   Job,
   JobCreateRequest,
   JobStatus,
+  Resource,
+  ResourceDetail,
 } from "@/types";
 
 const API_BASE = "/api";
@@ -57,6 +59,24 @@ export function useApi() {
     const path = instanceId ? `/metadata/sync/${instanceId}` : "/metadata/sync";
     return request<Record<string, unknown>>(path, { method: "POST" });
   };
+  const fetchResources = (params?: {
+    status?: JobStatus;
+    instance_id?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.instance_id) query.set("instance_id", params.instance_id);
+    if (params?.search) query.set("search", params.search);
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.offset) query.set("offset", String(params.offset));
+    const qs = query.toString();
+    return request<Resource[]>(`/resources/${qs ? "?" + qs : ""}`);
+  };
+  const fetchResource = (resourceId: string) =>
+    request<ResourceDetail>(`/resources/${resourceId}`);
 
   return {
     loading,
@@ -69,5 +89,7 @@ export function useApi() {
     retryJob,
     deleteJob,
     syncMetadata,
+    fetchResources,
+    fetchResource,
   };
 }

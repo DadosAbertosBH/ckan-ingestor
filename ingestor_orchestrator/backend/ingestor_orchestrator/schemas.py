@@ -92,3 +92,27 @@ class JobResponse(JobListResponse):
     results: list[JobResultResponse] = []
 
     model_config = {"from_attributes": True}
+
+
+class ResourceResponse(BaseModel):
+    resource_id: str
+    resource_name: str | None
+    resource_url: str | None
+    resource_format: str | None
+    dataset_name: str
+    status: JobStatus
+    instance_id: str
+    ckan_resource_url: str = ""
+    labels: list[str] = []
+    job_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ResourceDetailResponse(ResourceResponse):
+    latest_job: JobResponse | None = None
+    jobs: list[JobListResponse] = []
+
+    model_config = {"from_attributes": True}

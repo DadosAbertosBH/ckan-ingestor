@@ -29,6 +29,7 @@ from ingestor_orchestrator.models import (
     CkanDataJob,
     CkanDataJobResult,
     JobStatus,
+    LatestResourceJob,
     ResourceMetadataLabel,
 )
 from ingestor_orchestrator.schemas import JobCreate
@@ -54,6 +55,8 @@ class JobService:
             instance_id=data.instance_id or "",
         )
         self.db.add(job)
+        await self.db.flush()
+        await self._upsert_latest_resource(job)
         await self.db.commit()
         await self.db.refresh(job)
 
@@ -76,6 +79,7 @@ class JobService:
         job.started_at = None
         job.completed_at = None
         job.updated_at = datetime.now(timezone.utc)
+        await self._upsert_latest_resource(job)
         await self.db.commit()
         await self.db.refresh(job)
 
@@ -127,7 +131,45 @@ class JobService:
             logger.error(f"Job {job.id} failed: {e}")
 
         job.updated_at = datetime.now(timezone.utc)
+        await self._update_latest_resource_status(job)
         await self.db.commit()
+
+    async def _upsert_latest_resource(self, job: CkanDataJob) -> None:
+        """Create or update the LatestResourceJob entry for a given job."""
+        existing = await self.db.get(LatestResourceJob, job.resource_id)
+        if existing:
+            existing.latest_job_id = job.id
+            existing.instance_id = job.instance_id
+            existing.resource_name = job.resource_name
+            existing.resource_url = job.resource_url
+            existing.resource_format = job.resource_format
+            existing.dataset_name = job.dataset_name
+            existing.status = job.status
+            existing.updated_at = datetime.now(timezone.utc)
+        else:
+            latest = LatestResourceJob(
+                resource_id=job.resource_id,
+                latest_job_id=job.id,
+                instance_id=job.instance_id,
+                resource_name=job.resource_name,
+                resource_url=job.resource_url,
+                resource_format=job.resource_format,
+                dataset_name=job.dataset_name,
+                status=job.status,
+            )
+            self.db.add(latest)
+        await self.db.flush()
+
+    async def _update_latest_resource_status(self, job: CkanDataJob) -> None:
+        """Update the LatestResourceJob status after processing completes."""
+        latest = await self.db.get(LatestResourceJob, job.resource_id)
+        if latest:
+            latest.status = job.status
+            latest.resource_name = job.resource_name
+            latest.resource_url = job.resource_url
+            latest.resource_format = job.resource_format
+            latest.dataset_name = job.dataset_name
+            latest.updated_at = datetime.now(timezone.utc)
 
     def _run_ingestion_sync(self, resource_id: str) -> tuple[int, list[dict]]:
         """Synchronous ingestion — runs in a thread pool."""

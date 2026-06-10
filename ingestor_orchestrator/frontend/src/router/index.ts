@@ -19,6 +19,17 @@ const router = createRouter({
       component: () => import("@/views/JobDetailView.vue"),
       props: true,
     },
+    {
+      path: "/resources",
+      name: "resources",
+      component: () => import("@/views/ResourcesView.vue"),
+    },
+    {
+      path: "/resources/:resourceId",
+      name: "resource-detail",
+      component: () => import("@/views/ResourceDetailView.vue"),
+      props: true,
+    },
   ],
 });
 
