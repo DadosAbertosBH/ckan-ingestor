@@ -127,7 +127,7 @@ class DuckdbCkanDataIngestor:
                 f"Failed to parser {resource_id} from resource {ckan_resource['name']} error = {e}"
                 f" using formats {attempt_formats}"
             )
-            self.ingest_ckan_data(ckan_resource, attempt_formats)
+            return self.ingest_ckan_data(ckan_resource, attempt_formats)
 
         self.logger.info(f"Finished working on {ckan_resource['id']}")
         return True
