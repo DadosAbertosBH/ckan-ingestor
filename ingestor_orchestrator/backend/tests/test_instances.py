@@ -16,7 +16,7 @@
 """Tests for CkanInstance model and instances API."""
 
 import pytest
-from ingestor_orchestrator.models import CkanInstance, JobStatus
+from ingestor_orchestrator.models import CkanInstance
 from ingestor_orchestrator.schemas import CkanInstanceResponse
 from sqlalchemy import select
 
@@ -99,7 +99,6 @@ class TestCkanInstanceModel:
         self, db_session, default_instance
     ):
         """Deleting an instance that has jobs should raise an error (FK constraint)."""
-        from datetime import datetime, timezone
 
         from ingestor_orchestrator.models import CkanDataJob
 

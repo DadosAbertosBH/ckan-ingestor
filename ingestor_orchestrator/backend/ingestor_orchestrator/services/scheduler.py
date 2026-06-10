@@ -51,7 +51,6 @@ class Scheduler:
         from ingestor_orchestrator.db import async_session
         from ingestor_orchestrator.models import CkanInstance
         from ingestor_orchestrator.services.metadata_sync import (
-            enqueue_outdated_resources,
             sync_metadata_for_instance,
         )
 

@@ -13,7 +13,10 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     CHAR,
@@ -31,6 +34,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ingestor_orchestrator.db import Base
 from ingestor_orchestrator.models.base import new_uuid, utcnow
 from ingestor_orchestrator.models.job_status import JobStatus
+
+if TYPE_CHECKING:
+    from ingestor_orchestrator.models.ckan_data_job_result import CkanDataJobResult
+    from ingestor_orchestrator.models.ckan_instance import CkanInstance
 
 
 class CkanDataJob(Base):

@@ -37,7 +37,7 @@ class TestMergeDatasetSchemaMismatch:
         ingestor = DuckdbCkanMetadataIngestor(conn)
 
         # Create existing table with notes as INT64 (e.g. from previous sync)
-        existing = pyarrow.table(
+        _existing = pyarrow.table(
             {
                 "id": pyarrow.array(["a"]),
                 "name": pyarrow.array(["old_name"]),
@@ -45,7 +45,7 @@ class TestMergeDatasetSchemaMismatch:
                 "metadata_modified": pyarrow.array(["2024-01-01"]),
             }
         )
-        conn.execute("CREATE TABLE test_tbl AS SELECT * FROM existing")
+        conn.execute("CREATE TABLE test_tbl AS SELECT * FROM _existing")
 
         # New data has notes as string (a wider type)
         new_data = pyarrow.table(
@@ -67,14 +67,14 @@ class TestMergeDatasetSchemaMismatch:
         """INSERT succeeds when new data has extra columns not in existing table."""
         ingestor = DuckdbCkanMetadataIngestor(conn)
 
-        existing = pyarrow.table(
+        _existing = pyarrow.table(
             {
                 "id": pyarrow.array(["a"]),
                 "name": pyarrow.array(["old"]),
                 "metadata_modified": pyarrow.array(["2024-01-01"]),
             }
         )
-        conn.execute("CREATE TABLE test_tbl2 AS SELECT * FROM existing")
+        conn.execute("CREATE TABLE test_tbl2 AS SELECT * FROM _existing")
 
         # New data has an extra column 'notes'
         new_data = pyarrow.table(

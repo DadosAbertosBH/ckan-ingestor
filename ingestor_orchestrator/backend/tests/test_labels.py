@@ -21,7 +21,7 @@ from ingestor_orchestrator.models import (
     JobStatus,
     ResourceMetadataLabel,
 )
-from ingestor_orchestrator.schemas import JobCreate, JobListResponse, JobResponse
+from ingestor_orchestrator.schemas import JobListResponse
 from ingestor_orchestrator.services.job_service import JobService
 from sqlalchemy import select
 

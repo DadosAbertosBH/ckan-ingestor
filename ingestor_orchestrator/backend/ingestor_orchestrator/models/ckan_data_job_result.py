@@ -13,12 +13,19 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import CHAR, JSON, Boolean, DateTime, ForeignKey, Integer, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ingestor_orchestrator.db import Base
 from ingestor_orchestrator.models.base import new_uuid, utcnow
-from sqlalchemy import CHAR, JSON, Boolean, DateTime, ForeignKey, Integer, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+if TYPE_CHECKING:
+    from ingestor_orchestrator.models.ckan_data_job import CkanDataJob
 
 
 class CkanDataJobResult(Base):
