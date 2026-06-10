@@ -109,6 +109,10 @@ class TestLatestResourceJobModel:
         sess.add(lrj1)
         await sess.flush()
 
+        # Expunge so the session doesn't warn about identity conflict
+        # when we create a second instance with the same PK.
+        sess.expunge(lrj1)
+
         lrj2 = LatestResourceJob(
             resource_id="r-dup",
             latest_job_id=job.id,
@@ -378,7 +382,7 @@ class TestResourceSchemas:
             ckan_resource_url="",
             labels=[],
             job_count=2,
-            created_at=sess.get(CkanInstance, instance.id) and instance.created_at,
+            created_at=instance.created_at,
             updated_at=instance.updated_at,
             latest_job=None,
             jobs=[],

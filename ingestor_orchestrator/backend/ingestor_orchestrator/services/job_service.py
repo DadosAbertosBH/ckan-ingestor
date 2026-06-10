@@ -108,6 +108,7 @@ class JobService:
                 resource_size,
                 encoding,
                 datastore_active,
+                expected_columns,
             ) = await asyncio.to_thread(self._run_ingestion_sync, job.resource_id)
             result = CkanDataJobResult(
                 job_id=job.id,
@@ -126,6 +127,7 @@ class JobService:
             if rows_processed == 0:
                 await self._label_resource(job.resource_id, "empty")
             else:
+                column_count = len(preview[0]) if preview else 0
                 await self._apply_ingestion_labels(
                     resource_id=job.resource_id,
                     rows_processed=rows_processed,
@@ -133,6 +135,8 @@ class JobService:
                     resource_size=resource_size,
                     encoding=encoding,
                     datastore_active=datastore_active,
+                    column_count=column_count,
+                    expected_columns=expected_columns,
                 )
         except Exception as e:
             error_trace = traceback.format_exc()
@@ -190,10 +194,10 @@ class JobService:
 
     def _run_ingestion_sync(
         self, resource_id: str
-    ) -> tuple[int, list[dict], int | None, int | None, str | None, bool]:
+    ) -> tuple[int, list[dict], int | None, int | None, str | None, bool, int | None]:
         """Synchronous ingestion — runs in a thread pool.
 
-        Returns (rows_processed, preview, expected_rows, resource_size, encoding, datastore_active).
+        Returns (rows_processed, preview, expected_rows, resource_size, encoding, datastore_active, expected_columns).
         """
         from ckan_ingestor.config.ducklake_settings import DucklakeSettings
         from ckan_ingestor.csv_reader import DuckDbCsvReader
@@ -234,18 +238,29 @@ class JobService:
 
             # Get expected_rows from Datastore API if available
             expected_rows: int | None = None
+            expected_columns: int | None = None
             if datastore_active:
                 try:
-                    expected_rows = DatastoreReader(
-                        ducklake_settings.datastore_url
-                    ).get_total(resource_id)
+                    reader = DatastoreReader(ducklake_settings.datastore_url)
+                    expected_rows = reader.get_total(resource_id)
+                    expected_columns = reader.get_field_count(resource_id)
                 except Exception:
-                    logger.warning(f"Could not fetch datastore total for {resource_id}")
+                    logger.warning(
+                        f"Could not fetch datastore metadata for {resource_id}"
+                    )
 
             ingested = ingestor.ingest_ckan_data(resource)
 
             if not ingested:
-                return 0, [], expected_rows, resource_size, None, datastore_active
+                return (
+                    0,
+                    [],
+                    expected_rows,
+                    resource_size,
+                    None,
+                    datastore_active,
+                    expected_columns,
+                )
 
             # Get row count and preview
             count = conn.execute(f'SELECT COUNT(*) FROM "{resource_id}"').fetchone()[0]
@@ -266,6 +281,7 @@ class JobService:
                 resource_size,
                 encoding,
                 datastore_active,
+                expected_columns,
             )
         finally:
             conn.close()
@@ -296,11 +312,17 @@ class JobService:
         resource_size: int | None = None,
         encoding: str | None = None,
         datastore_active: bool = False,
+        column_count: int = 0,
+        expected_columns: int | None = None,
     ) -> None:
         """Apply labels based on ingestion metadata."""
         # single-row
         if rows_processed == 1:
             await self._label_resource(resource_id, "single-row")
+
+        # single-column
+        if column_count == 1:
+            await self._label_resource(resource_id, "single-column")
 
         # row-count-mismatch
         if (
@@ -309,6 +331,14 @@ class JobService:
             and rows_processed != expected_rows
         ):
             await self._label_resource(resource_id, "row-count-mismatch")
+
+        # column-count-mismatch
+        if (
+            expected_columns is not None
+            and column_count > 0
+            and column_count != expected_columns
+        ):
+            await self._label_resource(resource_id, "column-count-mismatch")
 
         # size labels
         _ONE_MB = 1_000_000

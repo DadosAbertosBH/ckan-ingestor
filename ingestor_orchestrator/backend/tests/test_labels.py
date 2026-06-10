@@ -122,6 +122,74 @@ class TestJobServiceLabelResource:
         assert len(rows) == 1
 
 
+class TestApplyIngestionLabelsSingleColumn:
+    async def test_single_column_label_applied(self, db_session):
+        """_apply_ingestion_labels creates 'single-column' when column_count=1."""
+        service = JobService(db_session)
+        await service._apply_ingestion_labels(
+            resource_id="r-single-col",
+            rows_processed=5,
+            column_count=1,
+        )
+        rows = (
+            (
+                await db_session.execute(
+                    select(ResourceMetadataLabel).where(
+                        ResourceMetadataLabel.resource_id == "r-single-col",
+                        ResourceMetadataLabel.label == "single-column",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1
+
+    async def test_no_single_column_when_multiple_columns(self, db_session):
+        """_apply_ingestion_labels does NOT create 'single-column' when column_count>1."""
+        service = JobService(db_session)
+        await service._apply_ingestion_labels(
+            resource_id="r-multi-col",
+            rows_processed=5,
+            column_count=3,
+        )
+        rows = (
+            (
+                await db_session.execute(
+                    select(ResourceMetadataLabel).where(
+                        ResourceMetadataLabel.resource_id == "r-multi-col",
+                        ResourceMetadataLabel.label == "single-column",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 0
+
+    async def test_no_single_column_when_empty_preview(self, db_session):
+        """_apply_ingestion_labels does NOT create 'single-column' when column_count=0."""
+        service = JobService(db_session)
+        await service._apply_ingestion_labels(
+            resource_id="r-empty",
+            rows_processed=0,
+            column_count=0,
+        )
+        rows = (
+            (
+                await db_session.execute(
+                    select(ResourceMetadataLabel).where(
+                        ResourceMetadataLabel.resource_id == "r-empty",
+                        ResourceMetadataLabel.label == "single-column",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 0
+
+
 class TestJobSchemaWithLabels:
     async def test_job_response_with_labels(self, db_session, default_instance):
         """JobResponse serialization includes labels from the resource."""

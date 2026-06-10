@@ -547,6 +547,89 @@ class TestIngestionLabels:
         assert labels.count("single-row") == 1
         assert labels.count("size:small") == 1
 
+    # --- column-count-mismatch ---
+
+    async def test_label_column_count_mismatch(self, sess, instance):
+        """Resource with different column_count vs expected_columns gets label."""
+        service = JobService(sess)
+        await service._apply_ingestion_labels(
+            resource_id="r-col-mismatch",
+            rows_processed=100,
+            expected_rows=None,
+            resource_size=None,
+            encoding=None,
+            datastore_active=True,
+            column_count=3,
+            expected_columns=5,
+        )
+
+        labels = (
+            (
+                await sess.execute(
+                    select(ResourceMetadataLabel.label).where(
+                        ResourceMetadataLabel.resource_id == "r-col-mismatch"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert "column-count-mismatch" in labels
+
+    async def test_no_column_count_mismatch_when_matching(self, sess, instance):
+        """No mismatch label when column_count == expected_columns."""
+        service = JobService(sess)
+        await service._apply_ingestion_labels(
+            resource_id="r-col-match",
+            rows_processed=100,
+            expected_rows=None,
+            resource_size=None,
+            encoding=None,
+            datastore_active=True,
+            column_count=5,
+            expected_columns=5,
+        )
+
+        labels = (
+            (
+                await sess.execute(
+                    select(ResourceMetadataLabel.label).where(
+                        ResourceMetadataLabel.resource_id == "r-col-match"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert "column-count-mismatch" not in labels
+
+    async def test_no_column_count_mismatch_when_expected_unknown(self, sess, instance):
+        """No mismatch label when expected_columns is None."""
+        service = JobService(sess)
+        await service._apply_ingestion_labels(
+            resource_id="r-col-unknown",
+            rows_processed=100,
+            expected_rows=None,
+            resource_size=None,
+            encoding=None,
+            datastore_active=False,
+            column_count=3,
+            expected_columns=None,
+        )
+
+        labels = (
+            (
+                await sess.execute(
+                    select(ResourceMetadataLabel.label).where(
+                        ResourceMetadataLabel.resource_id == "r-col-unknown"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert "column-count-mismatch" not in labels
+
 
 # ---------------------------------------------------------------------------
 # Schema tests

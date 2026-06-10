@@ -57,6 +57,24 @@ class DatastoreReader:
         except Exception:
             return None
 
+    def get_field_count(self, resource_id: str) -> int | None:
+        """Fetch the number of fields (columns) from CKAN Datastore API."""
+        url = f"{self.datastore_url}/{resource_id}?format=json&offset=0&limit=0"
+        try:
+            response = requests.get(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0"
+                },
+                timeout=10,
+            )
+            response.raise_for_status()
+            data = response.json()
+            fields = data.get("fields", [])
+            return len(fields) if fields else None
+        except Exception:
+            return None
+
     @staticmethod
     def _read_json(url):
         response = requests.get(
