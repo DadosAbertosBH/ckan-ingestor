@@ -17,7 +17,7 @@
 
 Bug: Job fails with ValueError when a datastore resource has no rows.
 Fix: Return None instead of raising, mark job completed with 0 rows,
-     and add an 'empty' label to the resource in DuckLake.
+     and add an 'empty' label to the resource via MySQL resource_metadata_label.
 """
 
 from unittest.mock import MagicMock, patch
@@ -93,8 +93,10 @@ class TestIngestorEmptyResource:
 
         ingestor.ingest_ckan_data(resource)
 
-    def test_ingest_empty_resource_creates_label(self):
-        """When reader returns None, ingest should insert 'empty' label in DuckLake."""
+    def test_ingest_empty_resource_returns_false_and_no_duckdb_labels(self):
+        """When reader returns None, ingest should return False and NOT touch
+        DuckDB label tables. Labels are handled by JobService in MySQL
+        (resource_metadata_label table)."""
         resource = _make_empty_resource()
         mock_conn = MagicMock()
         mock_reader = MagicMock()
@@ -112,14 +114,13 @@ class TestIngestorEmptyResource:
         result = ingestor.ingest_ckan_data(resource)
         assert result is False
 
-        mock_conn.execute.assert_any_call(
-            "CREATE TABLE IF NOT EXISTS ckan_resource_label "
-            "(resource_id VARCHAR, label VARCHAR)",
-        )
-        mock_conn.execute.assert_any_call(
-            "INSERT INTO ckan_resource_label (resource_id, label) VALUES (?, ?)",
-            ("empty-resource-id", "empty"),
-        )
+        # No DuckDB label operations — labels live in MySQL now.
+        for call in mock_conn.execute.call_args_list:
+            sql = call[0][0] if call[0] else ""
+            assert "ckan_resource_label" not in sql, (
+                "DuckDB ckan_resource_label should not be touched — "
+                "labels are in MySQL resource_metadata_label"
+            )
 
     def test_ingest_empty_resource_does_not_create_data_table(self):
         """When reader returns None, no data table should be created."""

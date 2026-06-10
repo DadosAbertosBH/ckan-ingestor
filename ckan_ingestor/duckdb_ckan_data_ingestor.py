@@ -69,7 +69,6 @@ class DuckdbCkanDataIngestor:
                 attempt_formats.append("DATA_STORE")
                 _datastore_table = self.datastore_reader.read(resource_id)
                 if _datastore_table is None:
-                    self._label_resource(resource_id, "empty")
                     self.logger.info(
                         f"Resource {resource_id} is empty, skipping ingestion"
                     )
@@ -131,13 +130,3 @@ class DuckdbCkanDataIngestor:
 
         self.logger.info(f"Finished working on {ckan_resource['id']}")
         return True
-
-    def _label_resource(self, resource_id: str, label: str):
-        self.ducklake_conn.execute(
-            "CREATE TABLE IF NOT EXISTS ckan_resource_label "
-            "(resource_id VARCHAR, label VARCHAR)"
-        )
-        self.ducklake_conn.execute(
-            "INSERT INTO ckan_resource_label (resource_id, label) VALUES (?, ?)",
-            (resource_id, label),
-        )
