@@ -197,14 +197,17 @@ class DuckdbCkanMetadataIngestor:
             return "JSON"
         return "VARCHAR"
 
-    def get_outdated_resources_id(self) -> List[str]:
-        rows = self.conn.execute(
-            """
-                SELECT id, last_modified FROM ckan_resource
-                ANTI JOIN ckan_resource_last_update
-                  ON id = ckan_resource_id
-                  AND ckan_resource.last_modified::TIMESTAMP < ckan_resource_last_update.last_modified
-            """
-        ).fetchall()
+    def get_outdated_resources_id(self, ckan_url: str = "") -> List[str]:
+        query = """
+            SELECT id, last_modified FROM ckan_resource
+            ANTI JOIN ckan_resource_last_update
+              ON id = ckan_resource_id
+              AND ckan_resource.last_modified::TIMESTAMP < ckan_resource_last_update.last_modified
+        """
+        params: list = []
+        if ckan_url:
+            query += " WHERE ckan_resource.ckan_url = ?"
+            params.append(ckan_url)
+        rows = self.conn.execute(query, params).fetchall()
 
         return list(map(lambda row: row[0], rows))

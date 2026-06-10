@@ -51,6 +51,20 @@ def sync_metadata_for_instance(
         logger.info(f"Ingesting resources for {instance_name}...")
         resources_col = packages["resources"].combine_chunks().flatten()
         resources = pyarrow.Table.from_struct_array(resources_col)
+        # Tag every resource with its instance URL so enqueue_outdated
+        # can filter by instance.
+        ckan_col = pyarrow.array(
+            [instance_url] * resources.num_rows, type=pyarrow.string()
+        )
+        if "ckan_url" in resources.column_names:
+            idx = resources.schema.get_field_index("ckan_url")
+            resources = resources.set_column(
+                idx, pyarrow.field("ckan_url", pyarrow.string()), ckan_col
+            )
+        else:
+            resources = resources.append_column(
+                pyarrow.field("ckan_url", pyarrow.string()), ckan_col
+            )
         resource_count = resources.num_rows
         ingestor.ingest_resources(resources)
 
@@ -161,7 +175,7 @@ async def enqueue_outdated_resources(
         conn = from_settings(ducklake_settings)
         try:
             metadata_ingestor = DuckdbCkanMetadataIngestor(conn)
-            outdated_ids = metadata_ingestor.get_outdated_resources_id()
+            outdated_ids = metadata_ingestor.get_outdated_resources_id(ckan_url)
             return outdated_ids, conn
         except Exception:
             conn.close()

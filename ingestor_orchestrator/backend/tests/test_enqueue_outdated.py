@@ -39,7 +39,7 @@ def duck_conn():
     con.execute("""
         CREATE TABLE ckan_resource (
             id VARCHAR, name VARCHAR, url VARCHAR, format VARCHAR,
-            package_id VARCHAR, last_modified VARCHAR
+            package_id VARCHAR, last_modified VARCHAR, ckan_url VARCHAR
         )
     """)
     con.execute("""
@@ -89,8 +89,8 @@ class TestEnqueueOutdatedResources:
         duck_conn.execute("INSERT INTO ckan_dataset VALUES ('ds1', 'D1', '2025-01-01')")
         duck_conn.execute(
             "INSERT INTO ckan_resource VALUES "
-            "('r1', 'R1', 'http://a', 'CSV', 'ds1', '2025-01-01'),"
-            "('r2', 'R2', 'http://b', 'JSON', 'ds1', '2025-01-01')"
+            "('r1', 'R1', 'http://a', 'CSV', 'ds1', '2025-01-01', ''),"
+            "('r2', 'R2', 'http://b', 'JSON', 'ds1', '2025-01-01', '')"
         )
 
         monkeypatch.setattr(
@@ -115,7 +115,7 @@ class TestEnqueueOutdatedResources:
         duck_conn.execute("INSERT INTO ckan_dataset VALUES ('ds1', 'D1', '2025-01-01')")
         duck_conn.execute(
             "INSERT INTO ckan_resource VALUES "
-            "('r1', 'R1', 'http://a', 'CSV', 'ds1', '2025-01-01')"
+            "('r1', 'R1', 'http://a', 'CSV', 'ds1', '2025-01-01', '')"
         )
         duck_conn.execute(
             "INSERT INTO ckan_resource_last_update VALUES ('r1', '2025-06-01')"
@@ -146,3 +146,34 @@ class TestEnqueueOutdatedResources:
         )
 
         assert count == 0
+
+    async def test_filters_by_ckan_url(
+        self, autocommit_session, instance_id, duck_conn, monkeypatch
+    ):
+        """Only resources matching the instance's ckan_url are enqueued."""
+        instance_url = "https://dados.pbh.gov.br"
+        other_url = "https://dados.mg.gov.br"
+
+        duck_conn.execute("INSERT INTO ckan_dataset VALUES ('ds1', 'D1', '2025-01-01')")
+        duck_conn.execute(
+            "INSERT INTO ckan_resource VALUES "
+            "('r1', 'R1', 'http://a', 'CSV', 'ds1', '2025-01-01', '"
+            + instance_url
+            + "'),"
+            "('r2', 'R2', 'http://b', 'JSON', 'ds1', '2025-01-01', '" + other_url + "')"
+        )
+
+        monkeypatch.setattr(
+            "ckan_ingestor.duckdb_connection_factory.from_settings",
+            lambda _: duck_conn,
+        )
+
+        count = await enqueue_outdated_resources(
+            instance_id, "test", ckan_url=instance_url, db=autocommit_session
+        )
+
+        # Only r1 (matching instance_url) should be enqueued, not r2
+        assert count == 1
+        jobs = (await autocommit_session.execute(select(CkanDataJob))).scalars().all()
+        assert len(jobs) == 1
+        assert jobs[0].resource_id == "r1"
