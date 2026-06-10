@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     nats_url: str = "nats://localhost:4222"
     nats_stream: str = "CKAN_INGEST"
     nats_subject: str = "ckan.ingest.resource"
+    nats_subject_retry: str = "ckan.ingest.resource.retry"
 
     # Scheduler
     scheduler_interval_minutes: int = 480  # 8 hours, same as Dagster sensor

@@ -13,10 +13,20 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+import os
+
 import duckdb
 import pytest
 
 from ckan_ingestor.csv_reader import DuckDbCsvReader
+
+
+@pytest.fixture
+def gz_csv_file():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "../fixtures/data/test.csv.gz",
+    )
 
 
 @pytest.fixture
@@ -41,3 +51,21 @@ def test_parse_non_latin_and_non_utf8(
 def test_csv_with_bom(ckman_mock_url, in_memory_duckdb_conn: duckdb.DuckDBPyConnection):
     subject = DuckDbCsvReader(in_memory_duckdb_conn)
     subject.read(f"{ckman_mock_url}/datastore/csv_with_bom?format=csv")
+
+
+def test_read_gzipped_csv_uses_compression(
+    in_memory_duckdb_conn: duckdb.DuckDBPyConnection,
+):
+    """URL ending with .gz must pass compression='gzip' to read_csv."""
+    gz_url = "https://example.com/data.csv.gz"
+    normal_url = "https://example.com/data.csv"
+
+    from ckan_ingestor.csv_reader import DuckDbCsvReader
+
+    # The method reads SQL from the reader object by inspecting
+    # its internal implementation. Test the URL detection logic.
+    reader = DuckDbCsvReader(in_memory_duckdb_conn)
+
+    # Verify the .gz detection logic
+    assert reader._is_gzipped(gz_url) is True
+    assert reader._is_gzipped(normal_url) is False

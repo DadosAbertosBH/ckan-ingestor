@@ -20,14 +20,17 @@ from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 
 def from_settings(settings: DucklakeSettings = DucklakeSettings()):
     """Return a duckdb connection with required extensions."""
-    conn = duckdb.connect(settings.database, config={
-        "threads": 1,
-        "s3_url_style": settings.data_path.url_style,
-        "s3_use_ssl": settings.data_path.use_ssl,
-        "s3_endpoint": settings.data_path.endpoint,
-        "s3_access_key_id": settings.data_path.access_key_id,
-        "s3_secret_access_key": settings.data_path.secret_access_key
-    })
+    conn = duckdb.connect(
+        settings.database,
+        config={
+            "threads": 1,
+            "s3_url_style": settings.data_path.url_style,
+            "s3_use_ssl": settings.data_path.use_ssl,
+            "s3_endpoint": settings.data_path.endpoint,
+            "s3_access_key_id": settings.data_path.access_key_id,
+            "s3_secret_access_key": settings.data_path.secret_access_key,
+        },
+    )
     conn.install_extension("mysql")
     conn.install_extension("postgres")
     conn.install_extension("httpfs")
@@ -37,8 +40,11 @@ def from_settings(settings: DucklakeSettings = DucklakeSettings()):
     conn.load_extension("httpfs")
     conn.execute("SET pg_debug_show_queries=false;")
 
-    conn.execute(f"ATTACH IF NOT EXISTS 'ducklake:{settings.catalog_uri}' AS lake "
-                 f"(DATA_PATH '{settings.data_path.protocol}://{settings.data_path.bucket}', "
-                 f"DATA_INLINING_ROW_LIMIT 10000, AUTOMATIC_MIGRATION TRUE);")
+    conn.execute(
+        f"ATTACH IF NOT EXISTS 'ducklake:{settings.catalog_uri}' AS lake "
+        f"(DATA_PATH '{settings.data_path.protocol}://{settings.data_path.bucket}', "
+        f"DATA_INLINING_ROW_LIMIT 10000, AUTOMATIC_MIGRATION TRUE);"
+    )
     conn.execute("USE lake;")
+    conn.execute("SET ducklake_max_retry_count = 100;")
     return conn

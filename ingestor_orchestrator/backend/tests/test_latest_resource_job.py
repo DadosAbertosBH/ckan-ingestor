@@ -25,7 +25,6 @@ from ingestor_orchestrator.models import (
 )
 from ingestor_orchestrator.schemas import JobCreate
 from ingestor_orchestrator.services.job_service import JobService
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 pytestmark = pytest.mark.asyncio
@@ -268,7 +267,6 @@ class TestJobServiceUpsertsLatestResource:
         # Simulate processing — we can't call process_job because it needs
         # real ingestion. Instead, directly update and call the upsert logic.
         # We'll test that the service method to update latest status works.
-        from unittest.mock import AsyncMock, patch
 
         # Get the job
         job = await sess.get(CkanDataJob, lrj.latest_job_id)
@@ -306,7 +304,6 @@ class TestJobServiceUpsertsLatestResource:
         """_update_latest_resource_status does nothing if resource_id not in table."""
         service = JobService(sess)
         # Create a bare job (no LatestResourceJob entry for its resource)
-        from unittest.mock import AsyncMock, patch
 
         fake_job = CkanDataJob(
             resource_id="nonexistent",
@@ -368,7 +365,6 @@ class TestResourceSchemas:
         """ResourceDetailResponse includes jobs list."""
         from ingestor_orchestrator.schemas import (
             ResourceDetailResponse,
-            ResourceResponse,
         )
 
         resp = ResourceDetailResponse(

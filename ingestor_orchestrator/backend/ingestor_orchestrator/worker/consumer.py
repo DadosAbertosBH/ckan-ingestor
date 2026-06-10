@@ -41,18 +41,23 @@ class Worker:
         self._nc = await nats_lib.connect(settings.nats_url)
         js = self._nc.jetstream()
 
-        # Ensure the stream exists
+        # Ensure the stream exists with both subjects
         try:
             await js.add_stream(
                 name=settings.nats_stream,
-                subjects=[settings.nats_subject],
+                subjects=[settings.nats_subject, settings.nats_subject_retry],
             )
         except Exception:
             pass  # Stream already exists
 
-        # Pull consumer — gives us full control over dispatch and flow.
-        # We fetch batches and dispatch each message as a background task.
-        # The semaphore limits concurrency without blocking the fetch loop.
+        # Retry consumer — checked first for priority
+        psub_retry = await js.pull_subscribe(
+            subject=settings.nats_subject_retry,
+            durable="ckan-worker-retry",
+            stream=settings.nats_stream,
+        )
+
+        # Regular consumer
         psub = await js.pull_subscribe(
             subject=settings.nats_subject,
             durable="ckan-worker",
@@ -60,10 +65,19 @@ class Worker:
         )
 
         logger.info(
-            f"Worker started (pull, concurrency={WORKER_CONCURRENCY}), waiting for messages..."
+            f"Worker started (pull, concurrency={WORKER_CONCURRENCY}), "
+            f"retry subject: {settings.nats_subject_retry}"
         )
 
         while self._running:
+            try:
+                # Check retry queue first — higher priority
+                retry_msgs = await psub_retry.fetch(batch=WORKER_CONCURRENCY, timeout=1)
+                for msg in retry_msgs:
+                    asyncio.create_task(self._process(msg))
+            except (asyncio.TimeoutError, nats_lib.errors.TimeoutError):
+                pass
+
             try:
                 msgs = await psub.fetch(batch=WORKER_CONCURRENCY, timeout=5)
                 for msg in msgs:

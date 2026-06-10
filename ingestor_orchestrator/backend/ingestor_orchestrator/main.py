@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
     try:
         await js.add_stream(
             name=settings.nats_stream,
-            subjects=[settings.nats_subject],
+            subjects=[settings.nats_subject, settings.nats_subject_retry],
         )
     except Exception:
         pass

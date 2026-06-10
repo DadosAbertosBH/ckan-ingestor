@@ -84,7 +84,7 @@ class JobService:
         await self.db.commit()
         await self.db.refresh(job)
 
-        await self._publish_job(job.id, job.ckan_url or "")
+        await self._publish_job(job.id, job.ckan_url or "", retry=True)
         logger.info(f"Retrying job {job.id}")
         return job
 
@@ -367,13 +367,16 @@ class JobService:
         if datastore_active:
             await self._label_resource(resource_id, "datastore")
 
-    async def _publish_job(self, job_id: str, ckan_url: str = "") -> None:
+    async def _publish_job(
+        self, job_id: str, ckan_url: str = "", retry: bool = False
+    ) -> None:
         """Publish job to NATS JetStream."""
+        subject = settings.nats_subject_retry if retry else settings.nats_subject
         try:
             nc = await nats_lib.connect(settings.nats_url)
             js = nc.jetstream()
             await js.publish(
-                settings.nats_subject,
+                subject,
                 json.dumps({"job_id": job_id, "ckan_url": ckan_url}).encode(),
             )
             await nc.close()

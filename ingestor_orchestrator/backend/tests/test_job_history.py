@@ -16,6 +16,7 @@
 """Tests for job history — multiple jobs per resource."""
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
@@ -141,3 +142,26 @@ class TestJobHistory:
         new_job = await service.create_job(jc)
         assert new_job.id != job.id
         assert new_job.status == JobStatus.PENDING
+
+    async def test_retry_publishes_to_retry_subject(self, sess, instance):
+        """retry_job must publish to the retry subject for priority."""
+        job = CkanDataJob(
+            resource_id="r-retry",
+            dataset_name="d-retry",
+            idempotency_key="r-retry",
+            instance_id=instance.id,
+            status=JobStatus.FAILED,
+        )
+        sess.add(job)
+        await sess.commit()
+
+        service = JobService(sess)
+        with patch.object(
+            service, "_publish_job", new_callable=AsyncMock
+        ) as mock_publish:
+            await service.retry_job(job.id)
+
+            mock_publish.assert_awaited_once()
+            assert mock_publish.call_args.kwargs.get("retry") is True, (
+                "retry_job must call _publish_job with retry=True"
+            )

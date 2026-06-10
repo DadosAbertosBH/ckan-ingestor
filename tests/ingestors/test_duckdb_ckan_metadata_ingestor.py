@@ -15,31 +15,41 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import duckdb
 import pytest
+
 from ckan_ingestor.duckdb_ckan_metadata_ingestor import DuckdbCkanMetadataIngestor
+
+
+def _handler_count():
+    """How many handlers are attached to the ingestor's logger."""
+    logger = DuckdbCkanMetadataIngestor.logger
+    return len(logger.handlers)
+
 
 @pytest.fixture
 def duckdb_conn():
-    conn = duckdb.connect(database=':memory:')
+    conn = duckdb.connect(database=":memory:")
     yield conn
     conn.close()
+
 
 @pytest.fixture
 def ingestor(duckdb_conn):
     return DuckdbCkanMetadataIngestor(duckdb_conn)
 
+
 def test_get_outdated_resources_id(ingestor):
     conn = ingestor.conn
     # Cria as tabelas necessárias
-    conn.execute('''
+    conn.execute("""
         CREATE TABLE ckan_resource (
             id varchar(50), last_modified varchar(50)
         )
-    ''')
-    conn.execute('''
+    """)
+    conn.execute("""
         CREATE TABLE ckan_resource_last_update (
             ckan_resource_id varchar(50), last_modified TIMESTAMP
         )
-    ''')
+    """)
     # Insere dados de teste
     conn.execute("""
         INSERT INTO ckan_resource VALUES
@@ -56,7 +66,23 @@ def test_get_outdated_resources_id(ingestor):
     # 222... tá atualizado (last_modified < last_update)
     # 333... nunca foi processado
     result = ingestor.get_outdated_resources_id()
-    assert '11111111-1111-1111-1111-111111111111' in result
-    assert '33333333-3333-3333-3333-333333333333' in result
-    assert '22222222-2222-2222-2222-222222222222' not in result
+    assert "11111111-1111-1111-1111-111111111111" in result
+    assert "33333333-3333-3333-3333-333333333333" in result
+    assert "22222222-2222-2222-2222-222222222222" not in result
 
+
+def test_multiple_instances_do_not_accumulate_handlers(duckdb_conn):
+    """Creating multiple instances must not duplicate log handlers."""
+    before = _handler_count()
+
+    # Create 3 instances — should not add 3 handlers
+    DuckdbCkanMetadataIngestor(duckdb_conn)
+    DuckdbCkanMetadataIngestor(duckdb_conn)
+    DuckdbCkanMetadataIngestor(duckdb_conn)
+
+    after = _handler_count()
+
+    # At most 1 handler added total (the first instance)
+    assert after <= before + 1, (
+        f"Handler count grew from {before} to {after} — should be at most {before + 1}"
+    )

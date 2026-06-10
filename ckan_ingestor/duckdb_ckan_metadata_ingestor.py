@@ -42,10 +42,11 @@ class DuckdbCkanMetadataIngestor:
         self,
         conn: duckdb.DuckDBPyConnection,
     ):
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
+        if not self.logger.hasHandlers():
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
         self.csv_reader = DuckDbCsvReader(conn)
         self.conn = conn
 

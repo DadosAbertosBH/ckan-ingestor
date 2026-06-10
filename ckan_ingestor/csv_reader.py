@@ -27,11 +27,13 @@ class DuckDbCsvReader:
         self.last_encoding: str | None = None
 
     def read(self, url: str) -> pyarrow.Table:
+        compression = ", compression='gzip'" if self._is_gzipped(url) else ""
         for encoding in ["utf-8", "latin-1", "utf-16"]:
             try:
                 result = (
                     self.conn.execute(
-                        f"SELECT * FROM read_csv('{url}', sample_size=100000, encoding='{encoding}')"
+                        f"SELECT * FROM read_csv('{url}', sample_size=100000, "
+                        f"encoding='{encoding}'{compression})"
                     )
                     .arrow()
                     .read_all()
@@ -61,3 +63,7 @@ class DuckDbCsvReader:
                     pass
 
             raise duckdb.IOException(f"Failed to parse CSV file from {url}")
+
+    @staticmethod
+    def _is_gzipped(url: str) -> bool:
+        return url.lower().endswith(".gz")
