@@ -101,14 +101,22 @@ class JobService:
         await self.db.commit()
 
         try:
-            rows_processed, preview = await asyncio.to_thread(
-                self._run_ingestion_sync, job.resource_id
-            )
+            (
+                rows_processed,
+                preview,
+                expected_rows,
+                resource_size,
+                encoding,
+                datastore_active,
+            ) = await asyncio.to_thread(self._run_ingestion_sync, job.resource_id)
             result = CkanDataJobResult(
                 job_id=job.id,
                 success=True,
                 dataset_preview=self._sanitize_preview(preview),
                 rows_processed=rows_processed,
+                expected_rows=expected_rows,
+                resource_size=resource_size,
+                encoding=encoding,
             )
             self.db.add(result)
             job.status = JobStatus.COMPLETED
@@ -117,6 +125,15 @@ class JobService:
 
             if rows_processed == 0:
                 await self._label_resource(job.resource_id, "empty")
+            else:
+                await self._apply_ingestion_labels(
+                    resource_id=job.resource_id,
+                    rows_processed=rows_processed,
+                    expected_rows=expected_rows,
+                    resource_size=resource_size,
+                    encoding=encoding,
+                    datastore_active=datastore_active,
+                )
         except Exception as e:
             error_trace = traceback.format_exc()
             result = CkanDataJobResult(
@@ -171,8 +188,13 @@ class JobService:
             latest.dataset_name = job.dataset_name
             latest.updated_at = datetime.now(timezone.utc)
 
-    def _run_ingestion_sync(self, resource_id: str) -> tuple[int, list[dict]]:
-        """Synchronous ingestion — runs in a thread pool."""
+    def _run_ingestion_sync(
+        self, resource_id: str
+    ) -> tuple[int, list[dict], int | None, int | None, str | None, bool]:
+        """Synchronous ingestion — runs in a thread pool.
+
+        Returns (rows_processed, preview, expected_rows, resource_size, encoding, datastore_active).
+        """
         from ckan_ingestor.config.ducklake_settings import DucklakeSettings
         from ckan_ingestor.csv_reader import DuckDbCsvReader
         from ckan_ingestor.datastore_reader import DatastoreReader
@@ -205,10 +227,25 @@ class JobService:
                 )
 
             resource = resource_row[0]
+
+            # Extract metadata before ingestion
+            resource_size = resource.get("size")
+            datastore_active = resource.get("datastore_active", False)
+
+            # Get expected_rows from Datastore API if available
+            expected_rows: int | None = None
+            if datastore_active:
+                try:
+                    expected_rows = DatastoreReader(
+                        ducklake_settings.datastore_url
+                    ).get_total(resource_id)
+                except Exception:
+                    logger.warning(f"Could not fetch datastore total for {resource_id}")
+
             ingested = ingestor.ingest_ckan_data(resource)
 
             if not ingested:
-                return 0, []
+                return 0, [], expected_rows, resource_size, None, datastore_active
 
             # Get row count and preview
             count = conn.execute(f'SELECT COUNT(*) FROM "{resource_id}"').fetchone()[0]
@@ -219,7 +256,17 @@ class JobService:
                 .to_pylist()
             )
 
-            return count, preview_rows
+            # Get detected encoding from CSV reader
+            encoding = getattr(ingestor.csv_reader, "last_encoding", None)
+
+            return (
+                count,
+                preview_rows,
+                expected_rows,
+                resource_size,
+                encoding,
+                datastore_active,
+            )
         finally:
             conn.close()
 
@@ -240,6 +287,47 @@ class JobService:
             return
         self.db.add(ResourceMetadataLabel(resource_id=resource_id, label=label))
         await self.db.flush()
+
+    async def _apply_ingestion_labels(
+        self,
+        resource_id: str,
+        rows_processed: int | None,
+        expected_rows: int | None = None,
+        resource_size: int | None = None,
+        encoding: str | None = None,
+        datastore_active: bool = False,
+    ) -> None:
+        """Apply labels based on ingestion metadata."""
+        # single-row
+        if rows_processed == 1:
+            await self._label_resource(resource_id, "single-row")
+
+        # row-count-mismatch
+        if (
+            expected_rows is not None
+            and rows_processed is not None
+            and rows_processed != expected_rows
+        ):
+            await self._label_resource(resource_id, "row-count-mismatch")
+
+        # size labels
+        _ONE_MB = 1_000_000
+        _ONE_GB = 1_000_000_000
+        if resource_size is not None:
+            if resource_size < _ONE_MB:
+                await self._label_resource(resource_id, "size:small")
+            elif resource_size < _ONE_GB:
+                await self._label_resource(resource_id, "size:medium")
+            else:
+                await self._label_resource(resource_id, "size:large")
+
+        # encoding (skip utf-8, the default)
+        if encoding and encoding != "utf-8":
+            await self._label_resource(resource_id, f"encoding:{encoding}")
+
+        # datastore
+        if datastore_active:
+            await self._label_resource(resource_id, "datastore")
 
     async def _publish_job(self, job_id: str) -> None:
         """Publish job to NATS JetStream."""

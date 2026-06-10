@@ -82,6 +82,44 @@
                         formatTime(resource.updated_at)
                     }}</span>
                 </div>
+                <div
+                    v-if="latestResult?.rows_processed != null"
+                    class="info-item"
+                >
+                    <span class="info-label">Rows Processed</span>
+                    <span class="info-value">{{
+                        latestResult.rows_processed.toLocaleString()
+                    }}</span>
+                </div>
+                <div
+                    v-if="latestResult?.expected_rows != null"
+                    class="info-item"
+                >
+                    <span class="info-label">Expected Rows</span>
+                    <span
+                        class="info-value"
+                        :class="{
+                            'text-warning':
+                                latestResult.rows_processed != null &&
+                                latestResult.rows_processed !==
+                                    latestResult.expected_rows,
+                        }"
+                        >{{ latestResult.expected_rows.toLocaleString() }}</span
+                    >
+                </div>
+                <div
+                    v-if="latestResult?.resource_size != null"
+                    class="info-item"
+                >
+                    <span class="info-label">File Size</span>
+                    <span class="info-value">{{
+                        formatSize(latestResult.resource_size)
+                    }}</span>
+                </div>
+                <div v-if="latestResult?.encoding" class="info-item">
+                    <span class="info-label">Encoding</span>
+                    <span class="info-value">{{ latestResult.encoding }}</span>
+                </div>
             </div>
 
             <div class="jobs-section">
@@ -180,7 +218,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import JobStatusBadge from "@/components/JobStatusBadge.vue";
 import ResourceLabelBadge from "@/components/ResourceLabelBadge.vue";
@@ -194,6 +232,14 @@ const { fetchResource } = useApi();
 const resource = ref<ResourceDetail | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
+
+const latestResult = computed(() => {
+    if (!resource.value?.latest_job?.results) return null;
+    const successResults = resource.value.latest_job.results.filter(
+        (r) => r.success,
+    );
+    return successResults.length > 0 ? successResults[0] : null;
+});
 
 async function loadResource() {
     loading.value = true;
@@ -216,7 +262,13 @@ function formatTime(iso: string): string {
 }
 
 function truncate(val: string, max = 60): string {
-    return val.length > max ? val.substring(0, max) + "…" : val;
+    return val.length > max ? val.substring(0, max) + "\u2026" : val;
+}
+
+function formatSize(bytes: number): string {
+    if (bytes < 1_000_000) return `${(bytes / 1_000).toFixed(1)} KB`;
+    if (bytes < 1_000_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
+    return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
 }
 
 onMounted(loadResource);
@@ -414,5 +466,10 @@ onMounted(loadResource);
     max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.text-warning {
+    color: #f59e0b;
+    font-weight: 600;
 }
 </style>

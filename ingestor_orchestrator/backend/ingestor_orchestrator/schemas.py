@@ -63,6 +63,9 @@ class JobResultResponse(BaseModel):
     error_trace: str | None
     dataset_preview: dict | list | None
     rows_processed: int | None
+    expected_rows: int | None = None
+    resource_size: int | None = None
+    encoding: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -46,6 +46,9 @@ export interface JobResult {
   error_trace: string | null;
   dataset_preview: Record<string, unknown>[] | null;
   rows_processed: number | null;
+  expected_rows: number | null;
+  resource_size: number | null;
+  encoding: string | null;
   created_at: string;
 }
 

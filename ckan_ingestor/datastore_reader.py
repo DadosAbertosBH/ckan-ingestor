@@ -40,6 +40,23 @@ class DatastoreReader:
             return None
         return pyarrow.concat_tables(tables, promote_options="default")
 
+    def get_total(self, resource_id: str) -> int | None:
+        """Fetch the total record count from CKAN Datastore API."""
+        url = f"{self.datastore_url}/{resource_id}?format=json&offset=0&limit=0"
+        try:
+            response = requests.get(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0"
+                },
+                timeout=10,
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("total")
+        except Exception:
+            return None
+
     @staticmethod
     def _read_json(url):
         response = requests.get(

@@ -18,7 +18,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CHAR, JSON, Boolean, DateTime, ForeignKey, Integer, Text
+from sqlalchemy import (
+    CHAR,
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ingestor_orchestrator.db import Base
@@ -43,6 +52,9 @@ class CkanDataJobResult(Base):
     error_trace: Mapped[str | None] = mapped_column(Text, nullable=True)
     dataset_preview: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     rows_processed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    expected_rows: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    resource_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    encoding: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, nullable=False
     )
