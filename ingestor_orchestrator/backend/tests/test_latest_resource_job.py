@@ -386,3 +386,150 @@ class TestResourceSchemas:
         assert resp.job_count == 2
         assert resp.latest_job is None
         assert resp.jobs == []
+        assert resp.preview == []
+
+    async def test_resource_detail_with_preview(self, sess, instance):
+        """ResourceDetailResponse includes preview from latest successful result."""
+        from ingestor_orchestrator.schemas import ResourceDetailResponse
+
+        preview_data = [
+            {"name": "Alice", "age": 30},
+            {"name": "Bob", "age": 25},
+        ]
+        resp = ResourceDetailResponse(
+            resource_id="r-preview",
+            resource_name=None,
+            resource_url=None,
+            resource_format="CSV",
+            dataset_name="ds-preview",
+            status=JobStatus.COMPLETED,
+            instance_id=instance.id,
+            ckan_resource_url="",
+            labels=[],
+            job_count=1,
+            created_at=instance.created_at,
+            updated_at=instance.updated_at,
+            latest_job=None,
+            jobs=[],
+            preview=preview_data,
+        )
+        assert resp.preview == preview_data
+        assert len(resp.preview) == 2
+        assert resp.preview[0]["name"] == "Alice"
+
+
+class TestExtractPreview:
+    async def test_extract_preview_from_successful_result(self, sess, instance):
+        """_extract_preview returns preview from a successful result."""
+        from ingestor_orchestrator.api.resources import _extract_preview
+
+        job = CkanDataJob(
+            resource_id="r-ex",
+            dataset_name="ds-ex",
+            idempotency_key="r-ex",
+            instance_id=instance.id,
+            status=JobStatus.COMPLETED,
+        )
+        sess.add(job)
+        await sess.flush()
+
+        from ingestor_orchestrator.models import CkanDataJobResult
+
+        result = CkanDataJobResult(
+            job_id=job.id,
+            success=True,
+            rows_processed=100,
+            dataset_preview=[
+                {"col1": "a", "col2": 1},
+                {"col1": "b", "col2": 2},
+            ],
+        )
+        sess.add(result)
+        await sess.flush()
+
+        # Reload job with results
+        await sess.refresh(job, attribute_names=["results"])
+        preview = _extract_preview(job)
+        assert len(preview) == 2
+        assert preview[0]["col1"] == "a"
+
+    async def test_extract_preview_empty_when_no_results(self, sess, instance):
+        """_extract_preview returns [] when job has no results."""
+        from ingestor_orchestrator.api.resources import _extract_preview
+
+        job = CkanDataJob(
+            resource_id="r-no-res",
+            dataset_name="ds-no-res",
+            idempotency_key="r-no-res",
+            instance_id=instance.id,
+        )
+        sess.add(job)
+        await sess.flush()
+
+        # Eagerly load results so _extract_preview doesn't trigger lazy load
+        await sess.refresh(job, attribute_names=["results"])
+        preview = _extract_preview(job)
+        assert preview == []
+
+    async def test_extract_preview_empty_when_job_is_none(self, sess):
+        """_extract_preview returns [] when job is None."""
+        from ingestor_orchestrator.api.resources import _extract_preview
+
+        assert _extract_preview(None) == []
+
+    async def test_extract_preview_skips_failed_results(self, sess, instance):
+        """_extract_preview skips failed results and finds successful one."""
+        from ingestor_orchestrator.api.resources import _extract_preview
+        from ingestor_orchestrator.models import CkanDataJobResult
+
+        job = CkanDataJob(
+            resource_id="r-mixed",
+            dataset_name="ds-mixed",
+            idempotency_key="r-mixed",
+            instance_id=instance.id,
+            status=JobStatus.COMPLETED,
+        )
+        sess.add(job)
+        await sess.flush()
+
+        fail_result = CkanDataJobResult(
+            job_id=job.id,
+            success=False,
+            error_message="boom",
+        )
+        sess.add(fail_result)
+        await sess.flush()
+
+        # Reload with results
+        await sess.refresh(job, attribute_names=["results"])
+        preview = _extract_preview(job)
+        assert preview == []
+
+    async def test_extract_preview_with_stored_rows(self, sess, instance):
+        """_extract_preview returns whatever is stored in dataset_preview."""
+        from ingestor_orchestrator.api.resources import _extract_preview
+        from ingestor_orchestrator.models import CkanDataJobResult
+
+        rows = [{"id": i} for i in range(5)]
+        job = CkanDataJob(
+            resource_id="r-5rows",
+            dataset_name="ds-5rows",
+            idempotency_key="r-5rows",
+            instance_id=instance.id,
+            status=JobStatus.COMPLETED,
+        )
+        sess.add(job)
+        await sess.flush()
+
+        result = CkanDataJobResult(
+            job_id=job.id,
+            success=True,
+            rows_processed=100,
+            dataset_preview=rows,
+        )
+        sess.add(result)
+        await sess.flush()
+
+        await sess.refresh(job, attribute_names=["results"])
+        preview = _extract_preview(job)
+        assert len(preview) == 5

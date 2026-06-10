@@ -75,4 +75,5 @@ export interface Resource {
 export interface ResourceDetail extends Resource {
   latest_job: Job | null;
   jobs: Job[];
+  preview: Record<string, unknown>[];
 }

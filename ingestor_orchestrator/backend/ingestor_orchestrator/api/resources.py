@@ -38,6 +38,18 @@ from ingestor_orchestrator.schemas import (
 router = APIRouter(prefix="/api/resources", tags=["resources"])
 
 
+def _extract_preview(job: CkanDataJob | None) -> list[dict]:
+    """Extract dataset_preview from the latest successful result."""
+    if not job or not job.results:
+        return []
+    for result in job.results:
+        if result.success and result.dataset_preview:
+            preview = result.dataset_preview
+            if isinstance(preview, list):
+                return preview
+    return []
+
+
 @router.get("/", response_model=list[ResourceResponse])
 async def list_resources(
     status: Optional[JobStatus] = None,
@@ -243,4 +255,5 @@ async def get_resource(
         updated_at=latest.updated_at,
         latest_job=latest_job_response,
         jobs=job_list_responses,
+        preview=_extract_preview(job),
     )

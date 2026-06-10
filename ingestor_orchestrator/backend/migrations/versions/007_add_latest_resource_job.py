@@ -59,6 +59,34 @@ def upgrade():
         sa.Column("updated_at", sa.DateTime, nullable=False),
     )
 
+    # Backfill: populate latest_resource_job from existing jobs.
+    # For each resource_id, insert the most recent job's data.
+    op.execute("""
+        INSERT INTO latest_resource_job (
+            resource_id, latest_job_id, instance_id,
+            resource_name, resource_url, resource_format, dataset_name,
+            status, created_at, updated_at
+        )
+        SELECT
+            j.resource_id,
+            j.id AS latest_job_id,
+            j.instance_id,
+            j.resource_name,
+            j.resource_url,
+            j.resource_format,
+            j.dataset_name,
+            j.status,
+            j.created_at,
+            j.updated_at
+        FROM ckan_data_job j
+        INNER JOIN (
+            SELECT resource_id, MAX(created_at) AS max_created
+            FROM ckan_data_job
+            GROUP BY resource_id
+        ) latest ON j.resource_id = latest.resource_id
+                  AND j.created_at = latest.max_created
+    """)
+
 
 def downgrade():
     op.drop_table("latest_resource_job")

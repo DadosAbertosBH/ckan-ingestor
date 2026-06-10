@@ -114,5 +114,6 @@ class ResourceResponse(BaseModel):
 class ResourceDetailResponse(ResourceResponse):
     latest_job: JobResponse | None = None
     jobs: list[JobListResponse] = []
+    preview: list[dict] = []
 
     model_config = {"from_attributes": True}

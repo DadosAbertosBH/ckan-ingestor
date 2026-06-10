@@ -46,9 +46,7 @@
                 </div>
                 <div class="info-item">
                     <span class="info-label">Dataset</span>
-                    <span class="info-value">{{
-                        resource.dataset_name
-                    }}</span>
+                    <span class="info-value">{{ resource.dataset_name }}</span>
                 </div>
                 <div class="info-item">
                     <span class="info-label">Jobs</span>
@@ -113,7 +111,11 @@
                                 </td>
                                 <td>{{ formatTime(job.created_at) }}</td>
                                 <td>
-                                    {{ job.started_at ? formatTime(job.started_at) : "—" }}
+                                    {{
+                                        job.started_at
+                                            ? formatTime(job.started_at)
+                                            : "—"
+                                    }}
                                 </td>
                                 <td>
                                     {{
@@ -135,6 +137,43 @@
                     </table>
                 </div>
                 <div v-else class="empty-state">No jobs recorded</div>
+            </div>
+
+            <div
+                v-if="resource.preview && resource.preview.length > 0"
+                class="preview-section"
+            >
+                <h2 class="section-title">
+                    Data Preview ({{ resource.preview.length }} rows)
+                </h2>
+                <div class="preview-table-wrapper">
+                    <table class="preview-table">
+                        <thead>
+                            <tr>
+                                <th
+                                    v-for="key in Object.keys(
+                                        resource.preview[0] ?? {},
+                                    )"
+                                    :key="key"
+                                >
+                                    {{ key }}
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(row, i) in resource.preview" :key="i">
+                                <td
+                                    v-for="key in Object.keys(
+                                        resource.preview[0] ?? {},
+                                    )"
+                                    :key="key"
+                                >
+                                    {{ truncate(String(row[key] ?? "")) }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </template>
     </div>
@@ -174,6 +213,10 @@ function goToJob(jobId: string) {
 
 function formatTime(iso: string): string {
     return new Date(iso).toLocaleString();
+}
+
+function truncate(val: string, max = 60): string {
+    return val.length > max ? val.substring(0, max) + "…" : val;
 }
 
 onMounted(loadResource);
@@ -336,5 +379,40 @@ onMounted(loadResource);
     padding: 32px;
     background: #1a1d27;
     border-radius: 8px;
+}
+
+.preview-section {
+    margin-top: 32px;
+}
+
+.preview-table-wrapper {
+    overflow-x: auto;
+    margin-top: 8px;
+}
+
+.preview-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #1a1d27;
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 12px;
+}
+
+.preview-table th {
+    background: #2a2d37;
+    padding: 6px 10px;
+    text-align: left;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.preview-table td {
+    padding: 6px 10px;
+    border-top: 1px solid #2a2d37;
+    white-space: nowrap;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 </style>
