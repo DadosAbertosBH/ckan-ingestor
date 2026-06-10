@@ -64,7 +64,7 @@ class JobService:
         # Publish to NATS
         await self._publish_job(job.id, data.ckan_url)
 
-        logger.info(f"Created job {job.id} for resource {data.resource_id}")
+        logger.debug(f"Created job {job.id} for resource {data.resource_id}")
         return job
 
     async def retry_job(self, job_id: str) -> CkanDataJob:
