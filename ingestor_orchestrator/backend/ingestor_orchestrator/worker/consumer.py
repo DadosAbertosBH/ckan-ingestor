@@ -84,11 +84,12 @@ class Worker:
         try:
             payload = json.loads(msg.data.decode())
             job_id = payload["job_id"]
+            ckan_url = payload.get("ckan_url", "")
             logger.info(f"Processing job {job_id}")
 
             async with async_session() as db:
                 service = JobService(db)
-                await service.process_job(job_id)
+                await service.process_job(job_id, ckan_url=ckan_url)
 
             await msg.ack()
             logger.info(f"Job {job_id} processed successfully")

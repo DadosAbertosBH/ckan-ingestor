@@ -13,14 +13,16 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-import pyarrow.compute as pc
-
 import pyarrow as pa
+import pyarrow.compute as pc
 from duckdb import DuckDBPyConnection
-
 from pytest import fixture
 
-from ckan_ingestor.duckdb_ckan_metadata_ingestor import DuckdbCkanMetadataIngestor, CKAN_RESOURCE_TABLE, CKAN_DATASET_TABLE
+from ckan_ingestor.duckdb_ckan_metadata_ingestor import (
+    CKAN_DATASET_TABLE,
+    CKAN_RESOURCE_TABLE,
+    DuckdbCkanMetadataIngestor,
+)
 
 EXPECTED_DATASET_ROWS_SIZE = 1
 EXPECTED_DATASET_ROWS_WITH_INSERT_SIZE = 2
@@ -61,7 +63,9 @@ def test_same_dataset_does_not_generate_changes(
         deletes=0,
     )
 
-    current_snapshot = subject.conn.execute("SELECT * FROM snapshots();").arrow().read_all()
+    current_snapshot = (
+        subject.conn.execute("SELECT * FROM snapshots();").arrow().read_all()
+    )
 
     # Run pipeline again and assert that no new rows are inserted
     subject.ingest_dataset(initial_dataset)
@@ -155,10 +159,14 @@ def _assert_expected_table_state(conn, table_name, expected_rows, inserts=0, del
     ).fetchone()[0]
     max_table_snapshot = conn.execute(f"""
             SELECT MAX(snapshot_id) FROM table_changes('{table_name}', 0, {max_snapshot})
-        
+
     """).fetchone()[0]
-    changes = conn.execute(
-        f"FROM table_changes('{table_name}', {max_table_snapshot}, {max_table_snapshot});"
-    ).arrow().read_all()
+    changes = (
+        conn.execute(
+            f"FROM table_changes('{table_name}', {max_table_snapshot}, {max_table_snapshot});"
+        )
+        .arrow()
+        .read_all()
+    )
     assert changes.filter(pc.field("change_type") == "insert").num_rows == inserts
     assert changes.filter(pc.field("change_type") == "delete").num_rows == deletes

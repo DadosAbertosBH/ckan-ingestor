@@ -53,6 +53,7 @@ class JobService:
             idempotency_key=idempotency_key,
             status=JobStatus.PENDING,
             instance_id=data.instance_id or "",
+            ckan_url=data.ckan_url or "",
         )
         self.db.add(job)
         await self.db.flush()
@@ -61,7 +62,7 @@ class JobService:
         await self.db.refresh(job)
 
         # Publish to NATS
-        await self._publish_job(job.id)
+        await self._publish_job(job.id, data.ckan_url)
 
         logger.info(f"Created job {job.id} for resource {data.resource_id}")
         return job
@@ -83,11 +84,11 @@ class JobService:
         await self.db.commit()
         await self.db.refresh(job)
 
-        await self._publish_job(job.id)
+        await self._publish_job(job.id, job.ckan_url or "")
         logger.info(f"Retrying job {job.id}")
         return job
 
-    async def process_job(self, job_id: str) -> None:
+    async def process_job(self, job_id: str, ckan_url: str = "") -> None:
         """Called by the worker to process a job."""
         job = await self.db.get(CkanDataJob, job_id)
         if not job:
@@ -109,7 +110,9 @@ class JobService:
                 encoding,
                 datastore_active,
                 expected_columns,
-            ) = await asyncio.to_thread(self._run_ingestion_sync, job.resource_id)
+            ) = await asyncio.to_thread(
+                self._run_ingestion_sync, job.resource_id, ckan_url
+            )
             result = CkanDataJobResult(
                 job_id=job.id,
                 success=True,
@@ -193,11 +196,11 @@ class JobService:
             latest.updated_at = datetime.now(timezone.utc)
 
     def _run_ingestion_sync(
-        self, resource_id: str
+        self, resource_id: str, ckan_url: str = ""
     ) -> tuple[int, list[dict], int | None, int | None, str | None, bool, int | None]:
         """Synchronous ingestion — runs in a thread pool.
 
-        Returns (rows_processed, preview, expected_rows, resource_size, encoding, datastore_active, expected_columns).
+        ckan_url is the per-instance CKAN base URL (from MySQL instance).
         """
         from ckan_ingestor.config.ducklake_settings import DucklakeSettings
         from ckan_ingestor.csv_reader import DuckDbCsvReader
@@ -210,8 +213,19 @@ class JobService:
         conn = from_settings(ducklake_settings)
 
         try:
-            # Fetch resource metadata from ckan_resource table FIRST
-            # so we can use the correct per-instance ckan_url for datastore.
+            # Build datastore URL from the per-instance ckan_url,
+            # falling back to the global setting.
+            base_url = ckan_url or ducklake_settings.ckan_url
+            datastore_url = f"{base_url.rstrip('/')}/datastore/dump"
+
+            ingestor = DuckdbCkanDataIngestor(
+                ducklake_conn=conn,
+                document_ingestor=S3DocumentIngestor(ducklake_settings.data_path),
+                datastore_reader=DatastoreReader(datastore_url),
+                csv_reader=DuckDbCsvReader(conn),
+            )
+
+            # Fetch resource metadata from ckan_resource table
             resource_row = (
                 conn.execute("SELECT * FROM ckan_resource WHERE id = ?", (resource_id,))
                 .arrow()
@@ -225,18 +239,6 @@ class JobService:
                 )
 
             resource = resource_row[0]
-
-            # Build datastore URL from the resource's own ckan_url,
-            # falling back to the global setting for backward compatibility.
-            ckan_url = resource.get("ckan_url") or ducklake_settings.ckan_url
-            datastore_url = f"{ckan_url.rstrip('/')}/datastore/dump"
-
-            ingestor = DuckdbCkanDataIngestor(
-                ducklake_conn=conn,
-                document_ingestor=S3DocumentIngestor(ducklake_settings.data_path),
-                datastore_reader=DatastoreReader(datastore_url),
-                csv_reader=DuckDbCsvReader(conn),
-            )
 
             # Extract metadata before ingestion
             resource_size = resource.get("size")
@@ -365,14 +367,14 @@ class JobService:
         if datastore_active:
             await self._label_resource(resource_id, "datastore")
 
-    async def _publish_job(self, job_id: str) -> None:
+    async def _publish_job(self, job_id: str, ckan_url: str = "") -> None:
         """Publish job to NATS JetStream."""
         try:
             nc = await nats_lib.connect(settings.nats_url)
             js = nc.jetstream()
             await js.publish(
                 settings.nats_subject,
-                json.dumps({"job_id": job_id}).encode(),
+                json.dumps({"job_id": job_id, "ckan_url": ckan_url}).encode(),
             )
             await nc.close()
         except Exception as e:

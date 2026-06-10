@@ -86,7 +86,9 @@ class Scheduler:
             enqueue_outdated_resources,
         )
 
-        count = await enqueue_outdated_resources(instance.id, instance.name)
+        count = await enqueue_outdated_resources(
+            instance.id, instance.name, instance.url
+        )
         logger.info(f"Enqueued {count} jobs for {instance.name}")
 
 

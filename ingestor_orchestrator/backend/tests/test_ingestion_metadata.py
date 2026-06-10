@@ -638,26 +638,21 @@ class TestIngestionLabels:
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 class TestDatastorePerInstanceUrl:
-    """_run_ingestion_sync must use the resource's ckan_url, not the global default."""
+    """_run_ingestion_sync must use the per-instance ckan_url parameter."""
 
-    async def test_uses_resource_ckan_url_for_datastore(self):
+    async def test_uses_ckan_url_param_for_datastore(self):
         import asyncio
 
         from ckan_ingestor.datastore_reader import DatastoreReader
 
         service = JobService(MagicMock())
 
-        resource_ckan_url = "https://dados.pbh.gov.br"
+        instance_url = "https://dados.pbh.gov.br"
         global_ckan_url = "https://dados.mg.gov.br"
 
-        # Mock the DuckDB connection to return a resource with a specific ckan_url.
-        # The mock needs to support both the resource fetch (.arrow().read_all().to_pylist())
-        # and the post-ingestion queries (.fetchone(), .arrow().read_all().to_pylist()).
+        # Mock the DuckDB connection
         mock_conn = MagicMock()
         mock_conn.close = MagicMock()
-        # First execute: SELECT * FROM ckan_resource WHERE id = ?  → resource row
-        # Second execute: SELECT COUNT(*) FROM "{resource_id}"   → [5]
-        # Third execute: SELECT * FROM "{resource_id}" LIMIT 5   → preview
         mock_conn.execute.return_value.fetchone.return_value = [5]
         mock_conn.execute.return_value.arrow.return_value = MagicMock()
         mock_conn.execute.return_value.arrow.return_value.read_all.return_value = (
@@ -666,7 +661,6 @@ class TestDatastorePerInstanceUrl:
         mock_conn.execute.return_value.arrow.return_value.read_all.return_value.to_pylist.return_value = [
             {
                 "id": "test-resource-id",
-                "ckan_url": resource_ckan_url,
                 "datastore_active": True,
                 "format": "CSV",
                 "url": "http://fake.csv",
@@ -697,16 +691,17 @@ class TestDatastorePerInstanceUrl:
                 "ckan_ingestor.csv_reader.DuckDbCsvReader",
             ),
         ):
-            await asyncio.to_thread(service._run_ingestion_sync, "test-resource-id")
+            await asyncio.to_thread(
+                service._run_ingestion_sync, "test-resource-id", instance_url
+            )
 
-            # Verify DatastoreReader was constructed with the resource-specific URL
             urls_used = [
                 call.kwargs.get("datastore_url", call.args[0] if call.args else None)
                 for call in mock_reader_cls.call_args_list
             ]
-            expected_url = f"{resource_ckan_url.rstrip('/')}/datastore/dump"
+            expected_url = f"{instance_url.rstrip('/')}/datastore/dump"
             assert expected_url in urls_used, (
-                f"DatastoreReader should use resource ckan_url ({expected_url}), "
+                f"DatastoreReader should use instance URL ({expected_url}), "
                 f"but got {urls_used}"
             )
 

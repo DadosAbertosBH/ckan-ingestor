@@ -53,6 +53,7 @@ class JobCreate(BaseModel):
     resource_url: str | None = None
     resource_format: str | None = None
     instance_id: str | None = None
+    ckan_url: str = ""
 
 
 class JobResultResponse(BaseModel):

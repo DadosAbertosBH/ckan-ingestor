@@ -142,7 +142,7 @@ def sync_all_instances() -> list[dict]:
 
 
 async def enqueue_outdated_resources(
-    instance_id: str, instance_name: str, db=None
+    instance_id: str, instance_name: str, ckan_url: str = "", db=None
 ) -> int:
     """Find outdated resources for an instance and create jobs for them."""
     import asyncio
@@ -233,6 +233,7 @@ async def enqueue_outdated_resources(
                         resource_url=resource_url,
                         resource_format=resource_format,
                         instance_id=instance_id,
+                        ckan_url=ckan_url,
                     )
                 )
                 enqueued += 1
