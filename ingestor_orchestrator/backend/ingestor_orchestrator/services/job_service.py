@@ -210,14 +210,8 @@ class JobService:
         conn = from_settings(ducklake_settings)
 
         try:
-            ingestor = DuckdbCkanDataIngestor(
-                ducklake_conn=conn,
-                document_ingestor=S3DocumentIngestor(ducklake_settings.data_path),
-                datastore_reader=DatastoreReader(ducklake_settings.datastore_url),
-                csv_reader=DuckDbCsvReader(conn),
-            )
-
-            # Fetch resource metadata from ckan_resource table
+            # Fetch resource metadata from ckan_resource table FIRST
+            # so we can use the correct per-instance ckan_url for datastore.
             resource_row = (
                 conn.execute("SELECT * FROM ckan_resource WHERE id = ?", (resource_id,))
                 .arrow()
@@ -232,6 +226,18 @@ class JobService:
 
             resource = resource_row[0]
 
+            # Build datastore URL from the resource's own ckan_url,
+            # falling back to the global setting for backward compatibility.
+            ckan_url = resource.get("ckan_url") or ducklake_settings.ckan_url
+            datastore_url = f"{ckan_url.rstrip('/')}/datastore/dump"
+
+            ingestor = DuckdbCkanDataIngestor(
+                ducklake_conn=conn,
+                document_ingestor=S3DocumentIngestor(ducklake_settings.data_path),
+                datastore_reader=DatastoreReader(datastore_url),
+                csv_reader=DuckDbCsvReader(conn),
+            )
+
             # Extract metadata before ingestion
             resource_size = resource.get("size")
             datastore_active = resource.get("datastore_active", False)
@@ -241,7 +247,7 @@ class JobService:
             expected_columns: int | None = None
             if datastore_active:
                 try:
-                    reader = DatastoreReader(ducklake_settings.datastore_url)
+                    reader = DatastoreReader(datastore_url)
                     expected_rows = reader.get_total(resource_id)
                     expected_columns = reader.get_field_count(resource_id)
                 except Exception:
