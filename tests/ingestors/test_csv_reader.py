@@ -53,16 +53,15 @@ def test_csv_with_bom(ckman_mock_url, in_memory_duckdb_conn: duckdb.DuckDBPyConn
     subject.read(f"{ckman_mock_url}/datastore/csv_with_bom?format=csv")
 
 
-def test_read_gzipped_csv_uses_compression(
+def test_read_csv_lets_duckdb_autodetect_compression(
     in_memory_duckdb_conn: duckdb.DuckDBPyConnection,
+    gz_csv_file,
 ):
-    """URL ending with .gz must pass compression='gzip' to read_csv."""
-    gz_url = "https://example.com/data.csv.gz"
-    normal_url = "https://example.com/data.csv"
+    """DuckDB auto-detects .gz compression from URL extension and magic bytes.
 
-    from ckan_ingestor.csv_reader import DuckDbCsvReader
-
+    We no longer force compression='gzip' — DuckDB handles it automatically.
+    This avoids OSError when servers decompress on the fly.
+    """
     reader = DuckDbCsvReader(in_memory_duckdb_conn)
-
-    assert reader._is_gzipped(gz_url) is True
-    assert reader._is_gzipped(normal_url) is False
+    table = reader.read(gz_csv_file)
+    assert table.num_rows > 0
