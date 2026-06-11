@@ -1,6 +1,43 @@
 <template>
     <div class="dashboard">
-        <h1 class="page-title">Dashboard</h1>
+        <h1 class="page-title">
+            Dashboard
+            <span
+                class="refresh-timer"
+                title="Auto-refresh in {{ countdown }}s"
+            >
+                <svg
+                    class="timer-ring"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                >
+                    <circle
+                        class="timer-bg"
+                        cx="12"
+                        cy="12"
+                        r="9"
+                        fill="none"
+                        stroke="#2a2d37"
+                        stroke-width="2.5"
+                    />
+                    <circle
+                        class="timer-fill"
+                        cx="12"
+                        cy="12"
+                        r="9"
+                        fill="none"
+                        stroke="#3b82f6"
+                        stroke-width="2.5"
+                        stroke-dasharray="56.548"
+                        :stroke-dashoffset="56.548 * (1 - countdown / 30)"
+                        stroke-linecap="round"
+                        transform="rotate(-90 12 12)"
+                    />
+                </svg>
+                <span class="timer-text">{{ countdown }}s</span>
+            </span>
+        </h1>
 
         <div class="instances-grid">
             <InstanceCard
@@ -74,7 +111,19 @@ const loading = ref(true);
 const statsError = ref<string | null>(null);
 const jobsError = ref<string | null>(null);
 const syncingInstanceId = ref<string | null>(null);
+const countdown = ref(30);
 let interval: ReturnType<typeof setInterval> | null = null;
+let countdownInterval: ReturnType<typeof setInterval> | null = null;
+
+function startCountdown() {
+    countdown.value = 30;
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = setInterval(() => {
+        if (countdown.value > 0) {
+            countdown.value--;
+        }
+    }, 1000);
+}
 
 async function loadInstanceStats() {
     statsError.value = null;
@@ -98,6 +147,7 @@ async function loadData() {
     loading.value = true;
     await Promise.all([loadInstanceStats(), loadRecentJobs()]);
     loading.value = false;
+    startCountdown();
 }
 
 function goToJob(id: string) {
@@ -122,14 +172,17 @@ function formatTime(iso: string): string {
 
 onMounted(() => {
     loadData();
+    startCountdown();
     interval = setInterval(() => {
         loadInstanceStats();
         loadRecentJobs();
+        startCountdown();
     }, 30000);
 });
 
 onUnmounted(() => {
     if (interval) clearInterval(interval);
+    if (countdownInterval) clearInterval(countdownInterval);
 });
 </script>
 
@@ -138,6 +191,31 @@ onUnmounted(() => {
     font-size: 24px;
     font-weight: 700;
     margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.refresh-timer {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #6b7280;
+}
+
+.timer-ring {
+    flex-shrink: 0;
+}
+
+.timer-fill {
+    transition: stroke-dashoffset 0.3s linear;
+}
+
+.timer-text {
+    font-variant-numeric: tabular-nums;
+    min-width: 28px;
 }
 
 .instances-grid {
