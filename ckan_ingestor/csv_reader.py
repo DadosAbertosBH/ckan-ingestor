@@ -39,7 +39,7 @@ class DuckDbCsvReader:
                 )
                 self.last_encoding = encoding
                 return result
-            except (duckdb.InvalidInputException, OSError):
+            except (duckdb.InvalidInputException, OSError, UnicodeDecodeError):
                 pass
 
         with requests.get(
