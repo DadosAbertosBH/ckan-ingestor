@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import traceback
+from collections import namedtuple
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -34,6 +35,8 @@ from ingestor_orchestrator.models import (
 from ingestor_orchestrator.schemas import JobCreate
 
 logger = logging.getLogger(__name__)
+
+KafkaMeta = namedtuple("KafkaMeta", ["topic", "partition", "offset"])
 
 
 class JobService:
@@ -55,15 +58,22 @@ class JobService:
             ckan_url=data.ckan_url or "",
         )
         self.db.add(job)
-        await self.db.flush()
+        await self.db.flush()  # get job.id from DB-generated UUID
+
+        # Publish to Kafka with the real job.id, then record routing metadata
+        kafka_meta = await self._publish_job(job.id, data.ckan_url, key=job.resource_id)
+        job.kafka_topic = kafka_meta.topic
+        job.kafka_partition = kafka_meta.partition
+        job.kafka_offset = kafka_meta.offset
+
         await self._upsert_latest_resource(job)
         await self.db.commit()
         await self.db.refresh(job)
 
-        # Publish to NATS
-        await self._publish_job(job.id, data.ckan_url)
-
-        logger.debug(f"Created job {job.id} for resource {data.resource_id}")
+        logger.debug(
+            f"Created job {job.id} for resource {data.resource_id}"
+            f" (kafka: {kafka_meta.topic}[{kafka_meta.partition}]@{kafka_meta.offset})"
+        )
         return job
 
     async def retry_job(self, job_id: str) -> CkanDataJob:
@@ -75,16 +85,26 @@ class JobService:
                 f"Can only retry failed jobs, current status: {job.status}"
             )
 
+        # Publish to retry topic, record routing metadata
+        kafka_meta = await self._publish_job(
+            job.id, job.ckan_url or "", retry=True, key=job.resource_id
+        )
+
         job.status = JobStatus.PENDING
         job.started_at = None
         job.completed_at = None
         job.updated_at = datetime.now(timezone.utc)
+        job.kafka_topic = kafka_meta.topic
+        job.kafka_partition = kafka_meta.partition
+        job.kafka_offset = kafka_meta.offset
         await self._upsert_latest_resource(job)
         await self.db.commit()
         await self.db.refresh(job)
 
-        await self._publish_job(job.id, job.ckan_url or "", retry=True)
-        logger.info(f"Retrying job {job.id}")
+        logger.info(
+            f"Retrying job {job.id}"
+            f" (kafka: {kafka_meta.topic}[{kafka_meta.partition}]@{kafka_meta.offset})"
+        )
         return job
 
     async def process_job(self, job_id: str, ckan_url: str = "") -> None:
@@ -367,22 +387,40 @@ class JobService:
             await self._label_resource(resource_id, "datastore")
 
     async def _publish_job(
-        self, job_id: str, ckan_url: str = "", retry: bool = False
-    ) -> None:
-        """Publish job to Kafka."""
+        self,
+        job_id: str,
+        ckan_url: str = "",
+        retry: bool = False,
+        key: str | None = None,
+    ) -> KafkaMeta:
+        """Publish job to Kafka.
+
+        Args:
+            key: Optional Kafka message key. When provided (e.g. resource_id),
+                 all messages with the same key route to the same partition.
+
+        Returns:
+            KafkaMeta with topic, partition, and offset.
+        """
         import asyncio
 
         from ingestor_orchestrator.kafka import get_kafka_producer
 
         topic = settings.kafka_topic_retry if retry else settings.kafka_topic
         payload = json.dumps({"job_id": job_id, "ckan_url": ckan_url}).encode()
+        key_bytes = key.encode() if key else None
 
         def _send():
             producer = get_kafka_producer()
-            producer.send(topic, payload).get(timeout=10)
+            return producer.send(topic, payload, key=key_bytes).get(timeout=10)
 
         try:
-            await asyncio.to_thread(_send)
+            result = await asyncio.to_thread(_send)
+            return KafkaMeta(
+                topic=result.topic,
+                partition=result.partition,
+                offset=result.offset,
+            )
         except Exception as e:
             logger.error(f"Failed to publish job {job_id} to Kafka: {e}")
             raise

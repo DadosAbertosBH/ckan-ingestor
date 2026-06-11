@@ -33,7 +33,11 @@ def _mock_kafka():
     """Mock Kafka producer so tests don't need a real Kafka."""
     mock_producer = MagicMock()
     mock_future = MagicMock()
-    mock_future.get.return_value = None
+    record_meta = MagicMock()
+    record_meta.topic = "ckan.ingest.jobs"
+    record_meta.partition = 0
+    record_meta.offset = 0
+    mock_future.get.return_value = record_meta
     mock_producer.send.return_value = mock_future
     with patch(
         "ingestor_orchestrator.kafka.get_kafka_producer",

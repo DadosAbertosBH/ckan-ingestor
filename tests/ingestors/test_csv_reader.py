@@ -62,10 +62,7 @@ def test_read_gzipped_csv_uses_compression(
 
     from ckan_ingestor.csv_reader import DuckDbCsvReader
 
-    # The method reads SQL from the reader object by inspecting
-    # its internal implementation. Test the URL detection logic.
     reader = DuckDbCsvReader(in_memory_duckdb_conn)
 
-    # Verify the .gz detection logic
     assert reader._is_gzipped(gz_url) is True
     assert reader._is_gzipped(normal_url) is False

@@ -8,7 +8,6 @@
                 :key="s.instance.id"
                 :stats="s"
                 :syncing="syncingInstanceId === s.instance.id"
-                @click="goToInstanceJobs(s.instance.id)"
                 @sync="handleSync(s.instance.id)"
             />
         </div>
@@ -103,10 +102,6 @@ async function loadData() {
 
 function goToJob(id: string) {
     router.push({ name: "job-detail", params: { id } });
-}
-
-function goToInstanceJobs(instanceId: string) {
-    router.push({ name: "jobs", query: { instance_id: instanceId } });
 }
 
 async function handleSync(instanceId: string) {

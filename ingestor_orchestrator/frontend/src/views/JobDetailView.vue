@@ -18,7 +18,17 @@
                     <h1 class="page-title">
                         {{ job.resource_name || "Unnamed Resource" }}
                     </h1>
-                    <div class="meta-line mono">{{ job.resource_id }}</div>
+                    <div class="meta-line mono">
+                        <router-link
+                            :to="{
+                                name: 'resource-detail',
+                                params: { resourceId: job.resource_id },
+                            }"
+                            class="resource-link"
+                        >
+                            {{ job.resource_id }}
+                        </router-link>
+                    </div>
                 </div>
                 <div class="actions">
                     <button
@@ -75,6 +85,14 @@
                     <span class="info-value">{{
                         job.completed_at ? formatTime(job.completed_at) : "—"
                     }}</span>
+                </div>
+                <div v-if="job.kafka_topic" class="info-item info-item-kafka">
+                    <span class="info-label">Kafka</span>
+                    <span class="info-value mono kafka-meta">
+                        {{ job.kafka_topic }}[{{ job.kafka_partition }}] @{{
+                            job.kafka_offset
+                        }}
+                    </span>
                 </div>
                 <div class="info-item">
                     <span class="info-label">CKAN</span>
@@ -235,6 +253,18 @@ onMounted(loadJob);
     color: #9ca3af;
 }
 
+.resource-link {
+    color: #60a5fa;
+    text-decoration: none;
+    font-family: "SF Mono", monospace;
+    font-size: 13px;
+}
+
+.resource-link:hover {
+    color: #93bbfd;
+    text-decoration: underline;
+}
+
 .mono {
     font-family: "SF Mono", monospace;
 }
@@ -325,5 +355,11 @@ onMounted(loadJob);
     padding: 32px;
     background: #1a1d27;
     border-radius: 8px;
+}
+
+.kafka-meta {
+    color: #a78bfa;
+    font-size: 13px;
+    word-break: break-all;
 }
 </style>

@@ -36,6 +36,9 @@ export interface Job {
   ckan_resource_url: string;
   labels?: string[];
   results?: JobResult[];
+  kafka_topic?: string | null;
+  kafka_partition?: number | null;
+  kafka_offset?: number | null;
 }
 
 export interface JobResult {

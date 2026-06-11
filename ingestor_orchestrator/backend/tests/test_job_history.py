@@ -155,13 +155,73 @@ class TestJobHistory:
         sess.add(job)
         await sess.commit()
 
+        from ingestor_orchestrator.services.job_service import KafkaMeta
+
         service = JobService(sess)
-        with patch.object(
-            service, "_publish_job", new_callable=AsyncMock
-        ) as mock_publish:
+        mock_publish = AsyncMock(
+            return_value=KafkaMeta("ckan.ingest.jobs.retry", 1, 99)
+        )
+        with patch.object(service, "_publish_job", mock_publish):
             await service.retry_job(job.id)
 
             mock_publish.assert_awaited_once()
             assert mock_publish.call_args.kwargs.get("retry") is True, (
                 "retry_job must call _publish_job with retry=True"
             )
+
+    async def test_job_results_ordered_by_created_at(self, sess, instance):
+        """Job results must be ordered by created_at ascending."""
+        from datetime import datetime, timedelta, timezone
+
+        from ingestor_orchestrator.models.ckan_data_job_result import CkanDataJobResult
+
+        job = CkanDataJob(
+            resource_id="r-order",
+            dataset_name="d-order",
+            idempotency_key="r-order",
+            instance_id=instance.id,
+            status=JobStatus.FAILED,
+        )
+        sess.add(job)
+        await sess.flush()
+
+        # Add results in reverse chronological order
+        t1 = datetime.now(timezone.utc)
+        t2 = t1 + timedelta(seconds=1)
+        t3 = t1 + timedelta(seconds=2)
+
+        sess.add(
+            CkanDataJobResult(
+                job_id=job.id,
+                success=False,
+                created_at=t3,
+                error_message="third",
+            )
+        )
+        sess.add(
+            CkanDataJobResult(
+                job_id=job.id,
+                success=False,
+                created_at=t1,
+                error_message="first",
+            )
+        )
+        sess.add(
+            CkanDataJobResult(
+                job_id=job.id,
+                success=False,
+                created_at=t2,
+                error_message="second",
+            )
+        )
+        await sess.commit()
+
+        # Reload with relationship
+        result = await sess.get(CkanDataJob, job.id)
+        await sess.refresh(result, attribute_names=["results"])
+
+        # Must be ordered by created_at ascending
+        assert len(result.results) == 3
+        assert result.results[0].error_message == "first"
+        assert result.results[1].error_message == "second"
+        assert result.results[2].error_message == "third"

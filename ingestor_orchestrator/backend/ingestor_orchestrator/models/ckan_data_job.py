@@ -74,5 +74,13 @@ class CkanDataJob(Base):
 
     instance: Mapped["CkanInstance"] = relationship(back_populates="jobs")
     results: Mapped[list["CkanDataJobResult"]] = relationship(
-        back_populates="job", cascade="all, delete-orphan", lazy="selectin"
+        back_populates="job",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="CkanDataJobResult.created_at",
     )
+
+    # Kafka routing metadata
+    kafka_topic: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    kafka_partition: Mapped[int | None] = mapped_column(nullable=True)
+    kafka_offset: Mapped[int | None] = mapped_column(nullable=True)

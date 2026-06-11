@@ -30,6 +30,7 @@ def from_settings(settings: DucklakeSettings = DucklakeSettings()):
             "s3_access_key_id": settings.data_path.access_key_id,
             "s3_secret_access_key": settings.data_path.secret_access_key,
             "custom_user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0",
+            "force_download": True,
         },
     )
     conn.install_extension("mysql")

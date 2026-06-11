@@ -1,12 +1,12 @@
 <template>
-    <div class="instance-card clickable" @click="$emit('click')">
+    <div class="instance-card">
         <div class="card-header">
             <span class="instance-name">{{ stats.instance.name }}</span>
             <div class="header-actions">
                 <button
                     class="btn-sync"
                     :disabled="syncing"
-                    @click.stop="$emit('sync')"
+                    @click="$emit('sync')"
                     title="Sync metadata"
                 >
                     {{ syncing ? "Syncing…" : "Sync" }}
@@ -15,7 +15,6 @@
                     :href="stats.instance.url"
                     target="_blank"
                     class="instance-link"
-                    @click.stop
                     title="Open CKAN instance"
                 >
                     <svg
@@ -62,30 +61,58 @@
         <div class="jobs-section">
             <span class="jobs-title">Jobs</span>
             <div class="job-stats">
-                <span
-                    class="stat-pill"
+                <router-link
+                    :to="{
+                        name: 'jobs',
+                        query: {
+                            instance_id: stats.instance.id,
+                            status: 'pending',
+                        },
+                    }"
+                    class="stat-pill stat-link"
                     style="background: rgba(245, 158, 11, 0.15); color: #f59e0b"
                 >
                     Pending {{ stats.pending }}
-                </span>
-                <span
-                    class="stat-pill"
+                </router-link>
+                <router-link
+                    :to="{
+                        name: 'jobs',
+                        query: {
+                            instance_id: stats.instance.id,
+                            status: 'processing',
+                        },
+                    }"
+                    class="stat-pill stat-link"
                     style="background: rgba(59, 130, 246, 0.15); color: #3b82f6"
                 >
                     Processing {{ stats.processing }}
-                </span>
-                <span
-                    class="stat-pill"
+                </router-link>
+                <router-link
+                    :to="{
+                        name: 'jobs',
+                        query: {
+                            instance_id: stats.instance.id,
+                            status: 'completed',
+                        },
+                    }"
+                    class="stat-pill stat-link"
                     style="background: rgba(16, 185, 129, 0.15); color: #10b981"
                 >
                     Completed {{ stats.completed }}
-                </span>
-                <span
-                    class="stat-pill"
+                </router-link>
+                <router-link
+                    :to="{
+                        name: 'jobs',
+                        query: {
+                            instance_id: stats.instance.id,
+                            status: 'failed',
+                        },
+                    }"
+                    class="stat-pill stat-link"
                     style="background: rgba(239, 68, 68, 0.15); color: #ef4444"
                 >
                     Failed {{ stats.failed }}
-                </span>
+                </router-link>
             </div>
         </div>
     </div>
@@ -101,7 +128,6 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-    click: [];
     sync: [];
 }>();
 
@@ -124,10 +150,6 @@ const formattedLastSynced = computed(() => {
 .instance-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.clickable {
-    cursor: pointer;
 }
 
 .card-header {
@@ -240,5 +262,15 @@ const formattedLastSynced = computed(() => {
     border-radius: 12px;
     font-size: 12px;
     font-weight: 600;
+}
+
+.stat-link {
+    text-decoration: none;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+}
+
+.stat-link:hover {
+    opacity: 0.8;
 }
 </style>

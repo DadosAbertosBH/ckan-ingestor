@@ -24,10 +24,16 @@ from ingestor_orchestrator.services.job_service import JobService
 _FACTORY_PATH = "ingestor_orchestrator.kafka.get_kafka_producer"
 
 
-def _mock_producer():
+def _mock_producer(
+    topic: str = "ckan.ingest.jobs", partition: int = 2, offset: int = 42
+):
     mock = MagicMock()
     mock_future = MagicMock()
-    mock_future.get.return_value = None
+    record_meta = MagicMock()
+    record_meta.topic = topic
+    record_meta.partition = partition
+    record_meta.offset = offset
+    mock_future.get.return_value = record_meta
     mock.send.return_value = mock_future
     return mock
 
@@ -50,6 +56,20 @@ async def test_publish_sends_job_id_and_ckan_url():
 
 
 @pytest.mark.asyncio
+async def test_publish_returns_kafka_metadata():
+    """_publish_job must return (topic, partition, offset) from Kafka."""
+    producer = _mock_producer(topic="ckan.ingest.jobs", partition=3, offset=99)
+
+    with patch(_FACTORY_PATH, return_value=producer):
+        service = JobService(AsyncMock())
+        meta = await service._publish_job("job-x")
+
+    assert meta.topic == "ckan.ingest.jobs"
+    assert meta.partition == 3
+    assert meta.offset == 99
+
+
+@pytest.mark.asyncio
 async def test_publish_retry_uses_retry_topic():
     """retry=True publishes to the retry topic."""
     producer = _mock_producer()
@@ -60,3 +80,24 @@ async def test_publish_retry_uses_retry_topic():
 
     args, _ = producer.send.call_args
     assert args[0] == "ckan.ingest.jobs.retry"
+
+
+@pytest.mark.asyncio
+async def test_publish_sends_resource_id_as_key():
+    """producer.send must include resource_id as the Kafka message key.
+
+    Using resource_id as the key ensures that all jobs for the same
+    resource land on the same partition, preserving order.
+    """
+    producer = _mock_producer()
+
+    with patch(_FACTORY_PATH, return_value=producer):
+        service = JobService(AsyncMock())
+        await service._publish_job(
+            "test-job",
+            "https://dados.pbh.gov.br",
+            key="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        )
+
+    args, kwargs = producer.send.call_args
+    assert kwargs.get("key") == b"a1b2c3d4-e5f6-7890-abcd-ef1234567890"

@@ -2,8 +2,10 @@
     <div class="app">
         <nav class="navbar">
             <div class="nav-brand">
-                <span class="brand-icon">⚡</span>
-                <span class="brand-text">CKAN Orchestrator</span>
+                <router-link to="/" class="brand-link">
+                    <span class="brand-icon">⚡</span>
+                    <span class="brand-text">CKAN Orchestrator</span>
+                </router-link>
             </div>
             <div class="nav-links">
                 <router-link to="/" class="nav-link" exact-active-class="active"
@@ -61,6 +63,18 @@
     font-size: 16px;
     font-weight: 600;
     letter-spacing: -0.3px;
+}
+
+.brand-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: inherit;
+    text-decoration: none;
+}
+
+.brand-link:hover {
+    opacity: 0.85;
 }
 
 .nav-links {

@@ -73,7 +73,19 @@
                                 .join(" / ") || "—"
                         }}
                     </td>
-                    <td class="mono">{{ job.resource_id.substring(0, 8) }}…</td>
+                    <td class="mono">
+                        <router-link
+                            :to="{
+                                name: 'resource-detail',
+                                params: { resourceId: job.resource_id },
+                            }"
+                            class="resource-link"
+                            @click.stop
+                            :title="job.resource_id"
+                        >
+                            {{ job.resource_id.substring(0, 8) }}…
+                        </router-link>
+                    </td>
                     <td>{{ job.resource_format || "—" }}</td>
                     <td><ResourceLabelBadge :labels="job.labels ?? []" /></td>
                     <td><JobStatusBadge :status="job.status" /></td>
@@ -464,6 +476,18 @@ onMounted(async () => {
     font-family: "SF Mono", monospace;
     font-size: 13px;
     color: #9ca3af;
+}
+
+.resource-link {
+    color: #60a5fa;
+    text-decoration: none;
+    font-family: "SF Mono", monospace;
+    font-size: 13px;
+}
+
+.resource-link:hover {
+    color: #93bbfd;
+    text-decoration: underline;
 }
 
 .clickable-row {
