@@ -17,7 +17,6 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-import nats as nats_lib
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -37,18 +36,6 @@ async def lifespan(app: FastAPI):
     logging.getLogger("ingestor_orchestrator").setLevel(logging.INFO)
     logger.info("Starting API server")
 
-    nc = await nats_lib.connect(settings.nats_url)
-    js = nc.jetstream()
-    try:
-        await js.add_stream(
-            name=settings.nats_stream,
-            subjects=[settings.nats_subject, settings.nats_subject_retry],
-        )
-    except Exception:
-        pass
-    app.state.nats = nc
-    logger.info("Connected to NATS")
-
     scheduler = Scheduler()
     scheduler_task = asyncio.create_task(scheduler.start())
     logger.info("Scheduler started")
@@ -62,8 +49,7 @@ async def lifespan(app: FastAPI):
         await scheduler_task
     except asyncio.CancelledError:
         pass
-    await nc.close()
-    logger.info("Disconnected from NATS")
+    logger.info("API server stopped")
 
 
 app = FastAPI(

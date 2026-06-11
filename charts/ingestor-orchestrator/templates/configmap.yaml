@@ -9,9 +9,10 @@ data:
   INGEST_ORCH_MYSQL_PORT: {{ .Values.mysql.port | quote }}
   INGEST_ORCH_MYSQL_USER: {{ .Values.mysql.user | quote }}
   INGEST_ORCH_MYSQL_DATABASE: {{ .Values.mysql.database | quote }}
-  INGEST_ORCH_NATS_URL: {{ printf "nats://%s-nats:4222" .Release.Name | quote }}
-  INGEST_ORCH_NATS_STREAM: {{ .Values.nats.stream | quote }}
-  INGEST_ORCH_NATS_SUBJECT: {{ .Values.nats.subject | quote }}
+  INGEST_ORCH_KAFKA_BOOTSTRAP_SERVERS: {{ .Values.kafka.bootstrapServers | quote }}
+  INGEST_ORCH_KAFKA_TOPIC: {{ .Values.kafka.topic | quote }}
+  INGEST_ORCH_KAFKA_TOPIC_RETRY: {{ .Values.kafka.topicRetry | quote }}
+  INGEST_ORCH_KAFKA_GROUP_ID: {{ .Values.kafka.groupId | quote }}
   INGEST_ORCH_DEBUG: {{ .Values.debug | quote }}
   {{- if .Values.ducklake.dataPath.endpoint }}
   DUCKLAKE_DATA_PATH__ENDPOINT: {{ .Values.ducklake.dataPath.endpoint | quote }}

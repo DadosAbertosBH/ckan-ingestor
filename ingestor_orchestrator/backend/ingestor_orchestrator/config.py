@@ -26,11 +26,11 @@ class Settings(BaseSettings):
     mysql_password: str = ""
     mysql_database: str = "ingestor_orchestrator"
 
-    # NATS
-    nats_url: str = "nats://localhost:4222"
-    nats_stream: str = "CKAN_INGEST"
-    nats_subject: str = "ckan.ingest.resource"
-    nats_subject_retry: str = "ckan.ingest.resource.retry"
+    # Kafka
+    kafka_bootstrap_servers: str = "localhost:9092"
+    kafka_topic: str = "ckan.ingest.jobs"
+    kafka_topic_retry: str = "ckan.ingest.jobs.retry"
+    kafka_group_id: str = "ckan-worker"
 
     # Scheduler
     scheduler_interval_minutes: int = 480  # 8 hours, same as Dagster sensor

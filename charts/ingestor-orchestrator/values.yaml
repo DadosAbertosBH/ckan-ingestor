@@ -46,6 +46,8 @@ api:
 worker:
   enabled: true
   replicaCount: 2
+  # -- Maximum number of messages processed in parallel across all partitions.
+  # Ordering is preserved within each partition.
   concurrency: 10
   image:
     registry: ""
@@ -77,27 +79,12 @@ scheduler:
       cpu: 500m
       memory: 512Mi
 
-# -- NATS configuration (deployed by this chart)
-nats:
-  enabled: true
-  image:
-    repository: nats
-    tag: 2.10-alpine
-    pullPolicy: IfNotPresent
-  stream: "CKAN_INGEST"
-  subject: "ckan.ingest.resource"
-  # -- Persistence for JetStream data
-  persistence:
-    enabled: true
-    size: 8Gi
-    storageClass: ""
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
+# -- Kafka configuration (external Kafka cluster, not deployed by this chart)
+kafka:
+  bootstrapServers: "kafka:9092"
+  topic: "ckan.ingest.jobs"
+  topicRetry: "ckan.ingest.jobs.retry"
+  groupId: "ckan-worker"
 
 # -- MySQL configuration (external, not deployed by this chart)
 mysql:

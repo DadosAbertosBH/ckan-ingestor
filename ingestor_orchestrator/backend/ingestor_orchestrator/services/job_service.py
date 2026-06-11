@@ -19,7 +19,6 @@ import logging
 import traceback
 from datetime import datetime, timezone
 
-import nats as nats_lib
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -370,16 +369,20 @@ class JobService:
     async def _publish_job(
         self, job_id: str, ckan_url: str = "", retry: bool = False
     ) -> None:
-        """Publish job to NATS JetStream."""
-        subject = settings.nats_subject_retry if retry else settings.nats_subject
+        """Publish job to Kafka."""
+        import asyncio
+
+        from ingestor_orchestrator.kafka import get_kafka_producer
+
+        topic = settings.kafka_topic_retry if retry else settings.kafka_topic
+        payload = json.dumps({"job_id": job_id, "ckan_url": ckan_url}).encode()
+
+        def _send():
+            producer = get_kafka_producer()
+            producer.send(topic, payload).get(timeout=10)
+
         try:
-            nc = await nats_lib.connect(settings.nats_url)
-            js = nc.jetstream()
-            await js.publish(
-                subject,
-                json.dumps({"job_id": job_id, "ckan_url": ckan_url}).encode(),
-            )
-            await nc.close()
+            await asyncio.to_thread(_send)
         except Exception as e:
-            logger.error(f"Failed to publish job {job_id} to NATS: {e}")
+            logger.error(f"Failed to publish job {job_id} to Kafka: {e}")
             raise

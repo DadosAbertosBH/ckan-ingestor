@@ -19,10 +19,11 @@ import logging
 import os
 import signal
 
-import nats as nats_lib
+from kafka import OffsetAndMetadata, TopicPartition
 
 from ingestor_orchestrator.config import settings
 from ingestor_orchestrator.db import async_session
+from ingestor_orchestrator.kafka import create_kafka_consumer
 from ingestor_orchestrator.services.job_service import JobService
 
 WORKER_CONCURRENCY = int(os.environ.get("WORKER_CONCURRENCY", "4"))
@@ -32,89 +33,99 @@ logger = logging.getLogger(__name__)
 
 class Worker:
     def __init__(self):
-        self._nc = None
         self._running = False
         self._semaphore = asyncio.Semaphore(WORKER_CONCURRENCY)
+        self._partition_locks: dict[tuple[str, int], asyncio.Lock] = {}
+
+    def _get_partition_lock(self, record) -> asyncio.Lock:
+        key = (record.topic, record.partition)
+        if key not in self._partition_locks:
+            self._partition_locks[key] = asyncio.Lock()
+        return self._partition_locks[key]
 
     async def start(self):
         self._running = True
-        self._nc = await nats_lib.connect(settings.nats_url)
-        js = self._nc.jetstream()
 
-        # Ensure the stream exists with both subjects
-        try:
-            await js.add_stream(
-                name=settings.nats_stream,
-                subjects=[settings.nats_subject, settings.nats_subject_retry],
-            )
-        except Exception:
-            pass  # Stream already exists
-
-        # Retry consumer — checked first for priority
-        psub_retry = await js.pull_subscribe(
-            subject=settings.nats_subject_retry,
-            durable="ckan-worker-retry",
-            stream=settings.nats_stream,
+        # Retry topic consumer
+        retry_consumer = create_kafka_consumer(
+            settings.kafka_topic_retry, settings.kafka_group_id + "-retry"
         )
 
-        # Regular consumer
-        psub = await js.pull_subscribe(
-            subject=settings.nats_subject,
-            durable="ckan-worker",
-            stream=settings.nats_stream,
+        # Main topic consumer
+        main_consumer = create_kafka_consumer(
+            settings.kafka_topic, settings.kafka_group_id
         )
 
         logger.info(
-            f"Worker started (pull, concurrency={WORKER_CONCURRENCY}), "
-            f"retry subject: {settings.nats_subject_retry}"
+            f"Worker started (concurrency={WORKER_CONCURRENCY}), "
+            f"topics: {settings.kafka_topic}, {settings.kafka_topic_retry}"
         )
 
+        await asyncio.gather(
+            self._consume_loop(retry_consumer, 1000),
+            self._consume_loop(main_consumer, 5000),
+        )
+
+    async def _consume_loop(self, consumer, timeout_ms):
+        """Continuously poll and dispatch tasks without blocking on their completion."""
+        loop = asyncio.get_event_loop()
+        pending: set[asyncio.Task] = set()
+
         while self._running:
-            try:
-                # Check retry queue first — higher priority
-                retry_msgs = await psub_retry.fetch(batch=WORKER_CONCURRENCY, timeout=1)
-                for msg in retry_msgs:
-                    asyncio.create_task(self._process(msg))
-            except (asyncio.TimeoutError, nats_lib.errors.TimeoutError):
-                pass
+            records = await loop.run_in_executor(None, self._poll, consumer, timeout_ms)
 
-            try:
-                msgs = await psub.fetch(batch=WORKER_CONCURRENCY, timeout=5)
-                for msg in msgs:
-                    asyncio.create_task(self._process(msg))
-            except asyncio.TimeoutError:
-                continue
-            except nats_lib.errors.TimeoutError:
-                continue
-            except Exception as e:
-                logger.error(f"Fetch error: {type(e).__name__}: {e}", exc_info=True)
-                await asyncio.sleep(1)
+            for msg_list in records.values():
+                for record in msg_list:
+                    task = asyncio.create_task(self._process_ordered(record, consumer))
+                    pending.add(task)
 
-    async def _process(self, msg):
-        async with self._semaphore:
-            await self._handle_message(msg)
+            # Reap completed tasks without blocking
+            if pending:
+                done, pending = await asyncio.wait(pending, timeout=0)
+                for t in done:
+                    exc = t.exception()
+                    if exc:
+                        logger.error("Task failed", exc_info=exc)
 
-    async def _handle_message(self, msg):
-        try:
-            payload = json.loads(msg.data.decode())
-            job_id = payload["job_id"]
-            ckan_url = payload.get("ckan_url", "")
-            logger.info(f"Processing job {job_id}")
+        # Drain remaining tasks on shutdown
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
 
-            async with async_session() as db:
-                service = JobService(db)
-                await service.process_job(job_id, ckan_url=ckan_url)
+    async def _process_ordered(self, record, consumer):
+        """Process a single message, respecting per-partition order."""
+        async with self._get_partition_lock(record):
+            async with self._semaphore:
+                await self._process(record, consumer)
 
-            await msg.ack()
-            logger.info(f"Job {job_id} processed successfully")
-        except Exception as e:
-            logger.error(f"Failed to process message: {e}", exc_info=True)
-            await msg.nak(delay=30)  # Retry after 30 seconds
+    def _poll(self, consumer, timeout_ms):
+        """Poll messages — runs in executor thread."""
+        return consumer.poll(timeout_ms=timeout_ms, max_records=WORKER_CONCURRENCY)
+
+    async def _process(self, record, consumer):
+        payload = json.loads(record.value.decode())
+        job_id = payload["job_id"]
+        ckan_url = payload.get("ckan_url", "")
+        logger.info(f"Processing job {job_id}")
+
+        async with async_session() as db:
+            service = JobService(db)
+            await service.process_job(job_id, ckan_url=ckan_url)
+
+        # Commit this record's offset
+        def _commit():
+            consumer.commit(
+                {
+                    TopicPartition(record.topic, record.partition): OffsetAndMetadata(
+                        record.offset + 1, "", 0
+                    )
+                }
+            )
+
+        await asyncio.get_event_loop().run_in_executor(None, _commit)
+        logger.info(f"Job {job_id} processed successfully")
 
     async def stop(self):
         self._running = False
-        if self._nc:
-            await self._nc.close()
         logger.info("Worker stopped")
 
 
