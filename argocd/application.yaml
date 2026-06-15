@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ingestor-orchestrator
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  sources:
+    # -- Helm chart
+    - repoURL: https://gitlab.com/pedalin/ckan-ingestor.git
+      targetRevision: main
+      path: charts/ingestor-orchestrator
+      helm:
+        valueFiles:
+          - values.yaml
+        parameters:
+          - name: global.image.registry
+            value: registry.gitlab.com/pedalin/ckan-ingestor
+          - name: global.image.tag
+            value: latest
+          - name: api.image.repository
+            value: orchestrator
+          - name: worker.image.repository
+            value: orchestrator
+          - name: scheduler.image.repository
+            value: orchestrator
+          - name: existingSecret
+            value: ingestor-orchestrator-csi
+
+    # -- ESO: credenciais OCI + SecretStore + ExternalSecret
+    - repoURL: https://gitlab.com/pedalin/ckan-ingestor.git
+      targetRevision: main
+      path: argocd/manifests
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: orchestrator
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
