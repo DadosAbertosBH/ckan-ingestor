@@ -1,6 +1,6 @@
 #!/bin/bash
 
-for i in $(find ./ -name '*.py');  # or whatever other pattern...
+for i in $(find ./ -name '*.py' -not -path './.venv/*' -not -path '*/site-packages/*' -not -path '*/.venv/*' -not -path './env/*');  # or whatever other pattern...
 do
   if ! grep -q Copyright $i
   then

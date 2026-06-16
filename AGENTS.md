@@ -24,3 +24,13 @@ If there are errors:
 - Fix auto-fixable issues with `uv run ruff check --fix`
 - Manually fix any remaining issues
 - Re-run to confirm zero errors
+
+## License before committing
+
+Before making any commit or suggesting a commit, run:
+
+```bash
+./add_license.sh
+```
+
+This ensures all `.py` files have the AGPL license header.
