@@ -1,0 +1,35 @@
+{{- if .Values.kafka.deploy }}
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: {{ include "ingestor-orchestrator.fullname" . }}-kafka
+  labels:
+    {{- include "ingestor-orchestrator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kafka
+spec:
+  kafka:
+    version: {{ .Values.kafka.strimzi.version | quote }}
+    replicas: {{ .Values.kafka.strimzi.replicas }}
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+    storage:
+      type: {{ .Values.kafka.strimzi.storage.type }}
+    resources:
+      {{- toYaml .Values.kafka.strimzi.resources | nindent 6 }}
+    config:
+      offsets.topic.replication.factor: {{ min 3 .Values.kafka.strimzi.replicas }}
+      transaction.state.log.replication.factor: {{ min 3 .Values.kafka.strimzi.replicas }}
+      transaction.state.log.min.isr: {{ min 2 .Values.kafka.strimzi.replicas }}
+      default.replication.factor: {{ min 3 .Values.kafka.strimzi.replicas }}
+      min.insync.replicas: {{ min 2 .Values.kafka.strimzi.replicas }}
+  zookeeper:
+    replicas: {{ min 3 .Values.kafka.strimzi.replicas }}
+    storage:
+      type: {{ .Values.kafka.strimzi.storage.type }}
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}
+{{- end }}

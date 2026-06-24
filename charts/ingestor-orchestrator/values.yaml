@@ -79,12 +79,27 @@ scheduler:
       cpu: 500m
       memory: 512Mi
 
-# -- Kafka configuration (external Kafka cluster, not deployed by this chart)
+# -- Kafka configuration
 kafka:
+  # -- Deploy Kafka via Strimzi operator. If false, uses external Kafka.
+  deploy: false
   bootstrapServers: "kafka:9092"
   topic: "ckan.ingest.jobs"
   topicRetry: "ckan.ingest.jobs.retry"
   groupId: "ckan-worker"
+  # -- Strimzi Kafka cluster config (only used when deploy: true)
+  strimzi:
+    version: "3.7.0"
+    replicas: 3
+    storage:
+      type: "ephemeral"
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "500m"
+      limits:
+        memory: "4Gi"
+        cpu: "2000m"
 
 # -- MySQL configuration (external, not deployed by this chart)
 mysql:

@@ -1,0 +1,57 @@
+suite: Kafka deployment via Strimzi
+templates:
+  - kafka.yaml
+  - kafka-topics.yaml
+  - configmap.yaml
+tests:
+  - it: should not render Kafka CR by default
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: kafka.yaml
+
+  - it: should not render KafkaTopic CRs by default
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: kafka-topics.yaml
+
+  - it: should render Kafka CR when deploy is true
+    set:
+      kafka.deploy: true
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: kafka.yaml
+      - isKind:
+          of: Kafka
+        template: kafka.yaml
+      - matchRegex:
+          path: apiVersion
+          pattern: kafka.strimzi.io
+
+  - it: should render KafkaTopic CRs when deploy is true
+    set:
+      kafka.deploy: true
+    asserts:
+      - hasDocuments:
+          count: 2
+        template: kafka-topics.yaml
+      - containsDocument:
+          kind: KafkaTopic
+          apiVersion: kafka.strimzi.io/v1beta2
+        template: kafka-topics.yaml
+
+  - it: should set bootstrap server to Strimzi service when deploy is true
+    set:
+      kafka.deploy: true
+    asserts:
+      - equal:
+          path: data.INGEST_ORCH_KAFKA_BOOTSTRAP_SERVERS
+          value: "RELEASE-NAME-ingestor-orchestrator-kafka-bootstrap:9092"
+
+  - it: should keep external bootstrap server when deploy is false
+    asserts:
+      - equal:
+          path: data.INGEST_ORCH_KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka:9092"

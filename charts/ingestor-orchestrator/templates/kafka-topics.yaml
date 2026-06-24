@@ -1,0 +1,29 @@
+{{- if .Values.kafka.deploy }}
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: {{ .Values.kafka.topic | replace "." "-" | replace "_" "-" }}
+  labels:
+    {{- include "ingestor-orchestrator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kafka
+    strimzi.io/cluster: {{ include "ingestor-orchestrator.fullname" . }}-kafka
+spec:
+  partitions: 3
+  replicas: {{ min 3 .Values.kafka.strimzi.replicas }}
+  config:
+    retention.ms: 604800000
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: {{ .Values.kafka.topicRetry | replace "." "-" | replace "_" "-" }}
+  labels:
+    {{- include "ingestor-orchestrator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kafka
+    strimzi.io/cluster: {{ include "ingestor-orchestrator.fullname" . }}-kafka
+spec:
+  partitions: 3
+  replicas: {{ min 3 .Values.kafka.strimzi.replicas }}
+  config:
+    retention.ms: 604800000
+{{- end }}
