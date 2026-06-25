@@ -72,13 +72,17 @@ build:
     - docker pull $CI_REGISTRY_IMAGE:latest || true
     - docker context create builder
     - docker buildx create builder --use
-    - docker buildx build
-      --build-arg BUILDKIT_INLINE_CACHE=1
-      --cache-from $CI_REGISTRY_IMAGE:latest
-      --platform linux/amd64,linux/arm64
-      --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
-      --tag $CI_REGISTRY_IMAGE:latest
-      --push .
+    - |
+      TAG_ARGS="--tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA --tag $CI_REGISTRY_IMAGE:latest"
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        TAG_ARGS="$TAG_ARGS --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG"
+      fi
+      docker buildx build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from $CI_REGISTRY_IMAGE:latest \
+        --platform linux/amd64,linux/arm64 \
+        $TAG_ARGS \
+        --push .
 
 build-orchestrator:
   stage: build
@@ -87,15 +91,20 @@ build-orchestrator:
     - docker pull $CI_REGISTRY_IMAGE/orchestrator:latest || true
     - docker context create builder
     - docker buildx create builder --use
-    - docker buildx build
-      --build-arg BUILDKIT_INLINE_CACHE=1
-      --cache-from $CI_REGISTRY_IMAGE/orchestrator:latest
-      --platform linux/amd64,linux/arm64
-      --tag $CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA
-      --tag $CI_REGISTRY_IMAGE/orchestrator:latest
-      --file ingestor_orchestrator/Dockerfile
-      --push .
+    - |
+      TAG_ARGS="--tag $CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA --tag $CI_REGISTRY_IMAGE/orchestrator:latest"
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        TAG_ARGS="$TAG_ARGS --tag $CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_TAG"
+      fi
+      docker buildx build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from $CI_REGISTRY_IMAGE/orchestrator:latest \
+        --platform linux/amd64,linux/arm64 \
+        $TAG_ARGS \
+        --file ingestor_orchestrator/Dockerfile \
+        --push .
   rules:
+    - if: $CI_COMMIT_TAG
     - changes:
         - "ingestor_orchestrator/**/*"
         - "ckan_ingestor/**/*"
