@@ -35,8 +35,12 @@ spec:
                 - secretRef:
                     name: {{ include "ingestor-orchestrator.secretName" . }}
                 {{- if .Values.mysql.passwordSecretRef }}
-                - secretRef:
-                    name: {{ .Values.mysql.passwordSecretRef }}
+              env:
+                - name: INGEST_ORCH_MYSQL_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.mysql.passwordSecretRef }}
+                      key: password
                 {{- end }}
               resources:
                 {{- toYaml .Values.scheduler.resources | nindent 16 }}
