@@ -107,11 +107,8 @@ kafka:
 mysql:
   host: "mysql"
   port: 3306
-  user: "root"
+  user: "ckan_admin"
   database: "ingestor_orchestrator"
-  # -- Secret ref for MySQL password (e.g. Crossplane ckan-admin-password)
-  # Must contain key "password"
-  passwordSecretRef: ""
 
 # -- DuckLake configuration
 ducklake:
