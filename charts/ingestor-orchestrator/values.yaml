@@ -109,7 +109,9 @@ mysql:
   port: 3306
   user: "root"
   database: "ingestor_orchestrator"
-  # password is provided via secret
+  # -- Secret ref for MySQL password (e.g. Crossplane ckan-admin-password)
+  # Must contain key "password"
+  passwordSecretRef: ""
 
 # -- DuckLake configuration
 ducklake:

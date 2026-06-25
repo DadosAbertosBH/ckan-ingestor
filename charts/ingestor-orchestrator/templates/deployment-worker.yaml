@@ -35,6 +35,10 @@ spec:
                 name: {{ include "ingestor-orchestrator.fullname" . }}
             - secretRef:
                 name: {{ include "ingestor-orchestrator.secretName" . }}
+            {{- if .Values.mysql.passwordSecretRef }}
+            - secretRef:
+                name: {{ .Values.mysql.passwordSecretRef }}
+            {{- end }}
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
 {{- end }}
