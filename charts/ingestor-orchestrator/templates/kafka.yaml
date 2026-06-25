@@ -6,6 +6,8 @@ metadata:
   labels:
     {{- include "ingestor-orchestrator.labels" . | nindent 4 }}
     app.kubernetes.io/component: kafka
+  annotations:
+    strimzi.io/kraft: enabled
 spec:
   kafka:
     version: {{ .Values.kafka.strimzi.version | quote }}
@@ -20,10 +22,6 @@ spec:
       transaction.state.log.min.isr: {{ min 2 .Values.kafka.strimzi.replicas }}
       default.replication.factor: {{ min 3 .Values.kafka.strimzi.replicas }}
       min.insync.replicas: {{ min 2 .Values.kafka.strimzi.replicas }}
-  zookeeper:
-    replicas: {{ min 3 .Values.kafka.strimzi.replicas }}
-    storage:
-      type: {{ .Values.kafka.strimzi.storage.type }}
   entityOperator:
     topicOperator: {}
     userOperator: {}
@@ -38,6 +36,7 @@ metadata:
 spec:
   replicas: {{ .Values.kafka.strimzi.replicas }}
   roles:
+    - controller
     - broker
   storage:
     type: {{ .Values.kafka.strimzi.storage.type }}
