@@ -16,19 +16,21 @@ tests:
           count: 0
         template: kafka-topics.yaml
 
-  - it: should render Kafka CR when deploy is true
+  - it: should render Kafka CR and KafkaNodePool when deploy is true
     set:
       kafka.deploy: true
     asserts:
       - hasDocuments:
-          count: 1
+          count: 2
         template: kafka.yaml
-      - isKind:
-          of: Kafka
+      - containsDocument:
+          kind: Kafka
+          apiVersion: kafka.strimzi.io/v1
         template: kafka.yaml
-      - matchRegex:
-          path: apiVersion
-          pattern: kafka.strimzi.io
+      - containsDocument:
+          kind: KafkaNodePool
+          apiVersion: kafka.strimzi.io/v1
+        template: kafka.yaml
 
   - it: should render KafkaTopic CRs when deploy is true
     set:

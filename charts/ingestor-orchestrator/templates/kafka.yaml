@@ -6,19 +6,16 @@ metadata:
   labels:
     {{- include "ingestor-orchestrator.labels" . | nindent 4 }}
     app.kubernetes.io/component: kafka
+  annotations:
+    strimzi.io/node-pools: enabled
 spec:
   kafka:
     version: {{ .Values.kafka.strimzi.version | quote }}
-    replicas: {{ .Values.kafka.strimzi.replicas }}
     listeners:
       - name: plain
         port: 9092
         type: internal
         tls: false
-    storage:
-      type: {{ .Values.kafka.strimzi.storage.type }}
-    resources:
-      {{- toYaml .Values.kafka.strimzi.resources | nindent 6 }}
     config:
       offsets.topic.replication.factor: {{ min 3 .Values.kafka.strimzi.replicas }}
       transaction.state.log.replication.factor: {{ min 3 .Values.kafka.strimzi.replicas }}
@@ -32,4 +29,20 @@ spec:
   entityOperator:
     topicOperator: {}
     userOperator: {}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: broker
+  labels:
+    {{- include "ingestor-orchestrator.labels" . | nindent 4 }}
+    strimzi.io/cluster: {{ include "ingestor-orchestrator.fullname" . }}-kafka
+spec:
+  replicas: {{ .Values.kafka.strimzi.replicas }}
+  roles:
+    - broker
+  storage:
+    type: {{ .Values.kafka.strimzi.storage.type }}
+  resources:
+    {{- toYaml .Values.kafka.strimzi.resources | nindent 4 }}
 {{- end }}
