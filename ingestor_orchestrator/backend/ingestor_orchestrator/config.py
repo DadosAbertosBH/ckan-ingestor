@@ -42,8 +42,11 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
+        encoded = quote(self.mysql_password)
+        # configparser (used by alembic) treats % as interpolation — must double it
+        encoded = encoded.replace("%", "%%")
         return (
-            f"mysql+aiomysql://{self.mysql_user}:{quote(self.mysql_password)}"
+            f"mysql+aiomysql://{self.mysql_user}:{encoded}"
             f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}"
         )
 

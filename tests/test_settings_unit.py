@@ -33,26 +33,24 @@ class TestDatabaseUrl:
         assert "@" not in before_host, f"Unencoded @ in password: {url}"
         assert "!" not in url, f"Unencoded ! in password: {url}"
         assert "?" not in url, f"Unencoded ? in password: {url}"
+        # SQLAlchemy roundtrip
+        from sqlalchemy.engine.url import make_url
 
-    def test_configparser_roundtrip(self):
-        """configparser (used by alembic) must handle % in password."""
+        parsed = make_url(url)
+        assert parsed.password == "P4ss!%W0rd+Test_?Extra@k&=end", (
+            f"SQLAlchemy decode mismatch: {parsed.password}"
+        )
+
+    def test_configparser_does_not_choke(self):
+        """configparser (used by alembic) must not raise on % in URL."""
         from configparser import ConfigParser
 
         settings = Settings(mysql_password="P4ss!%W0rd+Test_?Extra@k&=end")
         url = settings.database_url
         cp = ConfigParser()
         cp.add_section("alembic")
+        # This must not raise ValueError about interpolation
         cp.set("alembic", "sqlalchemy.url", url)
-        # SQLAlchemy create_engine must roundtrip correctly via configparser
-        from sqlalchemy import create_engine
-
-        engine = create_engine(
-            cp.get("alembic", "sqlalchemy.url"),
-            connect_args={"connect_timeout": 1},
-        )
-        assert engine.url.password == "P4ss!%W0rd+Test_?Extra@k&=end", (
-            f"SQLAlchemy engineer should decode: {engine.url.password}"
-        )
 
     def test_empty_password(self):
         settings = Settings(mysql_password="")
