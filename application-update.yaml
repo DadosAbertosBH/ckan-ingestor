@@ -1,0 +1,58 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ingestor-orchestrator
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://gitlab.com/pedalin/ckan-ingestor.git
+    targetRevision: 0.0.4
+    path: charts/ingestor-orchestrator
+    helm:
+      valueFiles:
+        - values.yaml
+      parameters:
+        - name: global.image.registry
+          value: registry.gitlab.com/pedalin/ckan-ingestor
+        - name: global.image.tag
+          value: 0.0.4
+        - name: api.image.repository
+          value: orchestrator
+        - name: worker.image.repository
+          value: orchestrator
+        - name: scheduler.image.repository
+          value: orchestrator
+        - name: existingSecret
+          value: ingestor-orchestrator-csi
+        - name: kafka.deploy
+          value: "true"
+        - name: kafka.strimzi.replicas
+          value: "1"
+        - name: kafka.strimzi.storage.type
+          value: "persistent-claim"
+        - name: kafka.strimzi.storage.size
+          value: "5Gi"
+        - name: kafka.strimzi.resources.requests.memory
+          value: "512Mi"
+        - name: kafka.strimzi.resources.requests.cpu
+          value: "200m"
+        - name: kafka.strimzi.resources.limits.memory
+          value: "1Gi"
+        - name: kafka.strimzi.resources.limits.cpu
+          value: "500m"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: orchestrator
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true

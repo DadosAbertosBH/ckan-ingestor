@@ -6,8 +6,6 @@ metadata:
   labels:
     {{- include "ingestor-orchestrator.labels" . | nindent 4 }}
     app.kubernetes.io/component: kafka
-  annotations:
-    strimzi.io/node-pools: enabled
 spec:
   kafka:
     version: {{ .Values.kafka.strimzi.version | quote }}
