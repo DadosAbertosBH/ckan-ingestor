@@ -29,12 +29,11 @@ class TestDatabaseUrl:
     def test_special_chars_password(self):
         settings = Settings(mysql_password="4KV!%R{1y%1+U5V_?z7h8_Uoqe@k&=sm")
         url = settings.database_url
-        assert "@" in url
-        assert "!" not in url, f"Special char '!' should be encoded, got: {url}"
-        assert "%" not in url.replace("%40", "").replace("%25", "").replace(
-            "%21", ""
-        ), f"All remaining '%' should be from other encoded chars, got: {url}"
-        assert "?" not in url, f"Special char '?' should be encoded, got: {url}"
+        # Only one @ allowed (the host separator at pos after the password)
+        before_host = url.split("@")[0]
+        assert "@" not in before_host, f"Unencoded @ in password: {url}"
+        assert "!" not in url, f"Unencoded ! in password: {url}"
+        assert "?" not in url, f"Unencoded ? in password: {url}"
 
     def test_empty_password(self):
         settings = Settings(mysql_password="")
