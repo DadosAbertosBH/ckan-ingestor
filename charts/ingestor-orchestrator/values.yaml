@@ -89,7 +89,7 @@ kafka:
   groupId: "ckan-worker"
   # -- Strimzi Kafka cluster config (only used when deploy: true)
   strimzi:
-    version: "3.7.0"
+    version: "4.2.0"
     replicas: 3
     storage:
       type: "ephemeral"
