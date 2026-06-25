@@ -93,6 +93,8 @@ kafka:
     replicas: 3
     storage:
       type: "ephemeral"
+      # -- Size is required when type is persistent-claim
+      size: "10Gi"
     resources:
       requests:
         memory: "2Gi"

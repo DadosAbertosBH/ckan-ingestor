@@ -40,6 +40,9 @@ spec:
     - broker
   storage:
     type: {{ .Values.kafka.strimzi.storage.type }}
+    {{- if eq .Values.kafka.strimzi.storage.type "persistent-claim" }}
+    size: {{ .Values.kafka.strimzi.storage.size }}
+    {{- end }}
   resources:
     {{- toYaml .Values.kafka.strimzi.resources | nindent 4 }}
 {{- end }}
