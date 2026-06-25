@@ -1,5 +1,5 @@
 {{- if .Values.kafka.deploy }}
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: {{ .Values.kafka.topic | replace "." "-" | replace "_" "-" }}
@@ -13,7 +13,7 @@ spec:
   config:
     retention.ms: 604800000
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: {{ .Values.kafka.topicRetry | replace "." "-" | replace "_" "-" }}

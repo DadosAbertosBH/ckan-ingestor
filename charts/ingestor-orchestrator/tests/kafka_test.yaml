@@ -39,7 +39,7 @@ tests:
         template: kafka-topics.yaml
       - containsDocument:
           kind: KafkaTopic
-          apiVersion: kafka.strimzi.io/v1beta2
+          apiVersion: kafka.strimzi.io/v1
         template: kafka-topics.yaml
 
   - it: should set bootstrap server to Strimzi service when deploy is true
