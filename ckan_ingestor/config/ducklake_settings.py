@@ -26,10 +26,29 @@ class DucklakeSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="ducklake_", env_nested_delimiter="__")
 
     database: str = ":memory:"
-    catalog_uri: str = ":memory:"  # "postgres:dbname=ducklake_catalog host=localhost"
+    catalog_uri: str = ""
     data_path: S3Settings = S3Settings()
 
+    # Individual connection params (set by CNPG secret when postgres.deploy=true)
+    host: str = ""
+    port: str = ""
+    dbname: str = ""
+    username: str = ""
+    password: str = ""
+
     ckan_url: str = Field(default="https://dados.pbh.gov.br", alias="CKAN_URL")
+
+    def get_catalog_uri(self) -> str:
+        """Build catalog URI from individual params or use explicit catalog_uri."""
+        if self.catalog_uri:
+            return self.catalog_uri
+        if self.host and self.username and self.password and self.dbname:
+            return (
+                f"postgres:host={self.host} port={self.port}"
+                f" dbname={self.dbname} user={self.username}"
+                f" password={self.password}"
+            )
+        return ":memory:"
 
     @property
     def datastore_url(self) -> str:
