@@ -1,0 +1,15 @@
+{{- if .Values.postgres.deploy }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "ingestor-orchestrator.fullname" . }}-postgres
+  labels:
+    {{- include "ingestor-orchestrator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  instances: {{ .Values.postgres.instances }}
+  storage:
+    size: {{ .Values.postgres.storage.size }}
+  resources:
+    {{- toYaml .Values.postgres.resources | nindent 4 }}
+{{- end }}

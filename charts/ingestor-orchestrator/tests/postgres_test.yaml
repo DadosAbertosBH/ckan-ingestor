@@ -1,0 +1,26 @@
+suite: PostgreSQL via CloudNativePG
+templates:
+  - postgres.yaml
+tests:
+  - it: should not render CNPG Cluster by default
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: postgres.yaml
+
+  - it: should render CNPG Cluster when deploy is true
+    set:
+      postgres.deploy: true
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: postgres.yaml
+      - isKind:
+          of: Cluster
+        template: postgres.yaml
+      - matchRegex:
+          path: apiVersion
+          pattern: postgresql.cnpg.io
+      - equal:
+          path: spec.instances
+          value: 1
