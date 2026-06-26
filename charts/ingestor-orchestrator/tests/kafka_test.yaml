@@ -50,7 +50,7 @@ tests:
     asserts:
       - equal:
           path: data.INGEST_ORCH_KAFKA_BOOTSTRAP_SERVERS
-          value: "RELEASE-NAME-ingestor-orchestrator-kafka-bootstrap:9092"
+          value: "RELEASE-NAME-ingestor-orchestrator-kafka-kafka-bootstrap:9092"
 
   - it: should keep external bootstrap server when deploy is false
     asserts:

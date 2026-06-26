@@ -9,7 +9,7 @@ data:
   INGEST_ORCH_MYSQL_PORT: {{ .Values.mysql.port | quote }}
   INGEST_ORCH_MYSQL_USER: {{ .Values.mysql.user | quote }}
   INGEST_ORCH_MYSQL_DATABASE: {{ .Values.mysql.database | quote }}
-  INGEST_ORCH_KAFKA_BOOTSTRAP_SERVERS: {{- if .Values.kafka.deploy }} {{ printf "%s-kafka-bootstrap:9092" (include "ingestor-orchestrator.fullname" .) | quote }}{{- else }} {{ .Values.kafka.bootstrapServers | quote }}{{- end }}
+  INGEST_ORCH_KAFKA_BOOTSTRAP_SERVERS: {{- if .Values.kafka.deploy }} {{ printf "%s-kafka-kafka-bootstrap:9092" (include "ingestor-orchestrator.fullname" .) | quote }}{{- else }} {{ .Values.kafka.bootstrapServers | quote }}{{- end }}
   INGEST_ORCH_KAFKA_TOPIC: {{ .Values.kafka.topic | quote }}
   INGEST_ORCH_KAFKA_TOPIC_RETRY: {{ .Values.kafka.topicRetry | quote }}
   INGEST_ORCH_KAFKA_GROUP_ID: {{ .Values.kafka.groupId | quote }}
