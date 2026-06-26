@@ -37,7 +37,7 @@ api:
     periodSeconds: 15
   readinessProbe:
     httpGet:
-      path: /health
+      path: /ready
       port: 8000
     initialDelaySeconds: 5
     periodSeconds: 10

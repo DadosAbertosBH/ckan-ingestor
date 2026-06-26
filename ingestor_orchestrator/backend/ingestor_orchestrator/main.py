@@ -19,9 +19,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from ingestor_orchestrator.api import dashboard, instances, jobs, metadata, resources
 from ingestor_orchestrator.config import settings
+from ingestor_orchestrator.db import async_session
 from ingestor_orchestrator.services.scheduler import Scheduler
 
 logger = logging.getLogger(__name__)
@@ -77,6 +80,18 @@ app.include_router(resources.router)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/ready")
+async def ready():
+    try:
+        async with async_session() as session:
+            await session.execute(text("SELECT 1"))
+        return {"status": "ok"}
+    except Exception:
+        return JSONResponse(
+            status_code=503, content={"status": "error", "database": "unreachable"}
+        )
 
 
 def run():
