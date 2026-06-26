@@ -35,10 +35,7 @@ spec:
                 name: {{ include "ingestor-orchestrator.fullname" . }}
             - secretRef:
                 name: {{ include "ingestor-orchestrator.secretName" . }}
-            {{- if .Values.postgres.deploy }}
-            - secretRef:
-                name: {{ include "ingestor-orchestrator.fullname" . }}-postgres-app
-            {{- end }}
+            {{- include "ingestor-orchestrator.postgresEnvFrom" . | nindent 12 }}
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
 {{- end }}

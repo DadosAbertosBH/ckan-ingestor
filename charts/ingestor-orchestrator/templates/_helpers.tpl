@@ -73,3 +73,14 @@ Name of the secret to use for environment variables.
 {{- include "ingestor-orchestrator.fullname" . }}
 {{- end }}
 {{- end }}
+
+{{/*
+Optional CNPG postgres secret envFrom.
+Usage: {{ include "ingestor-orchestrator.postgresEnvFrom" . | nindent N }}
+*/}}
+{{- define "ingestor-orchestrator.postgresEnvFrom" -}}
+{{- if .Values.postgres.deploy }}
+- secretRef:
+    name: {{ include "ingestor-orchestrator.fullname" . }}-postgres-app
+{{- end }}
+{{- end }}
