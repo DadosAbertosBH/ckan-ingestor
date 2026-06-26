@@ -84,14 +84,33 @@ async def health():
 
 @app.get("/ready")
 async def ready():
+    import os
+
+    checks = {"database": "ok"}
+
+    # MySQL check
     try:
         async with async_session() as session:
             await session.execute(text("SELECT 1"))
-        return {"status": "ok"}
     except Exception:
-        return JSONResponse(
-            status_code=503, content={"status": "error", "database": "unreachable"}
-        )
+        checks["database"] = "unreachable"
+
+    # DuckLake check
+    catalog = os.environ.get("DUCKLAKE_CATALOG_URI", "")
+    if catalog:
+        try:
+            import duckdb
+
+            conn = duckdb.connect(catalog)
+            conn.execute("SELECT 1")
+            conn.close()
+            checks["ducklake"] = "ok"
+        except Exception:
+            checks["ducklake"] = "unreachable"
+
+    if any(v != "ok" for v in checks.values()):
+        return JSONResponse(status_code=503, content={"status": "error", **checks})
+    return {"status": "ok", **checks}
 
 
 def run():

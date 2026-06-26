@@ -17,7 +17,6 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from ingestor_orchestrator.db import get_db
 from ingestor_orchestrator.main import app
 
 
@@ -29,20 +28,31 @@ def clear_overrides():
 
 class TestHealthEndpoint:
     def test_health_always_returns_200(self):
-        """Liveness probe must not depend on external services."""
         response = TestClient(app).get("/health")
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
 
 
 class TestReadyEndpoint:
-    def test_ready_503_when_db_down(self):
+    def test_ready_503_when_db_down(self, monkeypatch):
         """Readiness probe returns 503 when database is unreachable."""
+        from unittest.mock import patch
 
-        async def broken_db():
-            raise Exception("Connection refused")
-            yield
+        monkeypatch.delenv("DUCKLAKE_CATALOG_URI", raising=False)
+        with patch(
+            "ingestor_orchestrator.main.async_session",
+            side_effect=Exception("Connection refused"),
+        ):
+            response = TestClient(app).get("/ready")
+            assert response.status_code == 503
+            assert response.json()["database"] == "unreachable"
 
-        app.dependency_overrides[get_db] = broken_db
-        response = TestClient(app).get("/ready")
-        assert response.status_code == 503
+    def test_ready_503_when_ducklake_down(self, monkeypatch):
+        """Readiness probe returns 503 when DuckLake is unreachable."""
+        from unittest.mock import patch
+
+        monkeypatch.setenv("DUCKLAKE_CATALOG_URI", "postgres:host=bad")
+        with patch("duckdb.connect", side_effect=Exception("Connection refused")):
+            response = TestClient(app).get("/ready")
+            assert response.status_code == 503
+            assert response.json()["ducklake"] == "unreachable"
