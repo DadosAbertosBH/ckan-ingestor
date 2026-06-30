@@ -19,11 +19,11 @@ import logging
 import os
 import signal
 
-from kafka import OffsetAndMetadata, TopicPartition
+from confluent_kafka import TopicPartition
 
 from ingestor_orchestrator.config import settings
 from ingestor_orchestrator.db import async_session
-from ingestor_orchestrator.kafka import create_kafka_consumer
+from ingestor_orchestrator.kafka_queue import create_consumer
 from ingestor_orchestrator.services.job_service import JobService
 
 WORKER_CONCURRENCY = int(os.environ.get("WORKER_CONCURRENCY", "4"))
@@ -35,26 +35,14 @@ class Worker:
     def __init__(self):
         self._running = False
         self._semaphore = asyncio.Semaphore(WORKER_CONCURRENCY)
-        self._partition_locks: dict[tuple[str, int], asyncio.Lock] = {}
-
-    def _get_partition_lock(self, record) -> asyncio.Lock:
-        key = (record.topic, record.partition)
-        if key not in self._partition_locks:
-            self._partition_locks[key] = asyncio.Lock()
-        return self._partition_locks[key]
 
     async def start(self):
         self._running = True
 
-        # Retry topic consumer
-        retry_consumer = create_kafka_consumer(
+        retry_consumer = create_consumer(
             settings.kafka_topic_retry, settings.kafka_group_id + "-retry"
         )
-
-        # Main topic consumer
-        main_consumer = create_kafka_consumer(
-            settings.kafka_topic, settings.kafka_group_id
-        )
+        main_consumer = create_consumer(settings.kafka_topic, settings.kafka_group_id)
 
         logger.info(
             f"Worker started (concurrency={WORKER_CONCURRENCY}), "
@@ -62,24 +50,25 @@ class Worker:
         )
 
         await asyncio.gather(
-            self._consume_loop(retry_consumer, 1000),
-            self._consume_loop(main_consumer, 5000),
+            self._consume_loop(retry_consumer, 1.0),
+            self._consume_loop(main_consumer, 5.0),
         )
 
-    async def _consume_loop(self, consumer, timeout_ms):
-        """Continuously poll and dispatch tasks without blocking on their completion."""
+    async def _consume_loop(self, consumer, timeout):
         loop = asyncio.get_event_loop()
         pending: set[asyncio.Task] = set()
 
         while self._running:
-            records = await loop.run_in_executor(None, self._poll, consumer, timeout_ms)
+            # confluent-kafka v2.15+ — queue support handles polling efficiently
+            msg = await loop.run_in_executor(None, consumer.poll, timeout)
 
-            for msg_list in records.values():
-                for record in msg_list:
-                    task = asyncio.create_task(self._process_ordered(record, consumer))
-                    pending.add(task)
+            if msg is None or msg.error():
+                continue
 
-            # Reap completed tasks without blocking
+            async with self._semaphore:
+                task = asyncio.create_task(self._process(msg, consumer))
+                pending.add(task)
+
             if pending:
                 done, pending = await asyncio.wait(pending, timeout=0)
                 for t in done:
@@ -87,22 +76,11 @@ class Worker:
                     if exc:
                         logger.error("Task failed", exc_info=exc)
 
-        # Drain remaining tasks on shutdown
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
 
-    async def _process_ordered(self, record, consumer):
-        """Process a single message, respecting per-partition order."""
-        async with self._get_partition_lock(record):
-            async with self._semaphore:
-                await self._process(record, consumer)
-
-    def _poll(self, consumer, timeout_ms):
-        """Poll messages — runs in executor thread."""
-        return consumer.poll(timeout_ms=timeout_ms, max_records=WORKER_CONCURRENCY)
-
-    async def _process(self, record, consumer):
-        payload = json.loads(record.value.decode())
+    async def _process(self, msg, consumer):
+        payload = json.loads(msg.value().decode())
         job_id = payload["job_id"]
         ckan_url = payload.get("ckan_url", "")
         logger.info(f"Processing job {job_id}")
@@ -111,14 +89,12 @@ class Worker:
             service = JobService(db)
             await service.process_job(job_id, ckan_url=ckan_url)
 
-        # Commit this record's offset
         def _commit():
             consumer.commit(
-                {
-                    TopicPartition(record.topic, record.partition): OffsetAndMetadata(
-                        record.offset + 1, "", 0
-                    )
-                }
+                offsets=[
+                    TopicPartition(msg.topic(), msg.partition(), msg.offset() + 1)
+                ],
+                asynchronous=False,
             )
 
         await asyncio.get_event_loop().run_in_executor(None, _commit)
