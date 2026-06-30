@@ -42,6 +42,9 @@ spec:
     type: {{ .Values.kafka.strimzi.storage.type }}
     {{- if eq .Values.kafka.strimzi.storage.type "persistent-claim" }}
     size: {{ .Values.kafka.strimzi.storage.size }}
+    {{- if .Values.kafka.strimzi.storage.storageClass }}
+    class: {{ .Values.kafka.strimzi.storage.storageClass }}
+    {{- end }}
     {{- end }}
   resources:
     {{- toYaml .Values.kafka.strimzi.resources | nindent 4 }}

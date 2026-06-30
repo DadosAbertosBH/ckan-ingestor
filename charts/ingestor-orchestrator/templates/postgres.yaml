@@ -10,6 +10,9 @@ spec:
   instances: {{ .Values.postgres.instances }}
   storage:
     size: {{ .Values.postgres.storage.size }}
+    {{- if .Values.postgres.storage.storageClass }}
+    storageClass: {{ .Values.postgres.storage.storageClass }}
+    {{- end }}
   resources:
     {{- toYaml .Values.postgres.resources | nindent 4 }}
 {{- end }}
