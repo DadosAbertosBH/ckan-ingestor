@@ -15,11 +15,13 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from ingestor_orchestrator.api import dashboard, instances, jobs, metadata, resources
@@ -76,6 +78,10 @@ app.include_router(metadata.router)
 app.include_router(instances.router)
 app.include_router(resources.router)
 
+frontend_dir = "/app/frontend"
+if os.path.isdir(frontend_dir):
+    app.mount("/assets", StaticFiles(directory=f"{frontend_dir}/assets"), name="assets")
+
 
 @app.get("/health")
 async def health():
@@ -84,8 +90,6 @@ async def health():
 
 @app.get("/ready")
 async def ready():
-    import os
-
     checks = {"database": "ok"}
 
     # MySQL check
@@ -111,6 +115,16 @@ async def ready():
     if any(v != "ok" for v in checks.values()):
         return JSONResponse(status_code=503, content={"status": "error", **checks})
     return {"status": "ok", **checks}
+
+
+if os.path.isdir(frontend_dir):
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        file_path = os.path.join(frontend_dir, full_path)
+        if full_path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(frontend_dir, "index.html"))
 
 
 def run():

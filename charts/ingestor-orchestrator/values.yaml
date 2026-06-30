@@ -62,23 +62,6 @@ worker:
       cpu: 1000m
       memory: 2Gi
 
-# -- Scheduler configuration (runs as a CronJob)
-scheduler:
-  enabled: true
-  schedule: "0 */8 * * *" # Every 8 hours
-  image:
-    registry: ""
-    repository: ingestor-orchestrator
-    tag: ""
-    pullPolicy: ""
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-
 # -- Kafka configuration
 kafka:
   # -- Deploy Kafka via Strimzi operator. If false, uses external Kafka.
