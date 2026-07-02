@@ -1,5 +1,10 @@
 # Project Rules
 
+## Repositories
+
+- **ckan-ingestor** (this repo): Application source code, Helm chart
+- **argocd-applications** (`noctcloud/argocd-applications`): GitOps deployment config — ArgoCD Application, ExternalSecret, Crossplane resources. Local copy at `./argocd-applications/`.
+
 ## TDD — Always
 
 Every implementation, bug fix, or adjustment must follow TDD:
