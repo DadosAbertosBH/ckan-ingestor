@@ -1,7 +1,4 @@
 # Orchestrator image — API, worker, scheduler, and frontend
-FROM python:3.13-slim
-
-WORKDIR /app
 
 # --- Build frontend ---
 FROM node:22-slim AS frontend-builder
@@ -9,7 +6,7 @@ WORKDIR /src
 COPY ingestor_orchestrator/frontend/package.json ingestor_orchestrator/frontend/package-lock.json ./
 RUN npm ci
 COPY ingestor_orchestrator/frontend/ ./
-RUN npm run build
+RUN npx vite build
 
 # --- Python backend ---
 FROM python:3.13-slim
