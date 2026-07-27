@@ -27,7 +27,6 @@ api:
   service:
     type: ClusterIP
     port: 8000
-    annotations: {}
   # -- Health check configuration
   livenessProbe:
     httpGet:

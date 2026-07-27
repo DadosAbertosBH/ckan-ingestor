@@ -1,0 +1,18 @@
+suite: API service annotations
+templates:
+  - service.yaml
+tests:
+  - it: should render service without annotations by default
+    asserts:
+      - isKind:
+          of: Service
+      - isNullOrMissing:
+          path: metadata.annotations
+
+  - it: should render service with custom annotations
+    set:
+      api.service.annotations.tailscale\.com/expose: "true"
+    asserts:
+      - equal:
+          path: metadata.annotations.tailscale\.com/expose
+          value: "true"
