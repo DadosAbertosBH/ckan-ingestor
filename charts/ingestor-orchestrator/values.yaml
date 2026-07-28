@@ -56,10 +56,10 @@ worker:
   resources:
     requests:
       cpu: 500m
-      memory: 3Gi
+      memory: 4Gi
     limits:
       cpu: 500m
-      memory: 3Gi
+      memory: 4Gi
 
 # -- Kafka configuration
 kafka:
