@@ -1,5 +1,9 @@
 # Project Rules
 
+## Communication
+
+Avoid negative ontologies on executions and/or explanations — frame actions positively (what WILL be done), not negatively (what won't/can't).
+
 ## Repositories
 
 - **ckan-ingestor** (this repo): Application source code, Helm chart
