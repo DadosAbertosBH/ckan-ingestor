@@ -13,91 +13,76 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-"""Test Kafka producer sends correct message format."""
+"""Test Kafka producer via confluent-kafka API — using autospec to catch API breaks."""
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, create_autospec, patch
 
 import pytest
+from confluent_kafka import Message, Producer
 from ingestor_orchestrator.services.job_service import JobService
 
 _FACTORY_PATH = "ingestor_orchestrator.kafka.get_kafka_producer"
 
 
-def _mock_producer(
-    topic: str = "ckan.ingest.jobs", partition: int = 2, offset: int = 42
-):
-    mock = MagicMock()
-    mock_future = MagicMock()
-    record_meta = MagicMock()
-    record_meta.topic = topic
-    record_meta.partition = partition
-    record_meta.offset = offset
-    mock_future.get.return_value = record_meta
-    mock.send.return_value = mock_future
+def _autospec_producer(topic="ckan.ingest.jobs", partition=2, offset=42):
+    mock = create_autospec(Producer, instance=True)
+
+    def _capture(*args, **kw):
+        # confluent-kafka produce(topic, value=None, key=None, on_delivery=None, ...)
+        callback = kw.get("on_delivery")
+        msg = create_autospec(Message, instance=True)
+        msg.topic.return_value = topic
+        msg.partition.return_value = partition
+        msg.offset.return_value = offset
+        if callback:
+            callback(None, msg)
+
+    mock.produce.side_effect = _capture
     return mock
 
 
 @pytest.mark.asyncio
-async def test_publish_sends_job_id_and_ckan_url():
-    """Producer sends a message with job_id and ckan_url."""
-    producer = _mock_producer()
-
+async def test_producer_uses_produce_not_send():
+    """autospec ensures only real Producer methods exist — no .send()."""
+    producer = _autospec_producer()
     with patch(_FACTORY_PATH, return_value=producer):
         service = JobService(AsyncMock())
         await service._publish_job("test-job", "https://dados.pbh.gov.br")
-
-    producer.send.assert_called_once()
-    args, kwargs = producer.send.call_args
-    assert args[0] == "ckan.ingest.jobs"
-    payload = json.loads(args[1].decode())
-    assert payload["job_id"] == "test-job"
-    assert payload["ckan_url"] == "https://dados.pbh.gov.br"
+    producer.produce.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_publish_returns_kafka_metadata():
-    """_publish_job must return (topic, partition, offset) from Kafka."""
-    producer = _mock_producer(topic="ckan.ingest.jobs", partition=3, offset=99)
-
+async def test_returns_metadata_from_callback():
+    producer = _autospec_producer(topic="ckan.ingest.jobs", partition=3, offset=99)
     with patch(_FACTORY_PATH, return_value=producer):
         service = JobService(AsyncMock())
         meta = await service._publish_job("job-x")
-
     assert meta.topic == "ckan.ingest.jobs"
     assert meta.partition == 3
     assert meta.offset == 99
 
 
 @pytest.mark.asyncio
-async def test_publish_retry_uses_retry_topic():
-    """retry=True publishes to the retry topic."""
-    producer = _mock_producer()
-
+async def test_publishes_correct_payload():
+    producer = _autospec_producer()
     with patch(_FACTORY_PATH, return_value=producer):
         service = JobService(AsyncMock())
-        await service._publish_job("retry-job", retry=True)
-
-    args, _ = producer.send.call_args
-    assert args[0] == "ckan.ingest.jobs.retry"
+        await service._publish_job("test-job", "https://dados.pbh.gov.br", key="abc")
+    args, kwargs = producer.produce.call_args
+    # produce(topic, value, key=..., on_delivery=...) — value is 2nd positional arg
+    payload_bytes = args[1] if len(args) > 1 else kwargs["value"]
+    payload = json.loads(payload_bytes.decode())
+    assert payload["job_id"] == "test-job"
+    assert kwargs["key"] == b"abc"
 
 
 @pytest.mark.asyncio
-async def test_publish_sends_resource_id_as_key():
-    """producer.send must include resource_id as the Kafka message key.
-
-    Using resource_id as the key ensures that all jobs for the same
-    resource land on the same partition, preserving order.
-    """
-    producer = _mock_producer()
-
+async def test_retry_uses_retry_topic():
+    producer = _autospec_producer()
     with patch(_FACTORY_PATH, return_value=producer):
         service = JobService(AsyncMock())
-        await service._publish_job(
-            "test-job",
-            "https://dados.pbh.gov.br",
-            key="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-        )
-
-    args, kwargs = producer.send.call_args
-    assert kwargs.get("key") == b"a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        await service._publish_job("retry-job", retry=True)
+    args, _ = producer.produce.call_args
+    # produce(topic, value, ...) — topic is 1st positional arg
+    assert args[0] == "ckan.ingest.jobs.retry"

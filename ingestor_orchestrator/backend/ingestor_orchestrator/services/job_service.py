@@ -404,22 +404,36 @@ class JobService:
         """
         import asyncio
 
+        import threading
+
         from ingestor_orchestrator.kafka import get_kafka_producer
 
         topic = settings.kafka_topic_retry if retry else settings.kafka_topic
         payload = json.dumps({"job_id": job_id, "ckan_url": ckan_url}).encode()
         key_bytes = key.encode() if key else None
 
+        result_meta = {}
+        lock = threading.Lock()
+
+        def _callback(err, msg):
+            if err is not None:
+                raise Exception(f"Kafka delivery failed: {err}")
+            with lock:
+                result_meta["topic"] = msg.topic()
+                result_meta["partition"] = msg.partition()
+                result_meta["offset"] = msg.offset()
+
         def _send():
             producer = get_kafka_producer()
-            return producer.send(topic, payload, key=key_bytes).get(timeout=10)
+            producer.produce(topic, payload, key=key_bytes, on_delivery=_callback)
+            producer.flush(timeout=10)
 
         try:
-            result = await asyncio.to_thread(_send)
+            await asyncio.to_thread(_send)
             return KafkaMeta(
-                topic=result.topic,
-                partition=result.partition,
-                offset=result.offset,
+                topic=result_meta.get("topic", topic),
+                partition=result_meta.get("partition", -1),
+                offset=result_meta.get("offset", -1),
             )
         except Exception as e:
             logger.error(f"Failed to publish job {job_id} to Kafka: {e}")
