@@ -13,6 +13,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+import asyncio
 import logging
 
 from fastapi import APIRouter, Depends
@@ -37,7 +38,7 @@ async def sync_all(
     """Sync metadata for all CKAN instances."""
     logger.info("Sync started for all instances...")
     try:
-        result = sync_all_instances()
+        result = await asyncio.to_thread(sync_all_instances)
     except Exception as e:
         logger.error(f"Sync all failed: {e}", exc_info=True)
         return {"error": str(e)}
@@ -58,7 +59,8 @@ async def sync_instance(
 
     logger.info(f"Sync started for {instance.name} ({instance.url})...")
     try:
-        result = sync_metadata_for_instance(
+        result = await asyncio.to_thread(
+            sync_metadata_for_instance,
             instance_id=instance.id,
             instance_name=instance.name,
             instance_url=instance.url,
