@@ -55,13 +55,13 @@ worker:
     pullPolicy: ""
   resources:
     requests:
-      cpu: 300m
+      cpu: 500m
       memory: 3Gi
     limits:
-      cpu: 300m
+      cpu: 500m
       memory: 3Gi
 
-# -- Worker configuration
+# -- Kafka configuration
 kafka:
   bootstrapServers: "kafka:9092"
   topic: "ckan.ingest.jobs"
