@@ -1,4 +1,4 @@
-{{- if .Values.kafka.deploy }}
+{{- if .Values.kafka.topics.autocreate }}
 apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
@@ -6,10 +6,10 @@ metadata:
   labels:
     {{- include "ingestor-orchestrator.labels" . | nindent 4 }}
     app.kubernetes.io/component: kafka
-    strimzi.io/cluster: {{ include "ingestor-orchestrator.fullname" . }}-kafka
+    strimzi.io/cluster: {{ .Values.kafka.clusterName }}
 spec:
   partitions: 3
-  replicas: {{ min 3 .Values.kafka.strimzi.replicas }}
+  replicas: 1
   config:
     retention.ms: 604800000
 ---
@@ -20,10 +20,10 @@ metadata:
   labels:
     {{- include "ingestor-orchestrator.labels" . | nindent 4 }}
     app.kubernetes.io/component: kafka
-    strimzi.io/cluster: {{ include "ingestor-orchestrator.fullname" . }}-kafka
+    strimzi.io/cluster: {{ .Values.kafka.clusterName }}
 spec:
   partitions: 3
-  replicas: {{ min 3 .Values.kafka.strimzi.replicas }}
+  replicas: 1
   config:
     retention.ms: 604800000
 {{- end }}

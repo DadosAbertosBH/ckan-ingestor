@@ -63,29 +63,15 @@ worker:
 
 # -- Kafka configuration
 kafka:
-  # -- Deploy Kafka via Strimzi operator. If false, uses external Kafka.
-  deploy: false
   bootstrapServers: "kafka:9092"
   topic: "ckan.ingest.jobs"
   topicRetry: "ckan.ingest.jobs.retry"
   groupId: "ckan-worker"
-  # -- Strimzi Kafka cluster config (only used when deploy: true)
-  strimzi:
-    version: "4.2.0"
-    replicas: 3
-    storage:
-      type: "ephemeral"
-      # -- Size is required when type is persistent-claim
-      size: "10Gi"
-      # -- Storage class (e.g. longhorn). Only used when type is persistent-claim.
-      storageClass: ""
-    resources:
-      requests:
-        memory: "2Gi"
-        cpu: "500m"
-      limits:
-        memory: "4Gi"
-        cpu: "2000m"
+  topics:
+    # -- Create KafkaTopics via Strimzi. Disable if topics are managed elsewhere.
+    autocreate: false
+  # -- Strimzi Kafka cluster name for topic creation
+  clusterName: "ingestor-kafka"
 
 # -- PostgreSQL configuration (CloudNativePG)
 postgres:
