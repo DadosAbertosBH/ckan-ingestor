@@ -36,6 +36,8 @@ spec:
             - secretRef:
                 name: {{ include "ingestor-orchestrator.secretName" . }}
             {{- include "ingestor-orchestrator.postgresEnvFrom" . | nindent 12 }}
+          env:
+            {{- include "ingestor-orchestrator.cnpgDucklakeEnv" . | nindent 12 }}
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
 {{- end }}

@@ -40,6 +40,8 @@ spec:
             - secretRef:
                 name: {{ include "ingestor-orchestrator.secretName" . }}
             {{- include "ingestor-orchestrator.postgresEnvFrom" . | nindent 12 }}
+          env:
+            {{- include "ingestor-orchestrator.cnpgDucklakeEnv" . | nindent 12 }}
       containers:
         - name: api
           image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "api") }}
@@ -55,6 +57,8 @@ spec:
             - secretRef:
                 name: {{ include "ingestor-orchestrator.secretName" . }}
             {{- include "ingestor-orchestrator.postgresEnvFrom" . | nindent 12 }}
+          env:
+            {{- include "ingestor-orchestrator.cnpgDucklakeEnv" . | nindent 12 }}
           {{- with .Values.api.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}

@@ -1,0 +1,57 @@
+suite: CNPG DuckLake env vars
+templates:
+  - deployment-api.yaml
+  - deployment-worker.yaml
+tests:
+  - it: should not render DUCKLAKE_HOST when postgres is not deployed
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: DUCKLAKE_HOST
+        template: deployment-api.yaml
+
+  - it: should render DUCKLAKE_HOST from CNPG secret when deploy is true
+    set:
+      postgres.deploy: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DUCKLAKE_HOST
+            valueFrom:
+              secretKeyRef:
+                name: RELEASE-NAME-ingestor-orchestrator-postgres-app
+                key: host
+        template: deployment-api.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DUCKLAKE_DBNAME
+            valueFrom:
+              secretKeyRef:
+                name: RELEASE-NAME-ingestor-orchestrator-postgres-app
+                key: dbname
+        template: deployment-api.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DUCKLAKE_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: RELEASE-NAME-ingestor-orchestrator-postgres-app
+                key: username
+        template: deployment-api.yaml
+
+  - it: should inject DUCKLAKE_HOST into init container
+    set:
+      postgres.deploy: true
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: DUCKLAKE_HOST
+            valueFrom:
+              secretKeyRef:
+                name: RELEASE-NAME-ingestor-orchestrator-postgres-app
+                key: host
+        template: deployment-api.yaml

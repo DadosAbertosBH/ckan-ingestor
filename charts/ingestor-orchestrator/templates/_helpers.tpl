@@ -84,3 +84,36 @@ Usage: {{ include "ingestor-orchestrator.postgresEnvFrom" . | nindent N }}
     name: {{ include "ingestor-orchestrator.fullname" . }}-postgres-app
 {{- end }}
 {{- end }}
+
+{{/*
+CNPG DuckLake env vars — maps CNPG secret keys to DUCKLAKE_ prefix.
+*/}}
+{{- define "ingestor-orchestrator.cnpgDucklakeEnv" -}}
+{{- if .Values.postgres.deploy }}
+- name: DUCKLAKE_HOST
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "ingestor-orchestrator.fullname" . }}-postgres-app
+      key: host
+- name: DUCKLAKE_PORT
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "ingestor-orchestrator.fullname" . }}-postgres-app
+      key: port
+- name: DUCKLAKE_DBNAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "ingestor-orchestrator.fullname" . }}-postgres-app
+      key: dbname
+- name: DUCKLAKE_USERNAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "ingestor-orchestrator.fullname" . }}-postgres-app
+      key: username
+- name: DUCKLAKE_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "ingestor-orchestrator.fullname" . }}-postgres-app
+      key: password
+{{- end }}
+{{- end }}
