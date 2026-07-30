@@ -45,6 +45,9 @@ api:
 worker:
   enabled: true
   replicaCount: 2
+  # -- Maximum number of messages processed in parallel across all partitions.
+  # Ordering is preserved within each partition.
+  concurrency: 4
   image:
     registry: ""
     repository: ingestor-orchestrator
