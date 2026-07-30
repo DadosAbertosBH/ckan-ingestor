@@ -13,21 +13,16 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-"""Kafka producer wrapper — delegates to confluent-kafka via kafka_queue."""
+"""Kafka producer wrapper — delegates to kafka-python via kafka_queue."""
 
 from __future__ import annotations
 
 import json
 import logging
 
-from ingestor_orchestrator.kafka_queue import create_producer, delivery_report
+from ingestor_orchestrator.kafka_queue import get_kafka_producer
 
 logger = logging.getLogger(__name__)
-
-
-def get_kafka_producer():
-    """Return a thread-safe KafkaProducer singleton."""
-    return create_producer()
 
 
 def enqueue_job(
@@ -41,6 +36,5 @@ def enqueue_job(
     )
     payload = json.dumps({"job_id": job_id, "ckan_url": ckan_url}).encode()
     producer = get_kafka_producer()
-    producer.produce(target_topic, payload, callback=delivery_report)
-    producer.flush(timeout=10)
+    producer.send(target_topic, payload).get(timeout=10)
     logger.info(f"Job {job_id} enqueued to {target_topic}")

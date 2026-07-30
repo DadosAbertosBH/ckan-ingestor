@@ -13,13 +13,13 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-"""Tests for confluent-kafka based producer and consumer factory."""
+"""Tests for kafka-python based producer and consumer factory."""
 
 from unittest.mock import patch
 
 import pytest
 from ingestor_orchestrator.config import Settings
-from ingestor_orchestrator.kafka_queue import create_consumer, create_producer
+from ingestor_orchestrator.kafka_queue import create_kafka_consumer, get_kafka_producer
 
 
 @pytest.fixture
@@ -32,40 +32,47 @@ def kafka_settings():
     )
 
 
-class TestCreateProducer:
-    @patch("ingestor_orchestrator.kafka_queue.Producer")
+class TestGetKafkaProducer:
+    @patch("kafka.KafkaProducer")
     def test_creates_producer_with_correct_config(self, mock_producer, kafka_settings):
         import ingestor_orchestrator.kafka_queue as kq
 
         kq._producer = None
-        producer = create_producer()
+        producer = get_kafka_producer()
 
         mock_producer.assert_called_once()
-        config = mock_producer.call_args[0][0]
-        assert config["bootstrap.servers"] == "localhost:9092"
-        assert config["acks"] == "all"
+        kwargs = mock_producer.call_args[1]
+        assert kwargs["bootstrap_servers"] == "localhost:9092"
+        assert kwargs["acks"] == "all"
+        assert kwargs["retries"] == 5
         assert producer == mock_producer.return_value
 
-    @patch("ingestor_orchestrator.kafka_queue.Producer")
+    @patch("kafka.KafkaProducer")
     def test_singleton_caches_producer(self, mock_producer, kafka_settings):
         import ingestor_orchestrator.kafka_queue as kq
 
         kq._producer = None
-        p1 = create_producer()
-        p2 = create_producer()
+        p1 = get_kafka_producer()
+        p2 = get_kafka_producer()
         assert p1 is p2
         assert mock_producer.call_count == 1
 
 
-class TestCreateConsumer:
-    @patch("ingestor_orchestrator.kafka_queue.Consumer")
-    def test_creates_consumer_with_correct_config(self, mock_consumer, kafka_settings):
-        consumer = create_consumer("test.topic", "test-group")
+class TestCreateKafkaConsumer:
+    @patch("kafka.KafkaConsumer")
+    def test_creates_consumer_with_correct_config(
+        self, mock_consumer, kafka_settings
+    ):
+        consumer = create_kafka_consumer("test.topic", "test-group")
 
         mock_consumer.assert_called_once()
-        config = mock_consumer.call_args[0][0]
-        assert config["bootstrap.servers"] == "localhost:9092"
-        assert config["group.id"] == "test-group"
-        assert config["enable.auto.commit"] is False
-        assert config["auto.offset.reset"] == "earliest"
+        args = mock_consumer.call_args[0]
+        assert args[0] == "test.topic"
+        kwargs = mock_consumer.call_args[1]
+        assert kwargs["bootstrap_servers"] == "localhost:9092"
+        assert kwargs["group_id"] == "test-group"
+        assert kwargs["auto_offset_reset"] == "earliest"
+        assert kwargs["enable_auto_commit"] is False
+        assert kwargs["max_poll_interval_ms"] == 1_800_000
+        assert kwargs["max_poll_records"] == 10
         assert consumer == mock_consumer.return_value

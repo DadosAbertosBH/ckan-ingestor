@@ -21,16 +21,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
-from confluent_kafka import TopicPartition
 from ingestor_orchestrator.models import CkanDataJob, CkanInstance, JobStatus
 from ingestor_orchestrator.services.job_service import JobService
 from ingestor_orchestrator.worker.consumer import Worker
+from kafka import TopicPartition
+from kafka.consumer.fetcher import ConsumerRecord
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-pytestmark = [
-    pytest.mark.asyncio,
-    pytest.mark.skip(reason="Needs confluent-kafka rewrite"),
-]
+pytestmark = pytest.mark.asyncio
 
 
 @pytest_asyncio.fixture
@@ -79,11 +77,21 @@ class TestKafkaCommitPerRecord:
         mock_consumer = MagicMock()
         mock_consumer.commit = MagicMock()
 
-        record = MagicMock()
-        record.topic.return_value = "ckan.ingest.jobs"
-        record.partition.return_value = 0
-        record.offset.return_value = 42
-        record.value.return_value = json.dumps({"job_id": "job-kafka-2"}).encode()
+        record = ConsumerRecord(
+            topic="ckan.ingest.jobs",
+            partition=0,
+            offset=42,
+            timestamp=1234567890,
+            timestamp_type=0,
+            key=None,
+            value=json.dumps({"job_id": "job-kafka-2"}).encode(),
+            headers=[],
+            checksum=None,
+            serialized_key_size=-1,
+            serialized_value_size=-1,
+            serialized_header_size=-1,
+            leader_epoch=0,
+        )
 
         worker = Worker()
         with (

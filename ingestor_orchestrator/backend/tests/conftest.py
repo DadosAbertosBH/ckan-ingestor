@@ -40,7 +40,7 @@ def _mock_kafka():
     mock_future.get.return_value = record_meta
     mock_producer.send.return_value = mock_future
     with patch(
-        "ingestor_orchestrator.kafka.get_kafka_producer",
+        "ingestor_orchestrator.kafka_queue.get_kafka_producer",
         return_value=mock_producer,
     ):
         yield

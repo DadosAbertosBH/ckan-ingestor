@@ -13,52 +13,54 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-"""Kafka producer and consumer using confluent-kafka with queue support (v2.15+)."""
+"""Kafka producer and consumer for job messages."""
 
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
-from confluent_kafka import Consumer, Producer
-
-from ingestor_orchestrator.config import settings
+if TYPE_CHECKING:
+    from kafka import KafkaConsumer
 
 logger = logging.getLogger(__name__)
 
-_producer: Producer | None = None
+# Lazy singleton — created on first use per process.
+_producer = None
 
 
-def create_producer() -> Producer:
-    """Return a singleton KafkaProducer."""
+def get_kafka_producer():
+    """Return a thread-safe KafkaProducer singleton."""
     global _producer
+
     if _producer is None:
-        _producer = Producer(
-            {
-                "bootstrap.servers": settings.kafka_bootstrap_servers,
-                "acks": "all",
-                "retries": 5,
-            }
+        from kafka import KafkaProducer
+
+        from ingestor_orchestrator.config import settings
+
+        _producer = KafkaProducer(
+            bootstrap_servers=settings.kafka_bootstrap_servers,
+            value_serializer=lambda v: v,  # raw bytes
+            acks="all",
+            retries=5,
         )
         logger.info(f"Kafka producer connected to {settings.kafka_bootstrap_servers}")
     return _producer
 
 
-def create_consumer(topic: str, group_id: str) -> Consumer:
+def create_kafka_consumer(topic: str, group_id: str) -> "KafkaConsumer":
     """Create a Kafka consumer for the given topic and group."""
-    consumer = Consumer(
-        {
-            "bootstrap.servers": settings.kafka_bootstrap_servers,
-            "group.id": group_id,
-            "auto.offset.reset": "earliest",
-            "enable.auto.commit": False,
-            "max.poll.interval.ms": 1_800_000,
-        }
+    from kafka import KafkaConsumer
+
+    from ingestor_orchestrator.config import settings
+
+    return KafkaConsumer(
+        topic,
+        bootstrap_servers=settings.kafka_bootstrap_servers,
+        group_id=group_id,
+        auto_offset_reset="earliest",
+        enable_auto_commit=False,
+        value_deserializer=lambda v: v,
+        max_poll_interval_ms=1_800_000,
+        max_poll_records=10,
     )
-    consumer.subscribe([topic])
-    return consumer
-
-
-def delivery_report(err, msg):
-    """Callback for async producer delivery reports."""
-    if err is not None:
-        logger.error(f"Message delivery failed: {err}")

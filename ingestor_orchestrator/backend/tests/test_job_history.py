@@ -155,12 +155,8 @@ class TestJobHistory:
         sess.add(job)
         await sess.commit()
 
-        from ingestor_orchestrator.services.job_service import KafkaMeta
-
         service = JobService(sess)
-        mock_publish = AsyncMock(
-            return_value=KafkaMeta("ckan.ingest.jobs.retry", 1, 99)
-        )
+        mock_publish = AsyncMock()
         with patch.object(service, "_publish_job", mock_publish):
             await service.retry_job(job.id)
 

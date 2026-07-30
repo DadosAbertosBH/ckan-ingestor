@@ -13,6 +13,8 @@ dependencies = [
     "pandas>=2.3.0",
     "requests>=2.31.0",
     "nats-py>=2.15.0",
+    "marimo>=0.12.0",
+    "plotly>=6.0.0",
 ]
 
 [dependency-groups]
