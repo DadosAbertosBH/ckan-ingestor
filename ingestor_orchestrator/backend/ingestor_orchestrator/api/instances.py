@@ -18,8 +18,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ingestor_orchestrator.db import get_db
+from ingestor_orchestrator.dto import CkanInstanceResponse, InstanceCreate
 from ingestor_orchestrator.models import CkanInstance
-from ingestor_orchestrator.schemas import CkanInstanceResponse, InstanceCreate
 
 router = APIRouter(prefix="/api/instances", tags=["instances"])
 

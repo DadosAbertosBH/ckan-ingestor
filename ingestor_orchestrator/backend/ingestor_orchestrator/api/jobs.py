@@ -21,12 +21,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ingestor_orchestrator.db import get_db
+from ingestor_orchestrator.dto import JobCreate, JobListResponse, JobResponse
 from ingestor_orchestrator.models import (
     CkanDataJob,
     JobStatus,
     ResourceMetadataLabel,
 )
-from ingestor_orchestrator.schemas import JobCreate, JobListResponse, JobResponse
 from ingestor_orchestrator.services.job_service import JobService
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])

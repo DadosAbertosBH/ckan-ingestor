@@ -712,7 +712,7 @@ class TestDatastorePerInstanceUrl:
 class TestJobResultSchemaWithMetadata:
     async def test_job_result_with_metadata(self, sess, instance):
         """JobResultResponse includes new metadata fields."""
-        from ingestor_orchestrator.schemas import JobResultResponse
+        from ingestor_orchestrator.dto import JobResultResponse
 
         resp = JobResultResponse(
             id="res-1",
@@ -734,7 +734,7 @@ class TestJobResultSchemaWithMetadata:
 
     async def test_job_result_metadata_defaults_to_none(self, sess, instance):
         """New metadata fields default to None for backward compat."""
-        from ingestor_orchestrator.schemas import JobResultResponse
+        from ingestor_orchestrator.dto import JobResultResponse
 
         resp = JobResultResponse(
             id="res-2",

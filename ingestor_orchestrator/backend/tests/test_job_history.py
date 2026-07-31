@@ -20,8 +20,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
+from ingestor_orchestrator.dto import JobCreate
 from ingestor_orchestrator.models import CkanDataJob, CkanInstance, JobStatus
-from ingestor_orchestrator.schemas import JobCreate
 from ingestor_orchestrator.services.job_service import JobService
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

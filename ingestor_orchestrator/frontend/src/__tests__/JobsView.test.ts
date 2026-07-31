@@ -24,6 +24,11 @@ function createTestRouter(_initialQuery: Record<string, string> = {}) {
         name: "job-detail",
         component: { template: "<div/>" },
       },
+      {
+        path: "/resources/:resourceId",
+        name: "resource-detail",
+        component: { template: "<div/>" },
+      },
     ],
   });
 }

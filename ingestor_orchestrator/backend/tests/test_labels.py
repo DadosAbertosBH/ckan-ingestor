@@ -16,12 +16,12 @@
 """Tests for the labels feature — API endpoints and JobService logic."""
 
 import pytest
+from ingestor_orchestrator.dto import JobListResponse
 from ingestor_orchestrator.models import (
     CkanDataJob,
     JobStatus,
     ResourceMetadataLabel,
 )
-from ingestor_orchestrator.schemas import JobListResponse
 from ingestor_orchestrator.services.job_service import JobService
 from sqlalchemy import select
 

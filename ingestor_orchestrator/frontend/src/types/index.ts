@@ -83,3 +83,16 @@ export interface ResourceDetail extends Resource {
   jobs: Job[];
   preview: Record<string, unknown>[];
 }
+
+export interface MetadataSync {
+  id: string;
+  instance_id: string;
+  instance_name: string | null;
+  start_time: string;
+  end_time: string | null;
+  total_packages: number;
+  new_datasets: number;
+  new_resources: number;
+  updated_datasets: number;
+  updated_resources: number;
+}

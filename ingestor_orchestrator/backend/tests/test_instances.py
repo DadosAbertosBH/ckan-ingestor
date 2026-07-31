@@ -16,8 +16,8 @@
 """Tests for CkanInstance model and instances API."""
 
 import pytest
+from ingestor_orchestrator.dto import CkanInstanceResponse
 from ingestor_orchestrator.models import CkanInstance
-from ingestor_orchestrator.schemas import CkanInstanceResponse
 from sqlalchemy import select
 
 pytestmark = pytest.mark.asyncio

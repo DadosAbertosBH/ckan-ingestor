@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import logging
+from dataclasses import dataclass, field
 from typing import List
 
 import duckdb
@@ -26,6 +27,15 @@ from ckan_ingestor.duckdb_connection_factory import from_settings
 
 CKAN_DATASET_TABLE = "ckan_dataset"
 CKAN_RESOURCE_TABLE = "ckan_resource"
+
+
+@dataclass
+class IngestDatasetResult:
+    """Result of a metadata merge: how many rows were new vs updated."""
+
+    new: int
+    updated: int
+    updated_ids: list[str] = field(default_factory=list)
 
 
 class DuckdbCkanMetadataIngestor:
@@ -63,86 +73,127 @@ class DuckdbCkanMetadataIngestor:
         except duckdb.CatalogException:
             return False
 
-    def ingest_dataset(self, packages: pyarrow.Table):
+    def ingest_dataset(self, packages: pyarrow.Table) -> IngestDatasetResult:
         ckan_datasets = packages.drop_columns("resources")
         self.conn.begin()
-        self.merge_dataset(ckan_datasets, CKAN_DATASET_TABLE, "metadata_modified")
+        result = self.merge_dataset(
+            ckan_datasets, CKAN_DATASET_TABLE, "metadata_modified"
+        )
         self.conn.commit()
+        return result
 
-    def ingest_resources(self, resources: pyarrow.Table):
+    def ingest_resources(self, resources: pyarrow.Table) -> IngestDatasetResult:
         self.conn.begin()
         self.conn.execute("""
         CREATE TABLE IF NOT EXISTS ckan_resource_last_update
             (ckan_resource_id UUID, last_modified TIMESTAMP)
             """)
-        self.merge_dataset(resources, CKAN_RESOURCE_TABLE, "last_modified")
+        result = self.merge_dataset(resources, CKAN_RESOURCE_TABLE, "last_modified")
         self.conn.commit()
+        return result
 
     def merge_dataset(
         self, new_packages: pyarrow.Table, table_name: str, update_at_column: str
-    ):
-        if self.table_exists(table_name):
-            current_packages = self.conn.table(table_name).arrow().read_all()
-            new_packages = self._merge_schema(new_packages, current_packages)
-            self.logger.info(f"{table_name} new dataset size: {new_packages.num_rows}")
-            deleted_count = (
-                self.conn.execute(f"""
-                        DELETE FROM {table_name}
-                        WHERE id IN (SELECT new_packages.id FROM new_packages
-                            ASOF JOIN current_packages
-                            ON (new_packages.id = current_packages.id AND
-                                new_packages.{update_at_column} > current_packages.{update_at_column})
-                        )
-                    """)
-                .arrow()
-                .read_all()["Count"][0]
-                .as_py()
-            )
-            self.logger.info(f"{table_name} rows to deleted:{deleted_count}")
+    ) -> IngestDatasetResult:
+        """Merge new rows into the target table.
 
-            # Sync target table schema with new_packages
-            target_types = {
-                r[1]: r[2]
-                for r in self.conn.execute(
-                    f"PRAGMA table_info('{table_name}')"
-                ).fetchall()
-            }
-            for c in new_packages.column_names:
-                src_type = self._arrow_to_duckdb(new_packages.schema.field(c).type)
-                if c not in target_types:
-                    self.conn.execute(
-                        f'ALTER TABLE {table_name} ADD COLUMN "{c}" {src_type}'
-                    )
-                    target_types[c] = src_type
-                elif target_types[c] != src_type and src_type == "VARCHAR":
-                    # Widen the column type — DuckDB allows promotion to VARCHAR
-                    self.conn.execute(
-                        f'ALTER TABLE {table_name} ALTER "{c}" TYPE VARCHAR'
-                    )
-                    target_types[c] = "VARCHAR"
-
-            cols = ", ".join(f'"{c}"' for c in new_packages.column_names)
-            cast_cols = ", ".join(
-                f'CAST("{c}" AS {target_types[c]})' for c in new_packages.column_names
-            )
-            total_inserted = (
-                self.conn.execute(f"""
-                        INSERT INTO {table_name} ({cols})
-                        SELECT {cast_cols} FROM new_packages
-                        ANTI JOIN {table_name}
-                        USING (id)
-                    """)
-                .arrow()
-                .read_all()["Count"][0]
-                .as_py()
-            )
-            self.logger.info(f"{table_name} rows inserted:{total_inserted}")
-
-        else:
+        Returns an IngestDatasetResult with:
+          - new: rows whose id did not exist before this sync
+          - updated: rows whose id existed with an older update_at column
+          - updated_ids: ids of the rows that were updated
+        """
+        if not self.table_exists(table_name):
             self.logger.info(f"{table_name} created")
             self.conn.execute(f"""
                     CREATE TABLE {table_name} AS select * from new_packages
                 """)
+            return IngestDatasetResult(
+                new=new_packages.num_rows,
+                updated=0,
+                updated_ids=[],
+            )
+
+        current_packages = self.conn.table(table_name).arrow().read_all()
+        new_packages = self._merge_schema(new_packages, current_packages)
+        self.logger.info(f"{table_name} new dataset size: {new_packages.num_rows}")
+
+        # extras is not ingested — drop the column to avoid type conflicts
+        # with existing JSON columns (DuckDB exposes JSON as string in Arrow)
+        if "extras" in new_packages.column_names:
+            new_packages = new_packages.drop_columns("extras")
+
+        # Rows whose update_at is newer than the stored version are updates.
+        # The same join drives the DELETE below; reading it first lets us
+        # report exactly which rows changed.
+        updated_ids = [
+            row[0]
+            for row in self.conn.execute(f"""
+                    SELECT DISTINCT new_packages.id FROM new_packages
+                    ASOF JOIN current_packages
+                    ON (new_packages.id = current_packages.id AND
+                        new_packages.{update_at_column} > current_packages.{update_at_column})
+                """).fetchall()
+        ]
+        deleted_count = (
+            self.conn.execute(f"""
+                    DELETE FROM {table_name}
+                    WHERE id IN (SELECT new_packages.id FROM new_packages
+                        ASOF JOIN current_packages
+                        ON (new_packages.id = current_packages.id AND
+                            new_packages.{update_at_column} > current_packages.{update_at_column})
+                    )
+                """)
+            .arrow()
+            .read_all()["Count"][0]
+            .as_py()
+        )
+        self.logger.info(f"{table_name} rows to deleted:{deleted_count}")
+
+        # Sync target table schema with new_packages
+        target_types = {
+            r[1]: r[2]
+            for r in self.conn.execute(
+                f"PRAGMA table_info('{table_name}')"
+            ).fetchall()
+        }
+        for c in new_packages.column_names:
+            src_type = self._arrow_to_duckdb(new_packages.schema.field(c).type)
+            if c not in target_types:
+                self.conn.execute(
+                    f'ALTER TABLE {table_name} ADD COLUMN "{c}" {src_type}'
+                )
+                target_types[c] = src_type
+            elif target_types[c] != src_type and src_type == "VARCHAR":
+                # Widen the column type — DuckDB allows promotion to VARCHAR
+                self.conn.execute(
+                    f'ALTER TABLE {table_name} ALTER "{c}" TYPE VARCHAR'
+                )
+                target_types[c] = "VARCHAR"
+
+        cols = ", ".join(f'"{c}"' for c in new_packages.column_names)
+        cast_cols = ", ".join(
+            f'CAST("{c}" AS {target_types[c]})' for c in new_packages.column_names
+        )
+        total_inserted = (
+            self.conn.execute(f"""
+                    INSERT INTO {table_name} ({cols})
+                    SELECT {cast_cols} FROM new_packages
+                    ANTI JOIN {table_name}
+                    USING (id)
+                """)
+            .arrow()
+            .read_all()["Count"][0]
+            .as_py()
+        )
+        self.logger.info(f"{table_name} rows inserted:{total_inserted}")
+
+        # Updated rows are deleted first and then re-inserted, so the
+        # insert count includes both new and updated rows.
+        return IngestDatasetResult(
+            new=total_inserted - len(updated_ids),
+            updated=len(updated_ids),
+            updated_ids=updated_ids,
+        )
 
     @staticmethod
     def _merge_schema(new_packages, current_packages):
@@ -170,9 +221,9 @@ class DuckdbCkanMetadataIngestor:
         missing_fields = [
             f for f in merged_schema if f.name not in new_packages.column_names
         ]
-        for field in missing_fields:
+        for missing_field in missing_fields:
             new_packages = new_packages.append_column(
-                field, pyarrow.nulls(new_packages.num_rows, field.type)
+                missing_field, pyarrow.nulls(new_packages.num_rows, missing_field.type)
             )
         return new_packages.select([f.name for f in merged_schema]).cast(merged_schema)
 

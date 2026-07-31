@@ -5,6 +5,7 @@ import type {
   Job,
   JobCreateRequest,
   JobStatus,
+  MetadataSync,
   Resource,
   ResourceDetail,
 } from "@/types";
@@ -77,6 +78,18 @@ export function useApi() {
   };
   const fetchResource = (resourceId: string) =>
     request<ResourceDetail>(`/resources/${resourceId}`);
+  const fetchSyncs = (params?: {
+    instance_id?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.instance_id) query.set("instance_id", params.instance_id);
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.offset) query.set("offset", String(params.offset));
+    const qs = query.toString();
+    return request<MetadataSync[]>(`/syncs/${qs ? "?" + qs : ""}`);
+  };
 
   return {
     loading,
@@ -91,5 +104,6 @@ export function useApi() {
     syncMetadata,
     fetchResources,
     fetchResource,
+    fetchSyncs,
   };
 }

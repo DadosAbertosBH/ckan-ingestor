@@ -18,8 +18,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ingestor_orchestrator.db import get_db
+from ingestor_orchestrator.dto import CkanInstanceResponse, InstanceStats
 from ingestor_orchestrator.models import CkanDataJob, CkanInstance, JobStatus
-from ingestor_orchestrator.schemas import CkanInstanceResponse, InstanceStats
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 

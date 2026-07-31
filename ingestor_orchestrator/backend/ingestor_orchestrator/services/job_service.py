@@ -31,7 +31,7 @@ from ingestor_orchestrator.models import (
     LatestResourceJob,
     ResourceMetadataLabel,
 )
-from ingestor_orchestrator.schemas import JobCreate
+from ingestor_orchestrator.dto import JobCreate
 
 logger = logging.getLogger(__name__)
 

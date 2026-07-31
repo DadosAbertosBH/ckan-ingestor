@@ -20,6 +20,12 @@
                     active-class="active"
                     >Resources</router-link
                 >
+                <router-link
+                    to="/syncs"
+                    class="nav-link"
+                    active-class="active"
+                    >Syncs</router-link
+                >
             </div>
         </nav>
         <main class="main-content">

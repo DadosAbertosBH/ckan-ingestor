@@ -30,6 +30,11 @@ const router = createRouter({
       component: () => import("@/views/ResourceDetailView.vue"),
       props: true,
     },
+    {
+      path: "/syncs",
+      name: "syncs",
+      component: () => import("@/views/SyncsView.vue"),
+    },
   ],
 });
 

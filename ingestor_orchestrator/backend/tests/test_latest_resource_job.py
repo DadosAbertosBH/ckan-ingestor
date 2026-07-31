@@ -17,13 +17,13 @@
 
 import pytest
 import pytest_asyncio
+from ingestor_orchestrator.dto import JobCreate
 from ingestor_orchestrator.models import (
     CkanDataJob,
     CkanInstance,
     JobStatus,
     LatestResourceJob,
 )
-from ingestor_orchestrator.schemas import JobCreate
 from ingestor_orchestrator.services.job_service import JobService
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -322,7 +322,7 @@ class TestJobServiceUpsertsLatestResource:
 class TestResourceSchemas:
     async def test_resource_response_from_model(self, sess, instance):
         """ResourceResponse can be constructed from a LatestResourceJob."""
-        from ingestor_orchestrator.schemas import ResourceResponse
+        from ingestor_orchestrator.dto import ResourceResponse
 
         job = CkanDataJob(
             resource_id="r-schema",
@@ -363,7 +363,7 @@ class TestResourceSchemas:
 
     async def test_resource_detail_response(self, sess, instance):
         """ResourceDetailResponse includes jobs list."""
-        from ingestor_orchestrator.schemas import (
+        from ingestor_orchestrator.dto import (
             ResourceDetailResponse,
         )
 
@@ -390,7 +390,7 @@ class TestResourceSchemas:
 
     async def test_resource_detail_with_preview(self, sess, instance):
         """ResourceDetailResponse includes preview from latest successful result."""
-        from ingestor_orchestrator.schemas import ResourceDetailResponse
+        from ingestor_orchestrator.dto import ResourceDetailResponse
 
         preview_data = [
             {"name": "Alice", "age": 30},

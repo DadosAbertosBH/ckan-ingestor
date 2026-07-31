@@ -24,8 +24,8 @@ from ingestor_orchestrator.services.metadata_service import MetadataService
 from ingestor_orchestrator.services.metadata_sync import (
     enqueue_outdated_resources,
     sync_all_instances,
-    sync_metadata_for_instance,
 )
+from ingestor_orchestrator.services.sync_service import SyncService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/metadata", tags=["metadata"])
@@ -57,13 +57,13 @@ async def sync_instance(
     if not instance:
         return {"error": f"Instance {instance_id} not found"}
 
+    sync_service = SyncService(db)
+    sync_record = await sync_service.start_sync(instance.id)
+
     logger.info(f"Sync started for {instance.name} ({instance.url})...")
     try:
-        result = await asyncio.to_thread(
-            sync_metadata_for_instance,
-            instance_id=instance.id,
-            instance_name=instance.name,
-            instance_url=instance.url,
+        result = await sync_service.sync_metadata_for_instance(
+            instance.id, instance.name, instance.url
         )
     except Exception as e:
         logger.error(f"Sync failed for {instance.name}: {e}", exc_info=True)
@@ -84,6 +84,7 @@ async def sync_instance(
     # resource_count = 0
 
     result["jobs_enqueued"] = enqueued
+    await sync_service.finish_sync(sync_record, result)
     logger.info(
         f"Sync done for {instance.name}: "
         f"{dataset_count} datasets, {resource_count} resources, "

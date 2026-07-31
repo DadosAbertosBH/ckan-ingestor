@@ -21,6 +21,7 @@ from ingestor_orchestrator.models.ckan_data_job_result import CkanDataJobResult
 from ingestor_orchestrator.models.ckan_instance import CkanInstance
 from ingestor_orchestrator.models.job_status import JobStatus
 from ingestor_orchestrator.models.latest_resource_job import LatestResourceJob
+from ingestor_orchestrator.models.metadata_sync import MetadataSync
 from ingestor_orchestrator.models.resource_metadata_label import ResourceMetadataLabel
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "CkanInstance",
     "JobStatus",
     "LatestResourceJob",
+    "MetadataSync",
     "ResourceMetadataLabel",
     "new_uuid",
     "utcnow",

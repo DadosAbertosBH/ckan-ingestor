@@ -50,27 +50,24 @@ class Scheduler:
 
         from ingestor_orchestrator.db import async_session
         from ingestor_orchestrator.models import CkanInstance
-        from ingestor_orchestrator.services.metadata_sync import (
-            sync_metadata_for_instance,
-        )
+        from ingestor_orchestrator.services.sync_service import SyncService
 
         async with async_session() as db:
+            sync_service = SyncService(db)
             instance_result = await db.execute(select(CkanInstance))
             instances = instance_result.scalars().all()
 
             for inst in instances:
                 logger.info(f"Syncing CKAN metadata for {inst.name}...")
                 try:
-                    result = await asyncio.to_thread(
-                        sync_metadata_for_instance,
-                        instance_id=inst.id,
-                        instance_name=inst.name,
-                        instance_url=inst.url,
+                    sync_record = await sync_service.start_sync(inst.id)
+                    result = await sync_service.sync_metadata_for_instance(
+                        inst.id, inst.name, inst.url
                     )
                     inst.last_metadata_synced = datetime.now(timezone.utc)
                     inst.dataset_count = result.get("dataset_count", 0)
                     inst.resource_count = result.get("resource_count", 0)
-                    await db.commit()
+                    await sync_service.finish_sync(sync_record, result)
                     logger.info(
                         f"Sync done for {inst.name}: {result['dataset_count']} datasets, {result['resource_count']} resources"
                     )

@@ -28,7 +28,7 @@ from ingestor_orchestrator.models import (
     LatestResourceJob,
     ResourceMetadataLabel,
 )
-from ingestor_orchestrator.schemas import (
+from ingestor_orchestrator.dto import (
     JobListResponse,
     JobResponse,
     ResourceDetailResponse,

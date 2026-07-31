@@ -16,70 +16,9 @@
 import logging
 from datetime import datetime, timezone
 
+from ingestor_orchestrator.services.sync_service import SyncService
+
 logger = logging.getLogger(__name__)
-
-
-def sync_metadata_for_instance(
-    instance_id: str, instance_name: str, instance_url: str
-) -> dict:
-    """
-    Fetch CKAN datasets and resources from a specific instance, upsert into DuckLake.
-    Also updates the instance metadata in MySQL.
-    """
-    import pyarrow
-
-    from ckan_ingestor.ckan_dataset_fetcher import CkanDatasetFetcher
-    from ckan_ingestor.config.ducklake_settings import DucklakeSettings
-    from ckan_ingestor.duckdb_ckan_metadata_ingestor import DuckdbCkanMetadataIngestor
-    from ckan_ingestor.duckdb_connection_factory import from_settings
-
-    ducklake_settings = DucklakeSettings()
-    conn = from_settings(ducklake_settings)
-
-    try:
-        fetcher = CkanDatasetFetcher(url=instance_url)
-        ingestor = DuckdbCkanMetadataIngestor(conn)
-
-        # 1. Fetch and ingest datasets
-        logger.info(f"Fetching CKAN datasets from {instance_name} ({instance_url})...")
-        packages = fetcher.fetch()
-        dataset_count = packages.num_rows
-        logger.info(f"Found {dataset_count} packages for {instance_name}")
-        ingestor.ingest_dataset(packages)
-
-        # 2. Extract and ingest resources
-        logger.info(f"Ingesting resources for {instance_name}...")
-        resources_col = packages["resources"].combine_chunks().flatten()
-        resources = pyarrow.Table.from_struct_array(resources_col)
-        # Tag every resource with its instance URL so enqueue_outdated
-        # can filter by instance.
-        ckan_col = pyarrow.array(
-            [instance_url] * resources.num_rows, type=pyarrow.string()
-        )
-        if "ckan_url" in resources.column_names:
-            idx = resources.schema.get_field_index("ckan_url")
-            resources = resources.set_column(
-                idx, pyarrow.field("ckan_url", pyarrow.string()), ckan_col
-            )
-        else:
-            resources = resources.append_column(
-                pyarrow.field("ckan_url", pyarrow.string()), ckan_col
-            )
-        resource_count = resources.num_rows
-        ingestor.ingest_resources(resources)
-
-        logger.info(
-            f"Sync complete for {instance_name}: {dataset_count} datasets, {resource_count} resources"
-        )
-
-        return {
-            "instance_id": instance_id,
-            "instance_name": instance_name,
-            "dataset_count": dataset_count,
-            "resource_count": resource_count,
-        }
-    finally:
-        conn.close()
 
 
 def sync_all_instances() -> list[dict]:
@@ -96,20 +35,21 @@ def sync_all_instances() -> list[dict]:
 
     async def _run():
         async with async_session() as db:
+            sync_service = SyncService(db)
             instance_result = await db.execute(select(CkanInstance))
             instances = instance_result.scalars().all()
 
             for inst in instances:
                 try:
-                    result = sync_metadata_for_instance(
-                        instance_id=inst.id,
-                        instance_name=inst.name,
-                        instance_url=inst.url,
+                    sync_record = await sync_service.start_sync(inst.id)
+                    result = await sync_service.sync_metadata_for_instance(
+                        inst.id, inst.name, inst.url
                     )
                     # Update MySQL instance metadata
                     inst.last_metadata_synced = datetime.now(timezone.utc)
                     inst.dataset_count = result["dataset_count"]
                     inst.resource_count = result["resource_count"]
+                    await sync_service.finish_sync(sync_record, result)
                     results.append(result)
                 except Exception as e:
                     logger.error(
@@ -167,7 +107,7 @@ async def enqueue_outdated_resources(
     )
     from ckan_ingestor.duckdb_connection_factory import from_settings
     from ingestor_orchestrator.db import async_session
-    from ingestor_orchestrator.schemas import JobCreate
+    from ingestor_orchestrator.dto import JobCreate
     from ingestor_orchestrator.services.job_service import JobService
 
     def _get_outdated():

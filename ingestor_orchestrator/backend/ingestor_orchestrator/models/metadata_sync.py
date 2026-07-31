@@ -18,34 +18,33 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CHAR, DateTime, Integer, String
+from sqlalchemy import CHAR, DateTime, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ingestor_orchestrator.db import Base
 from ingestor_orchestrator.models.base import new_uuid, utcnow
 
 if TYPE_CHECKING:
-    from ingestor_orchestrator.models.ckan_data_job import CkanDataJob
-    from ingestor_orchestrator.models.metadata_sync import MetadataSync
+    from ingestor_orchestrator.models.ckan_instance import CkanInstance
 
 
-class CkanInstance(Base):
-    __tablename__ = "ckan_instance"
+class MetadataSync(Base):
+    """Record of a metadata sync run for a CKAN instance."""
+
+    __tablename__ = "metadata_sync"
 
     id: Mapped[str] = mapped_column(CHAR(36), primary_key=True, default=new_uuid)
-    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
-    url: Mapped[str] = mapped_column(String(512), nullable=False)
-    last_metadata_synced: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True
+    instance_id: Mapped[str] = mapped_column(
+        CHAR(36), ForeignKey("ckan_instance.id"), nullable=False, index=True
     )
-    dataset_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    resource_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
+    start_time: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, nullable=False
     )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=utcnow, onupdate=utcnow, nullable=False
-    )
+    end_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    total_packages: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    new_datasets: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    new_resources: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    updated_datasets: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    updated_resources: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
-    jobs: Mapped[list["CkanDataJob"]] = relationship(back_populates="instance")
-    syncs: Mapped[list["MetadataSync"]] = relationship(back_populates="instance")
+    instance: Mapped["CkanInstance"] = relationship(back_populates="syncs")

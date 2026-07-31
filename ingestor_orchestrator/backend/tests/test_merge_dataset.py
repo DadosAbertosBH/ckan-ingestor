@@ -90,3 +90,131 @@ class TestMergeDatasetSchemaMismatch:
 
         result = conn.table("test_tbl2").arrow().read_all()
         assert "notes" in result.column_names
+
+
+class TestMergeDatasetKeepsJsonColumns:
+    """A JSON column (extras) must survive a second sync without being widened."""
+
+    def test_second_sync_does_not_widen_json_column(self, conn):
+        """Regression: sync over a table with a JSON column must not ALTER it to VARCHAR.
+
+        DuckDB exposes JSON columns as string in Arrow, so merge_dataset sees
+        extras as VARCHAR while the stored column is JSON — the widening logic
+        must not ALTER the JSON column.
+        """
+        ingestor = DuckdbCkanMetadataIngestor(conn)
+
+        # First sync: extras column created as JSON, as DuckDB's read_json infers
+        conn.execute("""
+            CREATE TABLE sync_extras_json AS
+            SELECT 'a' AS id, '[]'::JSON AS extras, '2024-01-01' AS metadata_modified
+        """)
+
+        # Second sync: extras arrives as string because Arrow exposes the JSON
+        # column as string (same as the production read path)
+        new_data = pyarrow.table(
+            {
+                "id": pyarrow.array(["b"]),
+                "extras": pyarrow.array(["[]"]),
+                "metadata_modified": pyarrow.array(["2025-01-01"]),
+            }
+        )
+
+        result = ingestor.merge_dataset(
+            new_data, "sync_extras_json", "metadata_modified"
+        )
+
+        column_types = {
+            r[1]: r[2]
+            for r in conn.execute("PRAGMA table_info('sync_extras_json')").fetchall()
+        }
+        assert column_types["extras"] == "JSON"
+        assert conn.table("sync_extras_json").arrow().read_all().num_rows == 2
+        assert result.new == 1
+        assert result.updated == 0
+
+
+class TestMergeDatasetCounts:
+    """merge_dataset must report how many rows are new vs updated."""
+
+    def _data(self, ids, modified_dates):
+        return pyarrow.table(
+            {
+                "id": pyarrow.array(ids),
+                "metadata_modified": pyarrow.array(modified_dates),
+            }
+        )
+
+    def test_first_sync_counts_all_rows_as_new(self, conn):
+        ingestor = DuckdbCkanMetadataIngestor(conn)
+
+        result = ingestor.merge_dataset(
+            self._data(["a", "b"], ["2024-01-01", "2024-01-02"]),
+            "test_counts_first",
+            "metadata_modified",
+        )
+
+        assert result.new == 2
+        assert result.updated == 0
+        assert result.updated_ids == []
+
+    def test_same_data_returns_zero_changes(self, conn):
+        ingestor = DuckdbCkanMetadataIngestor(conn)
+        data = self._data(["a"], ["2024-01-01"])
+
+        ingestor.merge_dataset(data, "test_counts_same", "metadata_modified")
+        result = ingestor.merge_dataset(
+            data, "test_counts_same", "metadata_modified"
+        )
+
+        assert result.new == 0
+        assert result.updated == 0
+        assert result.updated_ids == []
+
+    def test_updated_row_counts_as_updated(self, conn):
+        ingestor = DuckdbCkanMetadataIngestor(conn)
+
+        ingestor.merge_dataset(
+            self._data(["a"], ["2024-01-01"]), "test_counts_upd", "metadata_modified"
+        )
+        result = ingestor.merge_dataset(
+            self._data(["a"], ["2025-01-01"]),
+            "test_counts_upd",
+            "metadata_modified",
+        )
+
+        assert result.new == 0
+        assert result.updated == 1
+        assert result.updated_ids == ["a"]
+
+    def test_new_row_counts_as_new(self, conn):
+        ingestor = DuckdbCkanMetadataIngestor(conn)
+
+        ingestor.merge_dataset(
+            self._data(["a"], ["2024-01-01"]), "test_counts_new", "metadata_modified"
+        )
+        result = ingestor.merge_dataset(
+            self._data(["a", "b"], ["2024-01-01", "2025-01-01"]),
+            "test_counts_new",
+            "metadata_modified",
+        )
+
+        assert result.new == 1
+        assert result.updated == 0
+        assert result.updated_ids == []
+
+    def test_mixed_new_and_updated(self, conn):
+        ingestor = DuckdbCkanMetadataIngestor(conn)
+
+        ingestor.merge_dataset(
+            self._data(["a"], ["2024-01-01"]), "test_counts_mix", "metadata_modified"
+        )
+        result = ingestor.merge_dataset(
+            self._data(["a", "b"], ["2025-01-01", "2025-01-01"]),
+            "test_counts_mix",
+            "metadata_modified",
+        )
+
+        assert result.new == 1
+        assert result.updated == 1
+        assert result.updated_ids == ["a"]

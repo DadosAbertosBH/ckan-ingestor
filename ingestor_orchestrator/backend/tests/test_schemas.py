@@ -18,8 +18,7 @@
 from datetime import datetime, timezone
 
 import pytest
-from ingestor_orchestrator.models import JobStatus
-from ingestor_orchestrator.schemas import (
+from ingestor_orchestrator.dto import (
     CkanInstanceResponse,
     InstanceCreate,
     InstanceStats,
@@ -27,6 +26,7 @@ from ingestor_orchestrator.schemas import (
     JobListResponse,
     JobResponse,
 )
+from ingestor_orchestrator.models import JobStatus
 
 
 def _make_datetime():

@@ -49,11 +49,16 @@ function createTestRouter() {
         name: "job-detail",
         component: JobDetailView,
       },
+      {
+        path: "/resources/:resourceId",
+        name: "resource-detail",
+        component: { template: "<div/>" },
+      },
     ],
   });
 }
 
-async function mountDetail(jobOverrides: Partial<Job> = {}) {
+async function mountDetail() {
   const router = createTestRouter();
   router.push({ name: "job-detail", params: { id: "job-1" } });
   await router.isReady();
@@ -82,7 +87,7 @@ describe("JobDetailView — labels", () => {
   it("shows em-dash when no labels", async () => {
     mockFetchJob.mockResolvedValue(makeJob({ labels: [] }));
 
-    const wrapper = await mountDetail({ labels: [] });
+    const wrapper = await mountDetail();
     await flushPromises();
 
     // No label-badge should be rendered
@@ -94,7 +99,7 @@ describe("JobDetailView — labels", () => {
   it("renders ResourceLabelBadge when labels exist", async () => {
     mockFetchJob.mockResolvedValue(makeJob({ labels: ["empty"] }));
 
-    const wrapper = await mountDetail({ labels: ["empty"] });
+    const wrapper = await mountDetail();
     await flushPromises();
 
     const badge = wrapper.find(".label-badge");
@@ -105,7 +110,7 @@ describe("JobDetailView — labels", () => {
   it("shows label section with Labels header", async () => {
     mockFetchJob.mockResolvedValue(makeJob({ labels: ["empty", "stale"] }));
 
-    const wrapper = await mountDetail({ labels: ["empty", "stale"] });
+    const wrapper = await mountDetail();
     await flushPromises();
 
     expect(wrapper.text()).toContain("Labels");
@@ -169,7 +174,7 @@ describe("JobDetailView — retry and delete", () => {
   it("shows Retry button for failed job", async () => {
     mockFetchJob.mockResolvedValue(makeJob({ status: "failed" }));
 
-    const wrapper = await mountDetail({ status: "failed" });
+    const wrapper = await mountDetail();
     await flushPromises();
 
     expect(wrapper.text()).toContain("Retry");
@@ -178,7 +183,7 @@ describe("JobDetailView — retry and delete", () => {
   it("shows Cancel button for pending job", async () => {
     mockFetchJob.mockResolvedValue(makeJob({ status: "pending" }));
 
-    const wrapper = await mountDetail({ status: "pending" });
+    const wrapper = await mountDetail();
     await flushPromises();
 
     expect(wrapper.text()).toContain("Cancel");
@@ -187,7 +192,7 @@ describe("JobDetailView — retry and delete", () => {
   it("does not show Retry for completed job", async () => {
     mockFetchJob.mockResolvedValue(makeJob({ status: "completed" }));
 
-    const wrapper = await mountDetail({ status: "completed" });
+    const wrapper = await mountDetail();
     await flushPromises();
 
     expect(wrapper.text()).not.toContain("Retry");
@@ -198,9 +203,7 @@ describe("JobDetailView — retry and delete", () => {
       makeJob({ resource_url: "https://example.com/data.csv" }),
     );
 
-    const wrapper = await mountDetail({
-      resource_url: "https://example.com/data.csv",
-    });
+    const wrapper = await mountDetail();
     await flushPromises();
 
     const urlLink = wrapper.find('a[href="https://example.com/data.csv"]');

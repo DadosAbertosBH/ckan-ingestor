@@ -24,7 +24,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from ingestor_orchestrator.api import dashboard, instances, jobs, metadata, resources
+from ingestor_orchestrator.api import (
+    dashboard,
+    instances,
+    jobs,
+    metadata,
+    resources,
+    syncs,
+)
 from ingestor_orchestrator.config import settings
 from ingestor_orchestrator.db import async_session
 from ingestor_orchestrator.services.scheduler import Scheduler
@@ -77,6 +84,7 @@ app.include_router(dashboard.router)
 app.include_router(metadata.router)
 app.include_router(instances.router)
 app.include_router(resources.router)
+app.include_router(syncs.router)
 
 frontend_dir = "/app/frontend"
 if os.path.isdir(frontend_dir):
