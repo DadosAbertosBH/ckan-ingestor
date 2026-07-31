@@ -8,6 +8,7 @@ metadata:
     app.kubernetes.io/component: kafka
     strimzi.io/cluster: {{ .Values.kafka.clusterName }}
 spec:
+  topicName: {{ .Values.kafka.topic }}
   partitions: 3
   replicas: 1
   config:
@@ -22,6 +23,7 @@ metadata:
     app.kubernetes.io/component: kafka
     strimzi.io/cluster: {{ .Values.kafka.clusterName }}
 spec:
+  topicName: {{ .Values.kafka.topicRetry }}
   partitions: 3
   replicas: 1
   config:
