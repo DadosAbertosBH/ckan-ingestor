@@ -23,15 +23,6 @@ logger = logging.getLogger(__name__)
 
 PAGE_SIZE = 50
 
-EXTRAS_TYPE = pyarrow.list_(
-    pyarrow.struct(
-        [
-            pyarrow.field("key", pyarrow.string()),
-            pyarrow.field("value", pyarrow.string()),
-        ]
-    )
-)
-
 
 class CkanDatasetFetcher(DatasetFetcher):
     url: str
@@ -79,7 +70,7 @@ class CkanDatasetFetcher(DatasetFetcher):
             )
 
         if "extras" in table.column_names:
-            table = self._normalize_extras(table)
+            table = table.drop_columns("extras")
 
         # Remove list columns that are all empty — DuckDB infers list<string>
         # for empty [] but later pages may have list<struct> with real data
@@ -110,20 +101,6 @@ class CkanDatasetFetcher(DatasetFetcher):
             if all_empty:
                 drop.append(name)
         return table.drop_columns(drop) if drop else table
-
-    @staticmethod
-    def _normalize_extras(table: pyarrow.Table) -> pyarrow.Table:
-        col = table.column("extras")
-        try:
-            col = col.cast(EXTRAS_TYPE)
-        except (
-            pyarrow.ArrowInvalid,
-            pyarrow.ArrowTypeError,
-            pyarrow.ArrowNotImplementedError,
-        ):
-            col = pyarrow.nulls(table.num_rows, EXTRAS_TYPE)
-        idx = table.schema.get_field_index("extras")
-        return table.set_column(idx, "extras", col)
 
     @staticmethod
     def _align_schema(

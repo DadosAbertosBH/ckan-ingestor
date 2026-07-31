@@ -108,25 +108,3 @@ class TestAlignSchema:
         with pytest.raises(TypeError, match="Cannot align column"):
             CkanDatasetFetcher._align_schema(table, base_schema)
 
-
-class TestNormalizeExtras:
-    def test_string_extras_becomes_nulls(self):
-        table = pyarrow.table({"extras": pyarrow.array(["some_string"])})
-        result = CkanDatasetFetcher._normalize_extras(table)
-        assert result.column("extras")[0].as_py() is None
-
-    def test_valid_extras_passes_through(self):
-        extras = pyarrow.array(
-            [[("k", "v")]],
-            type=pyarrow.list_(
-                pyarrow.struct(
-                    [
-                        ("key", pyarrow.string()),
-                        ("value", pyarrow.string()),
-                    ]
-                )
-            ),
-        )
-        table = pyarrow.table({"extras": extras})
-        result = CkanDatasetFetcher._normalize_extras(table)
-        assert result.column("extras").type == extras.type

@@ -48,6 +48,12 @@ class SyncService:
         record.updated_resources = result.get("updated_resources", 0)
         await self.db.commit()
         await self.db.refresh(record)
+        logger.info(
+            f"Sync record {record.id} saved: "
+            f"total={record.total_packages}, new_ds={record.new_datasets}, "
+            f"new_rs={record.new_resources}, upd_ds={record.updated_datasets}, "
+            f"upd_rs={record.updated_resources}"
+        )
         return record
 
     async def sync_metadata_for_instance(

@@ -113,12 +113,16 @@ class DuckdbCkanMetadataIngestor:
                 updated_ids=[],
             )
 
+        # extras is not ingested — drop the column to avoid type conflicts
+        # with existing JSON columns (DuckDB exposes JSON as string in Arrow)
+        if "extras" in new_packages.column_names:
+            new_packages = new_packages.drop_columns("extras")
+
         current_packages = self.conn.table(table_name).arrow().read_all()
         new_packages = self._merge_schema(new_packages, current_packages)
         self.logger.info(f"{table_name} new dataset size: {new_packages.num_rows}")
 
-        # extras is not ingested — drop the column to avoid type conflicts
-        # with existing JSON columns (DuckDB exposes JSON as string in Arrow)
+        # _merge_schema may have re-added extras from the existing table
         if "extras" in new_packages.column_names:
             new_packages = new_packages.drop_columns("extras")
 

@@ -133,6 +133,52 @@ class TestMergeDatasetKeepsJsonColumns:
         assert result.new == 1
         assert result.updated == 0
 
+    def test_second_sync_with_data_rich_extras_does_not_crash(self, conn):
+        """Regression: extras with {key, value} data must survive _merge_schema.
+
+        MG-style data has extras as list<struct<key,value>>. If the existing
+        table has a JSON extras column, _merge_schema must not try to cast
+        list<struct> to string (ArrowNotImplementedError).
+        """
+        ingestor = DuckdbCkanMetadataIngestor(conn)
+
+        conn.execute("""
+            CREATE TABLE sync_extras_data AS
+            SELECT 'a' AS id, '[]'::JSON AS extras, '2024-01-01' AS metadata_modified
+        """)
+
+        extras_type = pyarrow.list_(
+            pyarrow.struct(
+                [
+                    pyarrow.field("key", pyarrow.string()),
+                    pyarrow.field("value", pyarrow.string()),
+                ]
+            )
+        )
+        new_data = pyarrow.table(
+            {
+                "id": pyarrow.array(["b"]),
+                "extras": pyarrow.array(
+                    [[{"key": "tema", "value": "saude"}]],
+                    type=extras_type,
+                ),
+                "metadata_modified": pyarrow.array(["2025-01-01"]),
+            }
+        )
+
+        # Must not raise ArrowNotImplementedError
+        result = ingestor.merge_dataset(
+            new_data, "sync_extras_data", "metadata_modified"
+        )
+
+        column_types = {
+            r[1]: r[2]
+            for r in conn.execute("PRAGMA table_info('sync_extras_data')").fetchall()
+        }
+        assert column_types["extras"] == "JSON"
+        assert result.new == 1
+        assert result.updated == 0
+
 
 class TestMergeDatasetCounts:
     """merge_dataset must report how many rows are new vs updated."""
