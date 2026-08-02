@@ -58,7 +58,12 @@ class JobService:
         await self.db.flush()  # get job.id from DB-generated UUID
 
         # Publish to Kafka
-        await self._publish_job(job.id, data.ckan_url)
+        record_meta = await self._publish_job(job.id, data.ckan_url)
+
+        # Store Kafka routing metadata for debugging
+        job.kafka_topic = record_meta.topic
+        job.kafka_partition = record_meta.partition
+        job.kafka_offset = record_meta.offset
 
         await self._upsert_latest_resource(job)
         await self.db.commit()
@@ -79,9 +84,14 @@ class JobService:
             )
 
         # Publish to retry topic
-        await self._publish_job(
+        record_meta = await self._publish_job(
             job.id, job.ckan_url or "", retry=True
         )
+
+        # Store Kafka routing metadata for debugging
+        job.kafka_topic = record_meta.topic
+        job.kafka_partition = record_meta.partition
+        job.kafka_offset = record_meta.offset
 
         job.status = JobStatus.PENDING
         job.started_at = None
@@ -380,8 +390,8 @@ class JobService:
         job_id: str,
         ckan_url: str = "",
         retry: bool = False,
-    ) -> None:
-        """Publish job to Kafka."""
+    ):
+        """Publish job to Kafka and return RecordMetadata."""
         import asyncio
 
         from ingestor_orchestrator.kafka import get_kafka_producer
@@ -391,10 +401,10 @@ class JobService:
 
         def _send():
             producer = get_kafka_producer()
-            producer.send(topic, payload).get(timeout=10)
+            return producer.send(topic, payload).get(timeout=10)
 
         try:
-            await asyncio.to_thread(_send)
+            return await asyncio.to_thread(_send)
         except Exception as e:
             logger.error(f"Failed to publish job {job_id} to Kafka: {e}")
             raise

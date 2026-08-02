@@ -21,6 +21,14 @@ Every implementation, bug fix, or adjustment must follow TDD:
 
 Never jump straight to code without a test first. If you do, revert and start with the test.
 
+## GitOps — Never patch directly
+
+ArgoCD-managed resources must only be changed via Git, never with `kubectl patch`/`kubectl edit`. The flow is always:
+
+1. Edit the manifest in the appropriate repo (`argocd-applications` or `ckan-ingestor`)
+2. Commit and push
+3. Let ArgoCD detect and sync (or trigger a hard refresh via `kubectl patch` with annotation `argocd.argoproj.io/refresh: hard` — this is the only acceptable `kubectl patch` on ArgoCD resources)
+
 ## Lint before committing
 
 Before making any commit or suggesting a commit with Python file changes, run:
