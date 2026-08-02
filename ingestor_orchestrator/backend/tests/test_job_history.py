@@ -16,7 +16,7 @@
 """Tests for job history — multiple jobs per resource."""
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -156,7 +156,8 @@ class TestJobHistory:
         await sess.commit()
 
         service = JobService(sess)
-        mock_publish = AsyncMock()
+        record_meta = MagicMock(topic="ckan.ingest.jobs.retry", partition=0, offset=0)
+        mock_publish = AsyncMock(return_value=record_meta)
         with patch.object(service, "_publish_job", mock_publish):
             await service.retry_job(job.id)
 
