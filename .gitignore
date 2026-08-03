@@ -15,3 +15,6 @@ _old/ingestor/.env
 ingestor_orchestrator/frontend/node_modules/
 ingestor_orchestrator/frontend/dist/
 argocd-applications/
+
+# Helm template debug output
+.debug/
