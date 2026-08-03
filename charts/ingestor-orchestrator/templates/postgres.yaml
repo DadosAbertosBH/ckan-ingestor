@@ -22,10 +22,10 @@ spec:
       endpointURL: {{ .Values.postgres.backup.endpointURL | quote }}
       s3Credentials:
         accessKeyId:
-          name: {{ include "ingestor-orchestrator.fullname" . }}
+          name: {{ include "ingestor-orchestrator.secretName" . }}
           key: "INGEST_ORCH_BACKUP_ACCESS_KEY_ID"
         secretAccessKey:
-          name: {{ include "ingestor-orchestrator.fullname" . }}
+          name: {{ include "ingestor-orchestrator.secretName" . }}
           key: "INGEST_ORCH_BACKUP_SECRET_ACCESS_KEY"
       wal:
         compression: {{ .Values.postgres.backup.walCompression | default "gzip" | quote }}
