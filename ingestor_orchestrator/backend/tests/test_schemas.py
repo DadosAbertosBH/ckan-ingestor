@@ -107,6 +107,23 @@ class TestInstanceStats:
         assert stats.processing == 0
         assert stats.completed == 0
         assert stats.failed == 0
+        assert stats.empty == 0
+
+    def test_empty_count_is_accepted(self):
+        """InstanceStats accepts empty resource count."""
+        now = _make_datetime()
+        inst = CkanInstanceResponse(
+            id="inst-1",
+            name="Test",
+            url="https://example.com",
+            created_at=now,
+            updated_at=now,
+        )
+        stats = InstanceStats(
+            instance=inst,
+            empty=5,
+        )
+        assert stats.empty == 5
 
 
 class TestInstanceCreate:

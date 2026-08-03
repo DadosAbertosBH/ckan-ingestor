@@ -20,7 +20,12 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import case, func, select
 
-from ingestor_orchestrator.models import CkanInstance, JobStatus, LatestResourceJob
+from ingestor_orchestrator.models import (
+    CkanInstance,
+    JobStatus,
+    LatestResourceJob,
+    ResourceMetadataLabel,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -44,7 +49,15 @@ async def _query_datasets(db_session, instance_id=None, search=None, limit=50, o
             func.sum(
                 case((LatestResourceJob.status == "failed", 1), else_=0)
             ).label("failed_resources"),
+            func.sum(
+                case((ResourceMetadataLabel.label == "empty", 1), else_=0)
+            ).label("empty_resources"),
             func.max(LatestResourceJob.updated_at).label("updated_at"),
+        )
+        .outerjoin(
+            ResourceMetadataLabel,
+            (LatestResourceJob.resource_id == ResourceMetadataLabel.resource_id)
+            & (ResourceMetadataLabel.label == "empty"),
         )
         .group_by(LatestResourceJob.instance_id, LatestResourceJob.dataset_name)
     )
@@ -405,3 +418,106 @@ class TestDatasetAggregation:
         # Verify ckan_dataset_url is correct for this instance
         url = _build_ckan_dataset_url(instance.url, "ds-1")
         assert url == "https://example.com/dataset/ds-1"
+
+    async def test_empty_resources_count(self, db_session):
+        """Dataset aggregation counts resources with 'empty' label."""
+        inst = CkanInstance(
+            id="inst-1",
+            name="Instance 1",
+            url="https://example.com",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db_session.add(inst)
+        await db_session.flush()
+
+        now = datetime.now(timezone.utc)
+        resources = [
+            LatestResourceJob(
+                resource_id="res-1",
+                latest_job_id="job-1",
+                instance_id="inst-1",
+                dataset_name="dataset-a",
+                status=JobStatus.COMPLETED,
+                created_at=now,
+                updated_at=now,
+            ),
+            LatestResourceJob(
+                resource_id="res-2",
+                latest_job_id="job-2",
+                instance_id="inst-1",
+                dataset_name="dataset-a",
+                status=JobStatus.COMPLETED,
+                created_at=now,
+                updated_at=now,
+            ),
+            LatestResourceJob(
+                resource_id="res-3",
+                latest_job_id="job-3",
+                instance_id="inst-1",
+                dataset_name="dataset-b",
+                status=JobStatus.COMPLETED,
+                created_at=now,
+                updated_at=now,
+            ),
+        ]
+        for r in resources:
+            db_session.add(r)
+
+        # res-1 and res-3 have the "empty" label
+        db_session.add(
+            ResourceMetadataLabel(resource_id="res-1", label="empty")
+        )
+        db_session.add(
+            ResourceMetadataLabel(resource_id="res-3", label="empty")
+        )
+        # res-1 also has another label (should not affect empty count)
+        db_session.add(
+            ResourceMetadataLabel(resource_id="res-1", label="stale")
+        )
+        await db_session.flush()
+
+        rows = await _query_datasets(db_session)
+        rows.sort(key=lambda r: r.dataset_name)
+
+        assert len(rows) == 2
+
+        # dataset-a: 2 resources (res-1 is empty, res-2 is not)
+        assert rows[0].dataset_name == "dataset-a"
+        assert rows[0].total_resources == 2
+        assert rows[0].empty_resources == 1
+
+        # dataset-b: 1 resource (res-3 is empty)
+        assert rows[1].dataset_name == "dataset-b"
+        assert rows[1].total_resources == 1
+        assert rows[1].empty_resources == 1
+
+    async def test_empty_resources_count_with_none(self, db_session):
+        """Dataset with no empty labels returns 0 for empty_resources."""
+        inst = CkanInstance(
+            id="inst-1",
+            name="Instance 1",
+            url="https://example.com",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db_session.add(inst)
+        await db_session.flush()
+
+        now = datetime.now(timezone.utc)
+        db_session.add(
+            LatestResourceJob(
+                resource_id="res-1",
+                latest_job_id="job-1",
+                instance_id="inst-1",
+                dataset_name="dataset-a",
+                status=JobStatus.COMPLETED,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        await db_session.flush()
+
+        rows = await _query_datasets(db_session)
+        assert len(rows) == 1
+        assert rows[0].empty_resources == 0

@@ -21,7 +21,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ingestor_orchestrator.db import get_db
 from ingestor_orchestrator.dto import DatasetResponse
-from ingestor_orchestrator.models import CkanInstance, LatestResourceJob
+from ingestor_orchestrator.models import (
+    CkanInstance,
+    LatestResourceJob,
+    ResourceMetadataLabel,
+)
 
 router = APIRouter(prefix="/api/datasets", tags=["datasets"])
 
@@ -56,7 +60,15 @@ async def list_datasets(
             func.sum(
                 case((LatestResourceJob.status == "failed", 1), else_=0)
             ).label("failed_resources"),
+            func.sum(
+                case((ResourceMetadataLabel.label == "empty", 1), else_=0)
+            ).label("empty_resources"),
             func.max(LatestResourceJob.updated_at).label("updated_at"),
+        )
+        .outerjoin(
+            ResourceMetadataLabel,
+            (LatestResourceJob.resource_id == ResourceMetadataLabel.resource_id)
+            & (ResourceMetadataLabel.label == "empty"),
         )
         .group_by(LatestResourceJob.instance_id, LatestResourceJob.dataset_name)
     )
@@ -105,6 +117,7 @@ async def list_datasets(
             processing_resources=row.processing_resources,
             completed_resources=row.completed_resources,
             failed_resources=row.failed_resources,
+            empty_resources=row.empty_resources,
             updated_at=row.updated_at,
             instance_last_synced_at=instance_info_map.get(row.instance_id, {}).get("last_synced"),
         )

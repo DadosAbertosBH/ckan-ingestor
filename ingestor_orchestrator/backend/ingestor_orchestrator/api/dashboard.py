@@ -19,7 +19,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ingestor_orchestrator.db import get_db
 from ingestor_orchestrator.dto import CkanInstanceResponse, InstanceStats
-from ingestor_orchestrator.models import CkanDataJob, CkanInstance, JobStatus
+from ingestor_orchestrator.models import (
+    CkanDataJob,
+    CkanInstance,
+    JobStatus,
+    LatestResourceJob,
+    ResourceMetadataLabel,
+)
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -44,6 +50,21 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
         inst_id, status, count = row
         counts_by_instance.setdefault(inst_id, {})[status] = count
 
+    # Fetch empty resource counts grouped by instance_id
+    empty_counts_result = await db.execute(
+        select(
+            LatestResourceJob.instance_id,
+            func.count().label("empty_count"),
+        )
+        .join(
+            ResourceMetadataLabel,
+            (LatestResourceJob.resource_id == ResourceMetadataLabel.resource_id)
+            & (ResourceMetadataLabel.label == "empty"),
+        )
+        .group_by(LatestResourceJob.instance_id)
+    )
+    empty_counts: dict[str, int] = {row.instance_id: row.empty_count for row in empty_counts_result}
+
     result = []
     for inst in instances:
         counts = counts_by_instance.get(inst.id, {})
@@ -54,6 +75,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
                 processing=counts.get(JobStatus.PROCESSING, 0),
                 completed=counts.get(JobStatus.COMPLETED, 0),
                 failed=counts.get(JobStatus.FAILED, 0),
+                empty=empty_counts.get(inst.id, 0),
             )
         )
 

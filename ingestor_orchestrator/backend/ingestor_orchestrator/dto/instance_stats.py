@@ -24,3 +24,4 @@ class InstanceStats(BaseModel):
     processing: int = 0
     completed: int = 0
     failed: int = 0
+    empty: int = 0
