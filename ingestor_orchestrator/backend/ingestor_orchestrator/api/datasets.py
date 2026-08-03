@@ -16,7 +16,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ingestor_orchestrator.db import get_db
@@ -45,16 +45,16 @@ async def list_datasets(
             LatestResourceJob.dataset_name,
             func.count(LatestResourceJob.resource_id).label("total_resources"),
             func.sum(
-                func.if_(LatestResourceJob.status == "pending", 1, 0)
+                case((LatestResourceJob.status == "pending", 1), else_=0)
             ).label("pending_resources"),
             func.sum(
-                func.if_(LatestResourceJob.status == "processing", 1, 0)
+                case((LatestResourceJob.status == "processing", 1), else_=0)
             ).label("processing_resources"),
             func.sum(
-                func.if_(LatestResourceJob.status == "completed", 1, 0)
+                case((LatestResourceJob.status == "completed", 1), else_=0)
             ).label("completed_resources"),
             func.sum(
-                func.if_(LatestResourceJob.status == "failed", 1, 0)
+                case((LatestResourceJob.status == "failed", 1), else_=0)
             ).label("failed_resources"),
             func.max(LatestResourceJob.updated_at).label("updated_at"),
         )

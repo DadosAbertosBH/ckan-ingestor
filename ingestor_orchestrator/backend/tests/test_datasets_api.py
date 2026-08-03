@@ -18,7 +18,7 @@
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 
 from ingestor_orchestrator.models import CkanInstance, JobStatus, LatestResourceJob
 
@@ -33,16 +33,16 @@ async def _query_datasets(db_session, instance_id=None, search=None, limit=50, o
             LatestResourceJob.dataset_name,
             func.count(LatestResourceJob.resource_id).label("total_resources"),
             func.sum(
-                func.if_(LatestResourceJob.status == "pending", 1, 0)
+                case((LatestResourceJob.status == "pending", 1), else_=0)
             ).label("pending_resources"),
             func.sum(
-                func.if_(LatestResourceJob.status == "processing", 1, 0)
+                case((LatestResourceJob.status == "processing", 1), else_=0)
             ).label("processing_resources"),
             func.sum(
-                func.if_(LatestResourceJob.status == "completed", 1, 0)
+                case((LatestResourceJob.status == "completed", 1), else_=0)
             ).label("completed_resources"),
             func.sum(
-                func.if_(LatestResourceJob.status == "failed", 1, 0)
+                case((LatestResourceJob.status == "failed", 1), else_=0)
             ).label("failed_resources"),
             func.max(LatestResourceJob.updated_at).label("updated_at"),
         )
