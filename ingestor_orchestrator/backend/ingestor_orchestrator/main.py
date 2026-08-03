@@ -26,6 +26,7 @@ from sqlalchemy import text
 
 from ingestor_orchestrator.api import (
     dashboard,
+    datasets,
     instances,
     jobs,
     metadata,
@@ -80,6 +81,7 @@ app.add_middleware(
 )
 
 app.include_router(jobs.router)
+app.include_router(datasets.router)
 app.include_router(dashboard.router)
 app.include_router(metadata.router)
 app.include_router(instances.router)

@@ -88,6 +88,26 @@ postgres:
     limits:
       memory: "512Mi"
       cpu: "500m"
+  # -- Backup configuration (CloudNativePG barmanObjectStore)
+  backup:
+    # -- Enable backup via barmanObjectStore (S3-compatible)
+    enabled: false
+    # -- S3 destination path (e.g. s3://bucket/prefix)
+    destinationPath: ""
+    # -- S3 endpoint URL
+    endpointURL: ""
+    # -- S3 credentials (stored in secret)
+    s3Credentials:
+      accessKeyId: ""
+      secretAccessKey: ""
+    # -- Backup retention policy (e.g. "30d", "7d", "2w")
+    retentionPolicy: "30d"
+    # -- WAL compression algorithm
+    walCompression: "gzip"
+    # -- Data compression algorithm
+    dataCompression: "gzip"
+    # -- Cron schedule for automated backups (leave empty to disable scheduled backups)
+    schedule: ""
 
 # -- MySQL configuration (external, not deployed by this chart)
 mysql:

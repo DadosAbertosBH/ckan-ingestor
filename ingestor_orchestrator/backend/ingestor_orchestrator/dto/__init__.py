@@ -16,6 +16,7 @@
 """DTOs (Pydantic request/response models) — re-exported for convenience."""
 
 from ingestor_orchestrator.dto.ckan_instance_response import CkanInstanceResponse
+from ingestor_orchestrator.dto.dataset_response import DatasetResponse
 from ingestor_orchestrator.dto.instance_create import InstanceCreate
 from ingestor_orchestrator.dto.instance_stats import InstanceStats
 from ingestor_orchestrator.dto.job_create import JobCreate
@@ -28,6 +29,7 @@ from ingestor_orchestrator.dto.resource_response import ResourceResponse
 
 __all__ = [
     "CkanInstanceResponse",
+    "DatasetResponse",
     "InstanceCreate",
     "InstanceStats",
     "JobCreate",

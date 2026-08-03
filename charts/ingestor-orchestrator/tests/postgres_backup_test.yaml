@@ -1,0 +1,106 @@
+suite: PostgreSQL Backup via CloudNativePG
+templates:
+  - postgres.yaml
+  - secret.yaml
+tests:
+  - it: should not render backup config when backup is disabled
+    set:
+      postgres.deploy: true
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: postgres.yaml
+      - isNull:
+          path: spec.backup
+        template: postgres.yaml
+
+  - it: should render barmanObjectStore when backup is enabled
+    set:
+      postgres.deploy: true
+      postgres.backup.enabled: true
+      postgres.backup.destinationPath: "s3://my-bucket/backups"
+      postgres.backup.endpointURL: "https://s3.amazonaws.com"
+      postgres.backup.s3Credentials.accessKeyId: "AKIATEST"
+      postgres.backup.s3Credentials.secretAccessKey: "secret123"
+      postgres.backup.retentionPolicy: "30d"
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: postgres.yaml
+      - equal:
+          path: spec.backup.barmanObjectStore.destinationPath
+          value: "s3://my-bucket/backups"
+        template: postgres.yaml
+      - equal:
+          path: spec.backup.barmanObjectStore.endpointURL
+          value: "https://s3.amazonaws.com"
+        template: postgres.yaml
+      - equal:
+          path: spec.backup.barmanObjectStore.s3Credentials.accessKeyId.name
+          value: RELEASE-NAME-ingestor-orchestrator
+        template: postgres.yaml
+      - equal:
+          path: spec.backup.barmanObjectStore.s3Credentials.accessKeyId.key
+          value: "INGEST_ORCH_BACKUP_ACCESS_KEY_ID"
+        template: postgres.yaml
+      - equal:
+          path: spec.backup.retentionPolicy
+          value: "30d"
+        template: postgres.yaml
+
+  - it: should render ScheduledBackup when backup is enabled with schedule
+    set:
+      postgres.deploy: true
+      postgres.backup.enabled: true
+      postgres.backup.destinationPath: "s3://my-bucket/backups"
+      postgres.backup.endpointURL: "https://s3.amazonaws.com"
+      postgres.backup.s3Credentials.accessKeyId: "AKIATEST"
+      postgres.backup.s3Credentials.secretAccessKey: "secret123"
+      postgres.backup.schedule: "0 0 2 * * *"
+    asserts:
+      - hasDocuments:
+          count: 2
+        template: postgres.yaml
+      - isKind:
+          of: ScheduledBackup
+        documentIndex: 1
+        template: postgres.yaml
+      - equal:
+          path: spec.schedule
+          value: "0 0 2 * * *"
+        documentIndex: 1
+        template: postgres.yaml
+
+  - it: should not render ScheduledBackup when no schedule is set
+    set:
+      postgres.deploy: true
+      postgres.backup.enabled: true
+      postgres.backup.destinationPath: "s3://my-bucket/backups"
+      postgres.backup.endpointURL: "https://s3.amazonaws.com"
+      postgres.backup.s3Credentials.accessKeyId: "AKIATEST"
+      postgres.backup.s3Credentials.secretAccessKey: "secret123"
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: postgres.yaml
+
+  - it: should include backup credentials in secret
+    set:
+      postgres.deploy: true
+      postgres.backup.enabled: true
+      postgres.backup.destinationPath: "s3://my-bucket/backups"
+      postgres.backup.endpointURL: "https://s3.amazonaws.com"
+      postgres.backup.s3Credentials.accessKeyId: "AKIATEST"
+      postgres.backup.s3Credentials.secretAccessKey: "secret123"
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: secret.yaml
+      - equal:
+          path: data.INGEST_ORCH_BACKUP_ACCESS_KEY_ID
+          value: "QUtJQVRFU1Q="
+        template: secret.yaml
+      - equal:
+          path: data.INGEST_ORCH_BACKUP_SECRET_ACCESS_KEY
+          value: "c2VjcmV0MTIz"
+        template: secret.yaml

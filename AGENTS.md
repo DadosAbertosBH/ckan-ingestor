@@ -27,7 +27,6 @@ ArgoCD-managed resources must only be changed via Git, never with `kubectl patch
 
 1. Edit the manifest in the appropriate repo (`argocd-applications` or `ckan-ingestor`)
 2. Commit and push
-3. Let ArgoCD detect and sync (or trigger a hard refresh via `kubectl patch` with annotation `argocd.argoproj.io/refresh: hard` — this is the only acceptable `kubectl patch` on ArgoCD resources)
 
 ## Lint before committing
 

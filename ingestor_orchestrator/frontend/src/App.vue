@@ -26,6 +26,12 @@
                     active-class="active"
                     >Syncs</router-link
                 >
+                <router-link
+                    to="/datasets"
+                    class="nav-link"
+                    active-class="active"
+                    >Datasets</router-link
+                >
             </div>
         </nav>
         <main class="main-content">

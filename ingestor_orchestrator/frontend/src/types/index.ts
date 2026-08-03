@@ -84,6 +84,20 @@ export interface ResourceDetail extends Resource {
   preview: Record<string, unknown>[];
 }
 
+export interface Dataset {
+  instance_id: string;
+  instance_name: string | null;
+  dataset_name: string;
+  ckan_dataset_url: string;
+  total_resources: number;
+  pending_resources: number;
+  processing_resources: number;
+  completed_resources: number;
+  failed_resources: number;
+  updated_at: string | null;
+  instance_last_synced_at: string | null;
+}
+
 export interface MetadataSync {
   id: string;
   instance_id: string;

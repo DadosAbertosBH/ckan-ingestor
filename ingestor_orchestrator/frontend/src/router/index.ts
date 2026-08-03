@@ -35,6 +35,11 @@ const router = createRouter({
       name: "syncs",
       component: () => import("@/views/SyncsView.vue"),
     },
+    {
+      path: "/datasets",
+      name: "datasets",
+      component: () => import("@/views/DatasetsView.vue"),
+    },
   ],
 });
 

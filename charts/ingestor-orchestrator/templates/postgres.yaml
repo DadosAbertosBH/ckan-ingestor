@@ -15,4 +15,37 @@ spec:
     {{- end }}
   resources:
     {{- toYaml .Values.postgres.resources | nindent 4 }}
+  {{- if .Values.postgres.backup.enabled }}
+  backup:
+    barmanObjectStore:
+      destinationPath: {{ .Values.postgres.backup.destinationPath | quote }}
+      endpointURL: {{ .Values.postgres.backup.endpointURL | quote }}
+      s3Credentials:
+        accessKeyId:
+          name: {{ include "ingestor-orchestrator.fullname" . }}
+          key: "INGEST_ORCH_BACKUP_ACCESS_KEY_ID"
+        secretAccessKey:
+          name: {{ include "ingestor-orchestrator.fullname" . }}
+          key: "INGEST_ORCH_BACKUP_SECRET_ACCESS_KEY"
+      wal:
+        compression: {{ .Values.postgres.backup.walCompression | default "gzip" | quote }}
+      data:
+        compression: {{ .Values.postgres.backup.dataCompression | default "gzip" | quote }}
+    retentionPolicy: {{ .Values.postgres.backup.retentionPolicy | default "30d" | quote }}
+  {{- end }}
+---
+{{- if and .Values.postgres.backup.enabled .Values.postgres.backup.schedule }}
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ include "ingestor-orchestrator.fullname" . }}-postgres-backup
+  labels:
+    {{- include "ingestor-orchestrator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  schedule: {{ .Values.postgres.backup.schedule | quote }}
+  backupOwnerReference: self
+  cluster:
+    name: {{ include "ingestor-orchestrator.fullname" . }}-postgres
+{{- end }}
 {{- end }}

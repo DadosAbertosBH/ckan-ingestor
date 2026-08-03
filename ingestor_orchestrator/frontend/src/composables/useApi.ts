@@ -1,6 +1,7 @@
 import { ref } from "vue";
 import type {
   CkanInstance,
+  Dataset,
   InstanceStats,
   Job,
   JobCreateRequest,
@@ -90,6 +91,20 @@ export function useApi() {
     const qs = query.toString();
     return request<MetadataSync[]>(`/syncs/${qs ? "?" + qs : ""}`);
   };
+  const fetchDatasets = (params?: {
+    instance_id?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.instance_id) query.set("instance_id", params.instance_id);
+    if (params?.search) query.set("search", params.search);
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.offset) query.set("offset", String(params.offset));
+    const qs = query.toString();
+    return request<Dataset[]>(`/datasets/${qs ? "?" + qs : ""}`);
+  };
 
   return {
     loading,
@@ -105,5 +120,6 @@ export function useApi() {
     fetchResources,
     fetchResource,
     fetchSyncs,
+    fetchDatasets,
   };
 }
