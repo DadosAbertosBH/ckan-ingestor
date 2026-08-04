@@ -40,6 +40,9 @@ export function useApi() {
     instance_id?: string;
     limit?: number;
     offset?: number;
+    order_by?: string;
+    order_dir?: string;
+    tags?: string;
   }) => {
     const query = new URLSearchParams();
     if (params?.status) query.set("status", params.status);
@@ -47,6 +50,9 @@ export function useApi() {
     if (params?.instance_id) query.set("instance_id", params.instance_id);
     if (params?.limit) query.set("limit", String(params.limit));
     if (params?.offset) query.set("offset", String(params.offset));
+    if (params?.order_by) query.set("order_by", params.order_by);
+    if (params?.order_dir) query.set("order_dir", params.order_dir);
+    if (params?.tags) query.set("tags", params.tags);
     const qs = query.toString();
     return request<Job[]>(`/jobs/${qs ? "?" + qs : ""}`);
   };

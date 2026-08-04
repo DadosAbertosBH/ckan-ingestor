@@ -40,6 +40,13 @@
                 class="filter-input"
                 @input="debouncedLoad"
             />
+            <input
+                v-model="filterTags"
+                type="text"
+                placeholder="Filter by tags (comma-separated)..."
+                class="filter-input"
+                @input="debouncedLoad"
+            />
         </div>
 
         <div v-if="error" class="error-banner">
@@ -51,12 +58,34 @@
             <thead>
                 <tr>
                     <th>Resource</th>
-                    <th>Resource ID</th>
+                    <th>Job ID</th>
                     <th>Format</th>
                     <th>Labels</th>
                     <th>Status</th>
-                    <th>Duration</th>
-                    <th>Created</th>
+                    <th
+                        class="sortable-header sortable-header-duration"
+                        @click="toggleSort('duration')"
+                    >
+                        Duration
+                        <span
+                            v-if="sortBy === 'duration'"
+                            class="sort-indicator"
+                            :class="sortDir"
+                            >{{ sortDir === 'asc' ? '▲' : '▼' }}</span
+                        >
+                    </th>
+                    <th
+                        class="sortable-header sortable-header-created"
+                        @click="toggleSort('created_at')"
+                    >
+                        Created
+                        <span
+                            v-if="sortBy === 'created_at'"
+                            class="sort-indicator"
+                            :class="sortDir"
+                            >{{ sortDir === 'asc' ? '▲' : '▼' }}</span
+                        >
+                    </th>
                 </tr>
             </thead>
             <tbody>
@@ -67,13 +96,13 @@
                     @click="goToJob(job.id)"
                 >
                     <td>
-                        {{
-                            [job.dataset_name, job.resource_name]
-                                .filter(Boolean)
-                                .join(" / ") || "—"
-                        }}
-                    </td>
-                    <td class="mono">
+                        <div class="resource-path">
+                            {{
+                                [job.instance_name, job.dataset_name, job.resource_name]
+                                    .filter(Boolean)
+                                    .join(" / ") || "—"
+                            }}
+                        </div>
                         <router-link
                             :to="{
                                 name: 'resource-detail',
@@ -83,7 +112,20 @@
                             @click.stop
                             :title="job.resource_id"
                         >
-                            {{ job.resource_id.substring(0, 8) }}…
+                            {{ job.resource_id }}
+                        </router-link>
+                    </td>
+                    <td class="mono">
+                        <router-link
+                            :to="{
+                                name: 'job-detail',
+                                params: { id: job.id },
+                            }"
+                            class="job-id-link"
+                            @click.stop
+                            :title="job.id"
+                        >
+                            {{ job.id.substring(0, 8) }}…
                         </router-link>
                     </td>
                     <td>{{ job.resource_format || "—" }}</td>
@@ -213,6 +255,9 @@ const filterStatus = ref<JobStatus | "">(
 );
 const filterInstanceId = ref((route.query.instance_id as string) || "");
 const filterResourceId = ref((route.query.resource_id as string) || "");
+const filterTags = ref((route.query.tags as string) || "");
+const sortBy = ref<string>((route.query.sort_by as string) || "");
+const sortDir = ref<string>((route.query.sort_dir as string) || "");
 const limit = 50;
 const offset = ref(Number(route.query.offset) || 0);
 const showModal = ref(false);
@@ -231,12 +276,15 @@ function syncQueryParams() {
     if (filterStatus.value) query.status = filterStatus.value;
     if (filterInstanceId.value) query.instance_id = filterInstanceId.value;
     if (filterResourceId.value) query.resource_id = filterResourceId.value;
+    if (filterTags.value) query.tags = filterTags.value;
     if (offset.value) query.offset = String(offset.value);
+    if (sortBy.value) query.sort_by = sortBy.value;
+    if (sortDir.value) query.sort_dir = sortDir.value;
     router.replace({ query });
 }
 
 watch(
-    [filterStatus, filterInstanceId, filterResourceId, offset],
+    [filterStatus, filterInstanceId, filterResourceId, filterTags, offset, sortBy, sortDir],
     syncQueryParams,
 );
 
@@ -248,6 +296,9 @@ async function loadJobs() {
             status: filterStatus.value || undefined,
             resource_id: filterResourceId.value || undefined,
             instance_id: filterInstanceId.value || undefined,
+            tags: filterTags.value || undefined,
+            order_by: sortBy.value || undefined,
+            order_dir: sortDir.value || undefined,
             limit,
             offset: offset.value,
         } as any);
@@ -256,6 +307,22 @@ async function loadJobs() {
     } finally {
         loading.value = false;
     }
+}
+
+function toggleSort(field: string) {
+    if (sortBy.value === field) {
+        if (sortDir.value === "asc") {
+            sortDir.value = "desc";
+        } else if (sortDir.value === "desc") {
+            sortBy.value = "";
+            sortDir.value = "";
+        }
+    } else {
+        sortBy.value = field;
+        sortDir.value = "asc";
+    }
+    offset.value = 0;
+    loadJobs();
 }
 
 function resetAndLoad() {
@@ -349,6 +416,7 @@ onMounted(async () => {
     display: flex;
     gap: 12px;
     margin-bottom: 16px;
+    flex-wrap: wrap;
 }
 
 .filter-select,
@@ -366,7 +434,7 @@ onMounted(async () => {
 }
 .filter-input {
     flex: 1;
-    max-width: 360px;
+    max-width: 240px;
 }
 
 .filter-select:focus,
@@ -478,16 +546,56 @@ onMounted(async () => {
     color: #9ca3af;
 }
 
+.resource-path {
+    margin-bottom: 4px;
+    font-size: 14px;
+}
+
 .resource-link {
+    color: #60a5fa;
+    text-decoration: none;
+    font-family: "SF Mono", monospace;
+    font-size: 12px;
+}
+
+.resource-link:hover {
+    color: #93bbfd;
+    text-decoration: underline;
+}
+
+.job-id-link {
     color: #60a5fa;
     text-decoration: none;
     font-family: "SF Mono", monospace;
     font-size: 13px;
 }
 
-.resource-link:hover {
+.job-id-link:hover {
     color: #93bbfd;
     text-decoration: underline;
+}
+
+.sortable-header {
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.15s;
+}
+
+.sortable-header:hover {
+    color: #e4e4e7;
+}
+
+.sort-indicator {
+    margin-left: 4px;
+    font-size: 10px;
+}
+
+.sort-indicator.asc {
+    color: #60a5fa;
+}
+
+.sort-indicator.desc {
+    color: #f59e0b;
 }
 
 .clickable-row {

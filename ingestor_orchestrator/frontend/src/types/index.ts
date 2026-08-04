@@ -22,6 +22,7 @@ export interface InstanceStats {
 export interface Job {
   id: string;
   instance_id: string | null;
+  instance_name: string | null;
   resource_id: string;
   resource_name: string | null;
   resource_url: string | null;

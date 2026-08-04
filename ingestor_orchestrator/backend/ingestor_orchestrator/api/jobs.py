@@ -16,12 +16,13 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import desc, select, asc as sa_asc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ingestor_orchestrator.db import get_db
 from ingestor_orchestrator.dto import JobCreate, JobListResponse, JobResponse
+from ingestor_orchestrator.duration_sort import duration_sort_key
 from ingestor_orchestrator.models import (
     CkanDataJob,
     JobStatus,
@@ -39,6 +40,10 @@ def _build_ckan_resource_url(
     return f"{base}/dataset/{dataset_name}/resource/{resource_id}"
 
 
+VALID_ORDER_FIELDS = {"created_at", "duration"}
+VALID_ORDER_DIRS = {"asc", "desc"}
+
+
 @router.get("/", response_model=list[JobListResponse])
 async def list_jobs(
     status: Optional[JobStatus] = None,
@@ -46,22 +51,59 @@ async def list_jobs(
     instance_id: Optional[str] = None,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    order_by: Optional[str] = Query(None, description="Sort field: created_at or duration"),
+    order_dir: Optional[str] = Query(None, description="Sort direction: asc or desc"),
+    tags: Optional[str] = Query(None, description="Comma-separated tags to filter by"),
     db: AsyncSession = Depends(get_db),
 ):
-    query = (
-        select(CkanDataJob)
-        .options(selectinload(CkanDataJob.instance))
-        .order_by(CkanDataJob.created_at.desc())
-    )
+    query = select(CkanDataJob).options(selectinload(CkanDataJob.instance))
+
     if status:
         query = query.where(CkanDataJob.status == status)
     if resource_id:
         query = query.where(CkanDataJob.resource_id == resource_id)
     if instance_id:
         query = query.where(CkanDataJob.instance_id == instance_id)
-    query = query.limit(limit).offset(offset)
-    result = await db.execute(query)
-    jobs = result.scalars().all()
+
+    # Filter by tags (OR semantics on ResourceMetadataLabel.label)
+    if tags:
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+        if tag_list:
+            matching_resource_ids_subq = (
+                select(ResourceMetadataLabel.resource_id)
+                .where(ResourceMetadataLabel.label.in_(tag_list))
+                .distinct()
+            )
+            query = query.where(
+                CkanDataJob.resource_id.in_(matching_resource_ids_subq)
+            )
+
+    # Apply ordering
+    effective_order_by = order_by if order_by in VALID_ORDER_FIELDS else "created_at"
+    effective_order_dir = order_dir if order_dir in VALID_ORDER_DIRS else "desc"
+
+    if effective_order_by == "duration":
+        # Duration ordering is done in Python for cross-DB compatibility.
+        # Fetch all matching rows (before limit/offset), sort, then paginate.
+        query = query.order_by(CkanDataJob.created_at.desc())
+        result = await db.execute(query)
+        jobs = result.scalars().all()
+
+        # Sort by duration in Python
+        reverse = effective_order_dir == "desc"
+        jobs = sorted(jobs, key=lambda j: duration_sort_key(j, reverse))
+
+        # Apply pagination after sort
+        jobs = jobs[offset : offset + limit]
+    else:
+        query = query.order_by(
+            sa_asc(CkanDataJob.created_at)
+            if effective_order_dir == "asc"
+            else desc(CkanDataJob.created_at)
+        )
+        query = query.limit(limit).offset(offset)
+        result = await db.execute(query)
+        jobs = result.scalars().all()
 
     # Fetch labels for these resource_ids
     resource_ids = list({j.resource_id for j in jobs})
@@ -93,6 +135,7 @@ async def list_jobs(
             "status": j.status,
             "idempotency_key": j.idempotency_key,
             "instance_id": j.instance_id,
+            "instance_name": j.instance.name if j.instance else None,
             "ckan_resource_url": _build_ckan_resource_url(
                 j.instance.url, j.dataset_name, j.resource_id
             )
@@ -116,7 +159,7 @@ async def list_jobs(
 async def get_job(job_id: str, db: AsyncSession = Depends(get_db)):
     query = (
         select(CkanDataJob)
-        .options(selectinload(CkanDataJob.instance))
+        .options(selectinload(CkanDataJob.instance), selectinload(CkanDataJob.results))
         .where(CkanDataJob.id == job_id)
     )
     result = await db.execute(query)

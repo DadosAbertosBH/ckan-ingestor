@@ -30,6 +30,7 @@ class JobListResponse(BaseModel):
     status: JobStatus
     idempotency_key: str
     instance_id: str | None = None
+    instance_name: str | None = None
     ckan_resource_url: str = ""
     created_at: datetime
     updated_at: datetime

@@ -76,7 +76,7 @@ class CkanDataJob(Base):
     results: Mapped[list["CkanDataJobResult"]] = relationship(
         back_populates="job",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        lazy="raise",
         order_by="CkanDataJobResult.created_at",
     )
 

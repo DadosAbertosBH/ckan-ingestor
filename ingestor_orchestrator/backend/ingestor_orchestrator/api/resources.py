@@ -150,7 +150,7 @@ async def get_resource(
     # Get latest job details
     job_query = (
         select(CkanDataJob)
-        .options(selectinload(CkanDataJob.instance))
+        .options(selectinload(CkanDataJob.instance), selectinload(CkanDataJob.results))
         .where(CkanDataJob.id == latest.latest_job_id)
     )
     job_result = await db.execute(job_query)
