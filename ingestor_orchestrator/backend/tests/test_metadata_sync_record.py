@@ -24,7 +24,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from ingestor_orchestrator.models import CkanInstance
+from ingestor_orchestrator.models import CkanInstance, MetadataSync
 from ingestor_orchestrator.services.sync_service import SyncService
 
 
@@ -160,6 +160,52 @@ class TestSyncsApi:
         assert sync.updated_datasets == 0
         assert sync.updated_resources == 1
         assert sync.end_time is not None
+
+    async def test_sync_failure_still_sets_end_time(self, sess, instance):
+        """When sync raises, finish_sync must still be called so end_time is set."""
+        from unittest.mock import patch
+
+        from ingestor_orchestrator.api.metadata import sync_instance
+        from sqlalchemy import select
+
+        service = SyncService(sess)
+
+        # Simulate a failure during sync_metadata_for_instance
+        with patch.object(
+            service,
+            "sync_metadata_for_instance",
+            side_effect=RuntimeError("boom"),
+        ):
+            # Let start_sync create a real record, but return our service
+            # with the patched sync_metadata_for_instance
+            with patch(
+                "ingestor_orchestrator.api.metadata.SyncService",
+                return_value=service,
+            ):
+                result = await sync_instance(instance.id, db=sess)
+
+        assert "error" in result
+
+        # The record created by start_sync must have end_time and status set
+        record = (
+            (await sess.execute(select(MetadataSync).limit(1)))
+            .scalars()
+            .one()
+        )
+        assert record.end_time is not None
+        assert record.status == "failure"
+
+    async def test_successful_sync_sets_status_success(self, sess, instance):
+        """A successful sync must have status='success'."""
+        service = SyncService(sess)
+        record = await service.start_sync(instance.id)
+
+        finished = await service.finish_sync(
+            record, {"total_packages": 1}, status="success"
+        )
+
+        assert finished.status == "success"
+        assert finished.end_time is not None
 
 
 class TestSyncMetadataCounts:

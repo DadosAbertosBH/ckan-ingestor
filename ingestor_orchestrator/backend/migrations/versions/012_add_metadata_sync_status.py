@@ -13,20 +13,28 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from datetime import datetime
+"""Add status column to metadata_sync.
 
-from pydantic import BaseModel
+Revision ID: 012
+Revises: 011
+Create Date: 2026-08-04 16:00:00.000000
+"""
+
+import sqlalchemy as sa
+from alembic import op
+
+revision = "012"
+down_revision = "011"
+branch_labels = None
+depends_on = None
 
 
-class MetadataSyncResponse(BaseModel):
-    id: str
-    instance_id: str
-    instance_name: str | None = None
-    start_time: datetime
-    end_time: datetime | None = None
-    status: str | None = None
-    total_packages: int = 0
-    new_datasets: int = 0
-    new_resources: int = 0
-    updated_datasets: int = 0
-    updated_resources: int = 0
+def upgrade():
+    op.add_column(
+        "metadata_sync",
+        sa.Column("status", sa.String(20), nullable=True),
+    )
+
+
+def downgrade():
+    op.drop_column("metadata_sync", "status")

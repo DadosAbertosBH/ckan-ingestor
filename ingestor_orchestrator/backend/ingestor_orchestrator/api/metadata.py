@@ -67,6 +67,7 @@ async def sync_instance(
         )
     except Exception as e:
         logger.error(f"Sync failed for {instance.name}: {e}", exc_info=True)
+        await sync_service.finish_sync(sync_record, {"error": str(e)}, status="failure")
         return {"error": str(e)}
 
     dataset_count = result.get("dataset_count", 0)

@@ -53,6 +53,7 @@ async def list_syncs(
             instance_name=s.instance.name if s.instance else None,
             start_time=s.start_time,
             end_time=s.end_time,
+            status=s.status,
             total_packages=s.total_packages,
             new_datasets=s.new_datasets,
             new_resources=s.new_resources,

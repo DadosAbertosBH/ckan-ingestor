@@ -64,7 +64,7 @@ class CkanDatasetFetcher(DatasetFetcher):
             url = f"{self.url}/api/action/current_package_list_with_resources?limit={PAGE_SIZE}&offset={offset}"
             table = (
                 conn.execute(
-                    f"select unnest(result, max_depth :=2) from read_json('{url}',maximum_object_size=1073741824)"
+                    f"select unnest(result, max_depth :=2) from read_json('{url}',maximum_object_size=268435456)"
                 )
                 .arrow()
                 .read_all()

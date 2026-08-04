@@ -38,9 +38,12 @@ class SyncService:
         await self.db.refresh(record)
         return record
 
-    async def finish_sync(self, record: MetadataSync, result: dict) -> MetadataSync:
-        """Fill in end_time and the new/updated counts for a finished sync."""
+    async def finish_sync(
+        self, record: MetadataSync, result: dict, status: str = "success"
+    ) -> MetadataSync:
+        """Fill in end_time, status, and the new/updated counts for a finished sync."""
         record.end_time = datetime.now(timezone.utc)
+        record.status = status
         record.total_packages = result.get("total_packages", 0)
         record.new_datasets = result.get("new_datasets", 0)
         record.new_resources = result.get("new_resources", 0)
