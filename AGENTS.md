@@ -50,3 +50,47 @@ Before making any commit or suggesting a commit, run:
 ```
 
 This ensures all `.py` files have the AGPL license header.
+
+## Repository Layer
+
+Data access uses the **Repository pattern** with interface/implementation separation:
+
+```
+ingestor_orchestrator/repositories/
+├── __init__.py                          # Public exports
+├── job_repository.py                    # JobRepository ABC
+├── instance_repository.py               # InstanceRepository ABC
+├── resource_repository.py               # ResourceRepository ABC
+├── sync_repository.py                   # SyncRepository ABC
+├── dashboard_repository.py              # DashboardRepository ABC
+├── sqlalchemy_job_repository.py         # SQLAlchemy impl
+├── sqlalchemy_instance_repository.py    # SQLAlchemy impl
+├── sqlalchemy_resource_repository.py    # SQLAlchemy impl
+├── sqlalchemy_sync_repository.py        # SQLAlchemy impl
+└── sqlalchemy_dashboard_repository.py   # SQLAlchemy impl
+```
+
+### Structure
+
+- **Interface** (`*_repository.py`): Abstract Base Class defining the contract. No imports from `sqlalchemy`.
+- **Implementation** (`sqlalchemy_*_repository.py`): SQLAlchemy queries, constructor takes `AsyncSession`.
+- **Tests** (`tests/test_*_repository.py`): Test the implementation directly against SQLite, capturing SQL with `event.listen` to verify column selection and query patterns.
+
+### API wiring
+
+API endpoints inject repositories via FastAPI `Depends`:
+
+```python
+from fastapi import Depends
+from ingestor_orchestrator.db import get_db
+from ingestor_orchestrator.repositories import SqlAlchemyJobRepository
+
+async def get_job_repository(db: AsyncSession = Depends(get_db)):
+    return SqlAlchemyJobRepository(db)
+
+@router.get("/")
+async def list_jobs(repo: JobRepository = Depends(get_job_repository)):
+    jobs, total = await repo.list_jobs(...)
+```
+
+DTO conversion stays in the API layer. Repositories return ORM objects.
