@@ -167,7 +167,7 @@ class TestJobHistory:
             )
 
     async def test_job_results_ordered_by_created_at(self, sess, instance):
-        """Job results must be ordered by created_at ascending."""
+        """Job results must be ordered by created_at descending (newest first)."""
         from datetime import datetime, timedelta, timezone
 
         from ingestor_orchestrator.models.ckan_data_job_result import CkanDataJobResult
@@ -217,8 +217,8 @@ class TestJobHistory:
         result = await sess.get(CkanDataJob, job.id)
         await sess.refresh(result, attribute_names=["results"])
 
-        # Must be ordered by created_at ascending
+        # Must be ordered by created_at descending (newest first)
         assert len(result.results) == 3
-        assert result.results[0].error_message == "first"
+        assert result.results[0].error_message == "third"
         assert result.results[1].error_message == "second"
-        assert result.results[2].error_message == "third"
+        assert result.results[2].error_message == "first"

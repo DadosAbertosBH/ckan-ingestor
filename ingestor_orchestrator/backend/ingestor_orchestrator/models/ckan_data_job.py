@@ -77,7 +77,7 @@ class CkanDataJob(Base):
         back_populates="job",
         cascade="all, delete-orphan",
         lazy="raise",
-        order_by="CkanDataJobResult.created_at",
+        order_by="CkanDataJobResult.created_at.desc()",
     )
 
     # Kafka routing metadata
