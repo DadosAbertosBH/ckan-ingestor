@@ -8,6 +8,8 @@ metadata:
     app.kubernetes.io/component: worker
 spec:
   replicas: {{ .Values.worker.replicaCount }}
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "ingestor-orchestrator.selectorLabels" . | nindent 6 }}
