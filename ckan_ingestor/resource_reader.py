@@ -80,7 +80,7 @@ class ResourceReader:
         with duckdb.connect(":memory:") as conn:
             return (
                 conn.execute(
-                    f"SELECT * FROM read_json('{url}', maximum_object_size=2_147_483_648)"
+                    f"SELECT * FROM read_json('{url}', maximum_object_size=268435456)"
                 )
                 .arrow()
                 .read_all()

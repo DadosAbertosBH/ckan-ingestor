@@ -80,7 +80,7 @@ class DuckdbCkanDataIngestor:
                 query = "SELECT * FROM _csv_table"
             elif ckan_resource["format"] == "JSON" and "JSON" not in attempt_formats:
                 attempt_formats.append("JSON")
-                query = f"SELECT * FROM read_json('{ckan_resource['url']}', maximum_object_size=2_147_483_648)"
+                query = f"SELECT * FROM read_json('{ckan_resource['url']}', maximum_object_size=268435456)"
             elif ckan_resource["format"] == "PDF" and "PDF" not in attempt_formats:
                 attempt_formats.append("PDF")
                 download_url = self.document_ingestor.ingest(
