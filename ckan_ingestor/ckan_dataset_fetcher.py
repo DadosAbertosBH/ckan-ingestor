@@ -60,6 +60,7 @@ class CkanDatasetFetcher(DatasetFetcher):
 
         with duckdb.connect(":memory:") as conn:
             conn.execute("SET threads = 1")
+            conn.execute("SET memory_limit = '1GB'")
             table = (
                 conn.execute(f"""
             select unnest(result, max_depth :=2) from
