@@ -22,6 +22,8 @@ Fix: Return None instead of raising, mark job completed with 0 rows,
 
 from unittest.mock import MagicMock, patch
 
+import duckdb
+
 from ckan_ingestor.datastore_reader import DatastoreReader
 
 # ---------------------------------------------------------------------------
@@ -76,11 +78,13 @@ def _make_empty_resource(**overrides):
 
 class TestIngestorEmptyResource:
     def test_ingest_empty_resource_does_not_raise(self):
-        """When reader returns None, ingest should not raise."""
+        """When both datastore and CSV fail, ingest should not raise."""
         resource = _make_empty_resource()
         mock_conn = MagicMock()
         mock_reader = MagicMock()
         mock_reader.read.return_value = None
+        mock_csv_reader = MagicMock()
+        mock_csv_reader.read.side_effect = duckdb.IOException("CSV parse failed")
 
         from ckan_ingestor.duckdb_ckan_data_ingestor import DuckdbCkanDataIngestor
 
@@ -88,19 +92,23 @@ class TestIngestorEmptyResource:
             ducklake_conn=mock_conn,
             document_ingestor=MagicMock(),
             datastore_reader=mock_reader,
-            csv_reader=MagicMock(),
+            csv_reader=mock_csv_reader,
         )
 
-        ingestor.ingest_ckan_data(resource)
+        # Returns False — both datastore and CSV fail
+        result = ingestor.ingest_ckan_data(resource)
+        assert result is False
 
     def test_ingest_empty_resource_returns_false_and_no_duckdb_labels(self):
-        """When reader returns None, ingest should return False and NOT touch
-        DuckDB label tables. Labels are handled by JobService in MySQL
-        (resource_metadata_label table)."""
+        """When all formats (datastore + CSV) fail, ingest should return False
+        and NOT touch DuckDB label tables. Labels are handled by JobService
+        in MySQL (resource_metadata_label table)."""
         resource = _make_empty_resource()
         mock_conn = MagicMock()
         mock_reader = MagicMock()
         mock_reader.read.return_value = None
+        mock_csv_reader = MagicMock()
+        mock_csv_reader.read.side_effect = duckdb.IOException("CSV parse failed")
 
         from ckan_ingestor.duckdb_ckan_data_ingestor import DuckdbCkanDataIngestor
 
@@ -108,7 +116,7 @@ class TestIngestorEmptyResource:
             ducklake_conn=mock_conn,
             document_ingestor=MagicMock(),
             datastore_reader=mock_reader,
-            csv_reader=MagicMock(),
+            csv_reader=mock_csv_reader,
         )
 
         result = ingestor.ingest_ckan_data(resource)
@@ -123,11 +131,13 @@ class TestIngestorEmptyResource:
             )
 
     def test_ingest_empty_resource_does_not_create_data_table(self):
-        """When reader returns None, no data table should be created."""
+        """When all formats fail, no data table should be created."""
         resource = _make_empty_resource()
         mock_conn = MagicMock()
         mock_reader = MagicMock()
         mock_reader.read.return_value = None
+        mock_csv_reader = MagicMock()
+        mock_csv_reader.read.side_effect = duckdb.IOException("CSV parse failed")
 
         from ckan_ingestor.duckdb_ckan_data_ingestor import DuckdbCkanDataIngestor
 
@@ -135,7 +145,7 @@ class TestIngestorEmptyResource:
             ducklake_conn=mock_conn,
             document_ingestor=MagicMock(),
             datastore_reader=mock_reader,
-            csv_reader=MagicMock(),
+            csv_reader=mock_csv_reader,
         )
 
         ingestor.ingest_ckan_data(resource)

@@ -98,3 +98,35 @@ def test_ingest_returns_true_on_success(
 
     result = ingestor.ingest_ckan_data(resource)
     assert result is True, f"Expected True on successful ingestion, got {result}."
+
+
+def test_datastore_empty_falls_back_to_csv(
+    ingestor: DuckdbCkanDataIngestor,
+):
+    """When datastore_active is True but the datastore returns no records,
+    the ingestor must fall back to CSV instead of marking the resource empty.
+
+    Real-world case: CKAN registers datastore_active=True but never populates
+    the datastore (total=0). The actual data lives in the CSV file.
+    """
+    import pyarrow as pa
+
+    resource = {
+        "id": "5afe0000-5afe-5afe-5afe-5afe00000000",
+        "name": "Has CSV but empty datastore",
+        "format": "CSV",
+        "datastore_active": True,
+        "url": "http://example.com/data.csv",
+    }
+
+    # Simulate empty datastore
+    ingestor.datastore_reader.read = Mock(return_value=None)
+    # Simulate successful CSV parsing
+    table = pa.table({"col": [1, 2, 3]})
+    ingestor.csv_reader.read = Mock(return_value=table)
+
+    result = ingestor.ingest_ckan_data(resource)
+    assert result is True, (
+        f"Expected fallback to CSV when datastore is empty, got {result}."
+        " The resource is NOT empty — it has a CSV file with data."
+    )

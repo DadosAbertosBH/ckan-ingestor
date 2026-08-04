@@ -70,9 +70,10 @@ class DuckdbCkanDataIngestor:
                 _datastore_table = self.datastore_reader.read(resource_id)
                 if _datastore_table is None:
                     self.logger.info(
-                        f"Resource {resource_id} is empty, skipping ingestion"
+                        f"Resource {resource_id} datastore is empty,"
+                        " falling back to file-based formats"
                     )
-                    return False
+                    return self.ingest_ckan_data(ckan_resource, attempt_formats)
                 query = "SELECT * FROM _datastore_table"
             elif ckan_resource["format"] == "CSV" and "CSV" not in attempt_formats:
                 attempt_formats.append("CSV")
