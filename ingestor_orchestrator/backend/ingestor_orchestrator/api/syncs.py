@@ -16,13 +16,21 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from ingestor_orchestrator.db import get_db
 from ingestor_orchestrator.dto import MetadataSyncResponse
-from ingestor_orchestrator.models import MetadataSync
+from ingestor_orchestrator.repositories import (
+    SqlAlchemySyncRepository,
+    SyncRepository,
+)
+
+
+def get_sync_repository(
+    db: AsyncSession = Depends(get_db),
+) -> SyncRepository:
+    return SqlAlchemySyncRepository(db)
+
 
 router = APIRouter(prefix="/api/syncs", tags=["syncs"])
 
@@ -32,19 +40,12 @@ async def list_syncs(
     instance_id: Optional[str] = None,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db),
+    repo: SyncRepository = Depends(get_sync_repository),
 ):
     """List metadata sync runs, most recent first."""
-    query = (
-        select(MetadataSync)
-        .options(selectinload(MetadataSync.instance))
-        .order_by(MetadataSync.start_time.desc())
+    syncs = await repo.list_syncs(
+        instance_id=instance_id, limit=limit, offset=offset
     )
-    if instance_id:
-        query = query.where(MetadataSync.instance_id == instance_id)
-    query = query.limit(limit).offset(offset)
-    result = await db.execute(query)
-    syncs = result.scalars().all()
 
     return [
         MetadataSyncResponse(

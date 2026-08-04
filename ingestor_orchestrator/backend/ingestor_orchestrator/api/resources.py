@@ -16,23 +16,20 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from ingestor_orchestrator.api.jobs import _build_ckan_resource_url
 from ingestor_orchestrator.db import get_db
-from ingestor_orchestrator.models import (
-    CkanDataJob,
-    JobStatus,
-    LatestResourceJob,
-    ResourceMetadataLabel,
-)
+from ingestor_orchestrator.models import CkanDataJob, JobStatus
 from ingestor_orchestrator.dto import (
     JobListResponse,
     JobResponse,
     ResourceDetailResponse,
     ResourceResponse,
+)
+from ingestor_orchestrator.repositories.resource_repository import ResourceRepository
+from ingestor_orchestrator.repositories.sqlalchemy_resource_repository import (
+    SqlAlchemyResourceRepository,
 )
 
 router = APIRouter(prefix="/api/resources", tags=["resources"])
@@ -50,6 +47,13 @@ def _extract_preview(job: CkanDataJob | None) -> list[dict]:
     return []
 
 
+async def get_resource_repo(
+    db: AsyncSession = Depends(get_db),
+) -> ResourceRepository:
+    """FastAPI dependency that provides a ResourceRepository."""
+    return SqlAlchemyResourceRepository(db)
+
+
 @router.get("/", response_model=list[ResourceResponse])
 async def list_resources(
     status: Optional[JobStatus] = None,
@@ -57,57 +61,18 @@ async def list_resources(
     search: Optional[str] = None,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db),
+    repo: ResourceRepository = Depends(get_resource_repo),
 ):
-    query = (
-        select(LatestResourceJob)
-        .options(selectinload(LatestResourceJob.instance))
-        .order_by(LatestResourceJob.updated_at.desc())
+    resources, labels_map, counts_map = await repo.list_resources(
+        status=status,
+        instance_id=instance_id,
+        search=search,
+        limit=limit,
+        offset=offset,
     )
-    if status:
-        query = query.where(LatestResourceJob.status == status)
-    if instance_id:
-        query = query.where(LatestResourceJob.instance_id == instance_id)
-    if search:
-        query = query.where(
-            or_(
-                LatestResourceJob.resource_name.ilike(f"%{search}%"),
-                LatestResourceJob.dataset_name.ilike(f"%{search}%"),
-            )
-        )
-    query = query.limit(limit).offset(offset)
-    result = await db.execute(query)
-    resources = result.scalars().all()
 
     if not resources:
         return []
-
-    resource_ids = [r.resource_id for r in resources]
-
-    # Fetch labels
-    labels_map: dict[str, list[str]] = {}
-    if resource_ids:
-        label_rows = (
-            (
-                await db.execute(
-                    select(ResourceMetadataLabel).where(
-                        ResourceMetadataLabel.resource_id.in_(resource_ids)
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        for lbl in label_rows:
-            labels_map.setdefault(lbl.resource_id, []).append(lbl.label)
-
-    # Count jobs per resource
-    job_counts = await db.execute(
-        select(CkanDataJob.resource_id, func.count(CkanDataJob.id))
-        .where(CkanDataJob.resource_id.in_(resource_ids))
-        .group_by(CkanDataJob.resource_id)
-    )
-    counts_map = dict(job_counts.all())
 
     response_list = []
     for r in resources:
@@ -138,54 +103,16 @@ async def list_resources(
 @router.get("/{resource_id}", response_model=ResourceDetailResponse)
 async def get_resource(
     resource_id: str,
-    db: AsyncSession = Depends(get_db),
+    repo: ResourceRepository = Depends(get_resource_repo),
 ):
-    latest = await db.get(LatestResourceJob, resource_id)
-    if not latest:
+    detail = await repo.get_resource(resource_id)
+    if not detail:
         raise HTTPException(status_code=404, detail="Resource not found")
-
-    # Load instance relationship
-    await db.refresh(latest, attribute_names=["instance"])
-
-    # Get latest job details
-    job_query = (
-        select(CkanDataJob)
-        .options(selectinload(CkanDataJob.instance), selectinload(CkanDataJob.results))
-        .where(CkanDataJob.id == latest.latest_job_id)
-    )
-    job_result = await db.execute(job_query)
-    job = job_result.scalar_one_or_none()
-
-    # Get all jobs for this resource
-    all_jobs_query = (
-        select(CkanDataJob)
-        .options(selectinload(CkanDataJob.instance))
-        .where(CkanDataJob.resource_id == resource_id)
-        .order_by(CkanDataJob.created_at.desc())
-    )
-    all_jobs_result = await db.execute(all_jobs_query)
-    all_jobs = all_jobs_result.scalars().all()
-
-    # Fetch labels
-    label_rows = (
-        (
-            await db.execute(
-                select(ResourceMetadataLabel).where(
-                    ResourceMetadataLabel.resource_id == resource_id
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    labels = [lbl.label for lbl in label_rows]
-
-    # Job count
-    job_count = len(all_jobs)
 
     # Build latest_job response
     latest_job_response = None
-    if job:
+    if detail.latest_job:
+        job = detail.latest_job
         latest_job_response = JobResponse(
             id=job.id,
             resource_id=job.resource_id,
@@ -205,13 +132,13 @@ async def get_resource(
             updated_at=job.updated_at,
             started_at=job.started_at,
             completed_at=job.completed_at,
-            labels=labels,
+            labels=detail.labels,
             results=job.results,
         )
 
     # Build all jobs list responses
     job_list_responses = []
-    for j in all_jobs:
+    for j in detail.all_jobs:
         job_list_responses.append(
             JobListResponse(
                 id=j.id,
@@ -232,28 +159,30 @@ async def get_resource(
                 updated_at=j.updated_at,
                 started_at=j.started_at,
                 completed_at=j.completed_at,
-                labels=labels,
+                labels=detail.labels,
             )
         )
 
     return ResourceDetailResponse(
-        resource_id=latest.resource_id,
-        resource_name=latest.resource_name,
-        resource_url=latest.resource_url,
-        resource_format=latest.resource_format,
-        dataset_name=latest.dataset_name,
-        status=latest.status,
-        instance_id=latest.instance_id,
+        resource_id=detail.resource.resource_id,
+        resource_name=detail.resource.resource_name,
+        resource_url=detail.resource.resource_url,
+        resource_format=detail.resource.resource_format,
+        dataset_name=detail.resource.dataset_name,
+        status=detail.resource.status,
+        instance_id=detail.resource.instance_id,
         ckan_resource_url=_build_ckan_resource_url(
-            latest.instance.url, latest.dataset_name, latest.resource_id
+            detail.resource.instance.url,
+            detail.resource.dataset_name,
+            detail.resource.resource_id,
         )
-        if latest.instance
+        if detail.resource.instance
         else "",
-        labels=labels,
-        job_count=job_count,
-        created_at=latest.created_at,
-        updated_at=latest.updated_at,
+        labels=detail.labels,
+        job_count=len(detail.all_jobs),
+        created_at=detail.resource.created_at,
+        updated_at=detail.resource.updated_at,
         latest_job=latest_job_response,
         jobs=job_list_responses,
-        preview=_extract_preview(job),
+        preview=_extract_preview(detail.latest_job),
     )

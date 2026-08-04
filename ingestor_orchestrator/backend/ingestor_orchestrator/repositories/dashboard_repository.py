@@ -13,28 +13,15 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+"""Abstract interface for dashboard data access."""
 
-from ingestor_orchestrator.db import get_db
+from abc import ABC, abstractmethod
+
 from ingestor_orchestrator.dto import InstanceStats
-from ingestor_orchestrator.repositories import (
-    DashboardRepository,
-    SqlAlchemyDashboardRepository,
-)
 
 
-def get_dashboard_repository(
-    db: AsyncSession = Depends(get_db),
-) -> DashboardRepository:
-    return SqlAlchemyDashboardRepository(db)
-
-
-router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
-
-
-@router.get("/stats", response_model=list[InstanceStats])
-async def get_stats(
-    repo: DashboardRepository = Depends(get_dashboard_repository),
-):
-    return await repo.get_stats()
+class DashboardRepository(ABC):
+    @abstractmethod
+    async def get_stats(self) -> list[InstanceStats]:
+        """Return aggregated stats (job counts, empty resources) for all instances."""
+        ...

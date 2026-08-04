@@ -134,6 +134,7 @@ class TestSyncsApi:
 
     async def test_list_syncs_returns_records_with_instance_name(self, sess, instance):
         from ingestor_orchestrator.api.syncs import list_syncs
+        from ingestor_orchestrator.repositories import SqlAlchemySyncRepository
 
         service = SyncService(sess)
         record = await service.start_sync(instance.id)
@@ -148,7 +149,9 @@ class TestSyncsApi:
             },
         )
 
-        result = await list_syncs(limit=50, offset=0, db=sess)
+        result = await list_syncs(
+            limit=50, offset=0, repo=SqlAlchemySyncRepository(sess)
+        )
 
         assert len(result) == 1
         sync = result[0]

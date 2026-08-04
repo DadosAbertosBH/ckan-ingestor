@@ -13,28 +13,24 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+"""Abstract interface for metadata sync data access."""
 
-from ingestor_orchestrator.db import get_db
-from ingestor_orchestrator.dto import InstanceStats
-from ingestor_orchestrator.repositories import (
-    DashboardRepository,
-    SqlAlchemyDashboardRepository,
-)
+from abc import ABC, abstractmethod
+
+from ingestor_orchestrator.models import MetadataSync
 
 
-def get_dashboard_repository(
-    db: AsyncSession = Depends(get_db),
-) -> DashboardRepository:
-    return SqlAlchemyDashboardRepository(db)
+class SyncRepository(ABC):
+    @abstractmethod
+    async def list_syncs(
+        self,
+        instance_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[MetadataSync]:
+        """List metadata sync runs, most recent first.
 
-
-router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
-
-
-@router.get("/stats", response_model=list[InstanceStats])
-async def get_stats(
-    repo: DashboardRepository = Depends(get_dashboard_repository),
-):
-    return await repo.get_stats()
+        Optionally filter by instance_id. Supports pagination via limit/offset.
+        Eagerly loads the related CkanInstance via selectinload.
+        """
+        ...
