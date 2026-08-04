@@ -18,12 +18,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CHAR, DateTime, ForeignKey, String, Text
+from sqlalchemy import CHAR, ForeignKey, String, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ingestor_orchestrator.db import Base
-from ingestor_orchestrator.models.base import utcnow
+from ingestor_orchestrator.models.base import UTCDateTime, utcnow
 from ingestor_orchestrator.models.job_status import JobStatus
 
 if TYPE_CHECKING:
@@ -50,10 +50,10 @@ class LatestResourceJob(Base):
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=utcnow, nullable=False
+        UTCDateTime, default=utcnow, nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=utcnow, onupdate=utcnow, nullable=False
+        UTCDateTime, default=utcnow, onupdate=utcnow, nullable=False
     )
 
     job: Mapped["CkanDataJob"] = relationship()

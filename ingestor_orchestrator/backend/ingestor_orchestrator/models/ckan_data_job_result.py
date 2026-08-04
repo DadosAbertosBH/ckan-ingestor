@@ -22,7 +22,6 @@ from sqlalchemy import (
     CHAR,
     JSON,
     Boolean,
-    DateTime,
     ForeignKey,
     Integer,
     String,
@@ -31,7 +30,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ingestor_orchestrator.db import Base
-from ingestor_orchestrator.models.base import new_uuid, utcnow
+from ingestor_orchestrator.models.base import UTCDateTime, new_uuid, utcnow
 
 if TYPE_CHECKING:
     from ingestor_orchestrator.models.ckan_data_job import CkanDataJob
@@ -56,7 +55,7 @@ class CkanDataJobResult(Base):
     resource_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     encoding: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=utcnow, nullable=False
+        UTCDateTime, default=utcnow, nullable=False
     )
 
     job: Mapped["CkanDataJob"] = relationship(back_populates="results")

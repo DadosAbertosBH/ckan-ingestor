@@ -15,8 +15,8 @@ function makeJob(overrides: Partial<Job> = {}): Job {
       "https://dados.pbh.gov.br/dataset/test-dataset/resource/abc",
     status: "processing",
     idempotency_key: "abc",
-    created_at: "2025-01-01T00:00:00",
-    updated_at: "2025-01-01T00:00:00",
+    created_at: "2025-01-01T00:00:00+00:00",
+    updated_at: "2025-01-01T00:00:00+00:00",
     started_at: null,
     completed_at: null,
     ...overrides,
@@ -28,8 +28,8 @@ describe("jobDuration — stale completed_at bug", () => {
     // Old completed_at from a prior run is still set
     const job = makeJob({
       status: "processing",
-      started_at: "2026-06-08T21:19:06",
-      completed_at: "2026-06-08T20:58:13", // from previous run
+      started_at: "2026-06-08T21:19:06+00:00",
+      completed_at: "2026-06-08T20:58:13+00:00", // from previous run
     });
     const now = new Date("2026-06-08T21:19:36Z");
 

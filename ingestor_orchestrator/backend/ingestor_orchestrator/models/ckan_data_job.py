@@ -20,7 +20,6 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     CHAR,
-    DateTime,
     ForeignKey,
     Index,
     String,
@@ -32,7 +31,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ingestor_orchestrator.db import Base
-from ingestor_orchestrator.models.base import new_uuid, utcnow
+from ingestor_orchestrator.models.base import UTCDateTime, new_uuid, utcnow
 from ingestor_orchestrator.models.job_status import JobStatus
 
 if TYPE_CHECKING:
@@ -64,13 +63,13 @@ class CkanDataJob(Base):
     )
     ckan_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=utcnow, nullable=False
+        UTCDateTime, default=utcnow, nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=utcnow, onupdate=utcnow, nullable=False
+        UTCDateTime, default=utcnow, onupdate=utcnow, nullable=False
     )
-    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
     instance: Mapped["CkanInstance"] = relationship(back_populates="jobs")
     results: Mapped[list["CkanDataJobResult"]] = relationship(

@@ -15,7 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """CKAN Orchestrator database models — re-exported for backward compatibility."""
 
-from ingestor_orchestrator.models.base import new_uuid, utcnow
+from ingestor_orchestrator.models.base import UTCDateTime, new_uuid, utcnow
 from ingestor_orchestrator.models.ckan_data_job import CkanDataJob
 from ingestor_orchestrator.models.ckan_data_job_result import CkanDataJobResult
 from ingestor_orchestrator.models.ckan_instance import CkanInstance
@@ -32,6 +32,7 @@ __all__ = [
     "LatestResourceJob",
     "MetadataSync",
     "ResourceMetadataLabel",
+    "UTCDateTime",
     "new_uuid",
     "utcnow",
 ]

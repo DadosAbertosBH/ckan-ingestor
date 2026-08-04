@@ -16,6 +16,26 @@
 import uuid
 from datetime import datetime, timezone
 
+from sqlalchemy import DateTime as _SADateTime
+from sqlalchemy.types import TypeDecorator
+
+
+class UTCDateTime(TypeDecorator):
+    """DateTime that always returns timezone-aware values (UTC).
+
+    SQLAlchemy's ``DateTime`` (without ``timezone=True``) strips tzinfo on read.
+    This decorator restores ``timezone.utc`` so Pydantic serializes ISO 8601 with
+    ``+00:00`` and JavaScript ``new Date()`` parses correctly.
+    """
+
+    impl = _SADateTime
+    cache_ok = True
+
+    def process_result_value(self, value, dialect):
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)

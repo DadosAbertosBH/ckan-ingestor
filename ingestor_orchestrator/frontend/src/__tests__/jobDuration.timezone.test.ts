@@ -15,24 +15,21 @@ function makeJob(overrides: Partial<Job> = {}): Job {
       "https://dados.pbh.gov.br/dataset/test-dataset/resource/abc",
     status: "processing",
     idempotency_key: "abc",
-    created_at: "2025-01-01T00:00:00",
-    updated_at: "2025-01-01T00:00:00",
+    created_at: "2025-01-01T00:00:00+00:00",
+    updated_at: "2025-01-01T00:00:00+00:00",
     started_at: null,
     completed_at: null,
     ...overrides,
   };
 }
 
-describe("jobDuration — timezone bug", () => {
-  it("computes positive duration when API returns datetime without timezone", () => {
-    // Simulates: server is UTC, job started 5 minutes ago
-    // API returns "2025-06-08T19:50:00" (no Z, no +00:00)
-    // Browser's "now" is 2025-06-08T19:55:00 UTC
+describe("jobDuration — timezone handling", () => {
+  it("computes positive duration when API returns datetime with timezone", () => {
+    // API now returns ISO 8601 with +00:00 (e.g. "2025-06-08T19:50:00+00:00")
     const now = new Date("2025-06-08T19:55:00Z");
 
-    // This is what the API actually returns — no timezone suffix
     const job = makeJob({
-      started_at: "2025-06-08T19:50:00",
+      started_at: "2025-06-08T19:50:00+00:00",
       completed_at: null,
     });
 
@@ -41,11 +38,11 @@ describe("jobDuration — timezone bug", () => {
     expect(result!.ms).toBeGreaterThan(0);
   });
 
-  it("computes correct duration for completed job without timezone", () => {
+  it("computes correct duration for completed job with timezone", () => {
     const job = makeJob({
       status: "completed",
-      started_at: "2025-06-08T19:50:00",
-      completed_at: "2025-06-08T19:55:30",
+      started_at: "2025-06-08T19:50:00+00:00",
+      completed_at: "2025-06-08T19:55:30+00:00",
     });
 
     const result = jobDuration(job);
@@ -54,11 +51,11 @@ describe("jobDuration — timezone bug", () => {
     expect(result!.finished).toBe(true);
   });
 
-  it("computes positive duration for failed job without timezone", () => {
+  it("computes positive duration for failed job with timezone", () => {
     const job = makeJob({
       status: "failed",
-      started_at: "2025-06-08T19:50:00",
-      completed_at: "2025-06-08T19:50:12",
+      started_at: "2025-06-08T19:50:00+00:00",
+      completed_at: "2025-06-08T19:50:12+00:00",
     });
 
     const result = jobDuration(job);

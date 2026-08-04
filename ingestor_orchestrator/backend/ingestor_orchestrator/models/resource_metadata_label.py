@@ -16,8 +16,8 @@
 from datetime import datetime
 
 from ingestor_orchestrator.db import Base
-from ingestor_orchestrator.models.base import new_uuid, utcnow
-from sqlalchemy import CHAR, DateTime, String, UniqueConstraint
+from ingestor_orchestrator.models.base import UTCDateTime, new_uuid, utcnow
+from sqlalchemy import CHAR, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -31,5 +31,5 @@ class ResourceMetadataLabel(Base):
     resource_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     label: Mapped[str] = mapped_column(String(100), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=utcnow, nullable=False
+        UTCDateTime, default=utcnow, nullable=False
     )

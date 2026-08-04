@@ -18,11 +18,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CHAR, DateTime, ForeignKey, Integer, String
+from sqlalchemy import CHAR, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ingestor_orchestrator.db import Base
-from ingestor_orchestrator.models.base import new_uuid, utcnow
+from ingestor_orchestrator.models.base import UTCDateTime, new_uuid, utcnow
 
 if TYPE_CHECKING:
     from ingestor_orchestrator.models.ckan_instance import CkanInstance
@@ -38,9 +38,9 @@ class MetadataSync(Base):
         CHAR(36), ForeignKey("ckan_instance.id"), nullable=False, index=True
     )
     start_time: Mapped[datetime] = mapped_column(
-        DateTime, default=utcnow, nullable=False
+        UTCDateTime, default=utcnow, nullable=False
     )
-    end_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    end_time: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     total_packages: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     new_datasets: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

@@ -18,11 +18,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CHAR, DateTime, Integer, String
+from sqlalchemy import CHAR, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ingestor_orchestrator.db import Base
-from ingestor_orchestrator.models.base import new_uuid, utcnow
+from ingestor_orchestrator.models.base import UTCDateTime, new_uuid, utcnow
 
 if TYPE_CHECKING:
     from ingestor_orchestrator.models.ckan_data_job import CkanDataJob
@@ -36,15 +36,15 @@ class CkanInstance(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     url: Mapped[str] = mapped_column(String(512), nullable=False)
     last_metadata_synced: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True
+        UTCDateTime, nullable=True
     )
     dataset_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     resource_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=utcnow, nullable=False
+        UTCDateTime, default=utcnow, nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=utcnow, onupdate=utcnow, nullable=False
+        UTCDateTime, default=utcnow, onupdate=utcnow, nullable=False
     )
 
     jobs: Mapped[list["CkanDataJob"]] = relationship(back_populates="instance")
