@@ -31,7 +31,7 @@ class DuckDbCsvReader:
             try:
                 result = (
                     self.conn.execute(
-                        f"SELECT * FROM read_csv('{url}', sample_size=100000, "
+                        f"SELECT * FROM read_csv('{url}', sample_size=300000, "
                         f"encoding='{encoding}')"
                     )
                     .arrow()
