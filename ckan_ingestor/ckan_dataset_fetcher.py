@@ -59,6 +59,7 @@ class CkanDatasetFetcher(DatasetFetcher):
         import duckdb
 
         with duckdb.connect(":memory:") as conn:
+            conn.execute("SET threads = 1")
             table = (
                 conn.execute(f"""
             select unnest(result, max_depth :=2) from
