@@ -36,6 +36,7 @@ class Worker:
         self._running = False
         self._semaphore = asyncio.Semaphore(WORKER_CONCURRENCY)
         self._partition_locks: dict[tuple[str, int], asyncio.Lock] = {}
+        self._consumers: list = []
 
     def _get_partition_lock(self, record) -> asyncio.Lock:
         key = (record.topic, record.partition)
@@ -55,6 +56,8 @@ class Worker:
         main_consumer = create_kafka_consumer(
             settings.kafka_topic, settings.kafka_group_id
         )
+
+        self._consumers = [retry_consumer, main_consumer]
 
         logger.info(
             f"Worker started (concurrency={WORKER_CONCURRENCY}), "
@@ -126,6 +129,9 @@ class Worker:
 
     async def stop(self):
         self._running = False
+        for consumer in self._consumers:
+            await asyncio.get_event_loop().run_in_executor(None, consumer.close)
+        self._consumers.clear()
         logger.info("Worker stopped")
 
 
@@ -135,7 +141,7 @@ async def run():
 
     def _shutdown():
         logger.info("Worker shutting down...")
-        worker._running = False
+        asyncio.create_task(worker.stop())
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, _shutdown)

@@ -144,3 +144,26 @@ async def test_two_consumers_run_in_parallel():
 
     # Two consumer loops = up to 2 concurrent jobs
     assert max_active == 2
+
+
+@pytest.mark.asyncio
+async def test_stop_closes_kafka_consumers():
+    """Worker.stop() must close Kafka consumers for graceful shutdown.
+
+    Kubernetes sends SIGTERM — if consumers aren't closed, the group
+    takes longer to rebalance and offsets may be lost.
+    """
+    from ingestor_orchestrator.worker.consumer import Worker
+
+    worker = Worker()
+    worker._running = True
+
+    main = MagicMock()
+    retry = MagicMock()
+    worker._consumers = [main, retry]
+
+    await worker.stop()
+
+    main.close.assert_called_once()
+    retry.close.assert_called_once()
+    assert worker._running is False
