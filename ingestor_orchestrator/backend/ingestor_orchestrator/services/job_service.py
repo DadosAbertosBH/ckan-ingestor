@@ -19,7 +19,7 @@ import logging
 import traceback
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ingestor_orchestrator.config import settings
@@ -330,6 +330,17 @@ class JobService:
         self.db.add(ResourceMetadataLabel(resource_id=resource_id, label=label))
         await self.db.flush()
 
+    async def _unlabel_resource(self, resource_id: str, label: str) -> None:
+        """Remove a label from a resource, if it exists."""
+        result = await self.db.execute(
+            delete(ResourceMetadataLabel).where(
+                ResourceMetadataLabel.resource_id == resource_id,
+                ResourceMetadataLabel.label == label,
+            )
+        )
+        if result.rowcount and result.rowcount > 0:
+            await self.db.flush()
+
     async def _apply_ingestion_labels(
         self,
         resource_id: str,
@@ -342,6 +353,8 @@ class JobService:
         expected_columns: int | None = None,
     ) -> None:
         """Apply labels based on ingestion metadata."""
+        # Resource is no longer empty — remove stale label if present
+        await self._unlabel_resource(resource_id, "empty")
         # single-row
         if rows_processed == 1:
             await self._label_resource(resource_id, "single-row")

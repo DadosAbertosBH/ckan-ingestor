@@ -122,6 +122,75 @@ class TestJobServiceLabelResource:
         assert len(rows) == 1
 
 
+class TestJobServiceUnlabelResource:
+    async def test_unlabel_resource_removes_label(self, db_session):
+        """_unlabel_resource removes an existing label from a resource."""
+        service = JobService(db_session)
+        await service._label_resource("r1", "empty")
+        # Verify it exists
+        rows = (
+            (
+                await db_session.execute(
+                    select(ResourceMetadataLabel).where(
+                        ResourceMetadataLabel.resource_id == "r1"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1
+
+        await service._unlabel_resource("r1", "empty")
+
+        rows = (
+            (
+                await db_session.execute(
+                    select(ResourceMetadataLabel).where(
+                        ResourceMetadataLabel.resource_id == "r1"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 0
+
+    async def test_unlabel_resource_noop_when_label_missing(self, db_session):
+        """_unlabel_resource does nothing when the label doesn't exist."""
+        service = JobService(db_session)
+        # Should not raise
+        await service._unlabel_resource("r-nonexistent", "empty")
+
+
+class TestApplyIngestionLabelsRemovesEmpty:
+    async def test_empty_label_removed_when_rows_processed_gt_zero(
+        self, db_session
+    ):
+        """When rows_processed > 0, the 'empty' label must be removed."""
+        service = JobService(db_session)
+        await service._label_resource("r-rempty", "empty")
+
+        await service._apply_ingestion_labels(
+            resource_id="r-rempty",
+            rows_processed=100,
+        )
+
+        rows = (
+            (
+                await db_session.execute(
+                    select(ResourceMetadataLabel).where(
+                        ResourceMetadataLabel.resource_id == "r-rempty",
+                        ResourceMetadataLabel.label == "empty",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 0, "empty label should be removed when rows_processed > 0"
+
+
 class TestApplyIngestionLabelsSingleColumn:
     async def test_single_column_label_applied(self, db_session):
         """_apply_ingestion_labels creates 'single-column' when column_count=1."""
