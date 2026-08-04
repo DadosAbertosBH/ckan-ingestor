@@ -61,12 +61,11 @@ class CkanDatasetFetcher(DatasetFetcher):
         with duckdb.connect(":memory:") as conn:
             conn.execute("SET threads = 1")
             conn.execute("SET memory_limit = '1GB'")
+            url = f"{self.url}/api/action/current_package_list_with_resources?limit={PAGE_SIZE}&offset={offset}"
             table = (
-                conn.execute(f"""
-            select unnest(result, max_depth :=2) from
-            read_json('{self.url}/api/action/current_package_list_with_resources?limit={PAGE_SIZE}&offset={offset}',
-                maximum_object_size=1073741824)
-            """)
+                conn.execute(
+                    f"select unnest(result, max_depth :=2) from read_json('{url}',maximum_object_size=1073741824)"
+                )
                 .arrow()
                 .read_all()
             )
