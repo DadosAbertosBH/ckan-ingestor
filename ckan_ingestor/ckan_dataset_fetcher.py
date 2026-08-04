@@ -21,7 +21,7 @@ from ckan_ingestor.dataset_fetcher import DatasetFetcher
 
 logger = logging.getLogger(__name__)
 
-PAGE_SIZE = 50
+PAGE_SIZE = 25
 
 
 class CkanDatasetFetcher(DatasetFetcher):
