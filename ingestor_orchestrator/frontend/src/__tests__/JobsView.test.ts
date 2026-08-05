@@ -401,6 +401,88 @@ describe("JobsView — sortable column headers", () => {
   });
 });
 
+describe("JobsView — Kafka column", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders Kafka column header", async () => {
+    mockFetchJobs.mockResolvedValue([]);
+
+    const { wrapper } = await mountWithRouter();
+    await flushPromises();
+
+    const ths = wrapper.findAll("th");
+    const kafkaHeader = ths.find((th) => th.text() === "Kafka");
+    expect(kafkaHeader).toBeTruthy();
+  });
+
+  it("renders Kafka metadata when job has kafka_topic", async () => {
+    mockFetchJobs.mockResolvedValue([
+      {
+        id: "job-1",
+        resource_id: "abc-123",
+        resource_name: "Test Resource",
+        resource_url: null,
+        resource_format: "CSV",
+        dataset_name: "my-dataset",
+        status: "completed",
+        idempotency_key: "abc-123",
+        created_at: "2025-01-01T00:00:00Z",
+        updated_at: "2025-01-01T00:00:00Z",
+        started_at: null,
+        completed_at: null,
+        ckan_resource_url:
+          "https://dados.pbh.gov.br/dataset/my-dataset/resource/abc-123",
+        labels: [],
+        instance_name: "PBH",
+        kafka_topic: "ckan.resource.sync",
+        kafka_partition: 2,
+        kafka_offset: 150,
+      },
+    ]);
+
+    const { wrapper } = await mountWithRouter();
+    await flushPromises();
+
+    // The Kafka cell should contain topic, partition, and offset
+    expect(wrapper.text()).toContain("ckan.resource.sync");
+    expect(wrapper.text()).toContain("2");
+    expect(wrapper.text()).toContain("150");
+  });
+
+  it("shows — when job has no kafka_topic", async () => {
+    mockFetchJobs.mockResolvedValue([
+      {
+        id: "job-1",
+        resource_id: "abc-123",
+        resource_name: "Test Resource",
+        resource_url: null,
+        resource_format: "CSV",
+        dataset_name: "my-dataset",
+        status: "completed",
+        idempotency_key: "abc-123",
+        created_at: "2025-01-01T00:00:00Z",
+        updated_at: "2025-01-01T00:00:00Z",
+        started_at: null,
+        completed_at: null,
+        ckan_resource_url:
+          "https://dados.pbh.gov.br/dataset/my-dataset/resource/abc-123",
+        labels: [],
+        instance_name: "PBH",
+        kafka_topic: null,
+        kafka_partition: null,
+        kafka_offset: null,
+      },
+    ]);
+
+    const { wrapper } = await mountWithRouter();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("\u2014");
+  });
+});
+
 describe("JobsView — tags filter", () => {
   beforeEach(() => {
     vi.restoreAllMocks();

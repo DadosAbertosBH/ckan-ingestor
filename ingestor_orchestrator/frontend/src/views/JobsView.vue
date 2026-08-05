@@ -61,6 +61,7 @@
                     <th>Job ID</th>
                     <th>Format</th>
                     <th>Labels</th>
+                    <th>Kafka</th>
                     <th>Status</th>
                     <th
                         class="sortable-header sortable-header-duration"
@@ -130,12 +131,20 @@
                     </td>
                     <td>{{ job.resource_format || "—" }}</td>
                     <td><ResourceLabelBadge :labels="job.labels ?? []" /></td>
+                    <td class="mono kafka-cell">
+                        <span v-if="job.kafka_topic" class="kafka-meta">
+                            {{ job.kafka_topic }}[{{ job.kafka_partition }}] @{{
+                                job.kafka_offset
+                            }}
+                        </span>
+                        <span v-else>\u2014</span>
+                    </td>
                     <td><JobStatusBadge :status="job.status" /></td>
                     <td class="mono">{{ formatJobDuration(job) }}</td>
                     <td>{{ formatTime(job.created_at) }}</td>
                 </tr>
                 <tr v-if="jobs.length === 0">
-                    <td colspan="7" class="empty-state">No jobs found</td>
+                    <td colspan="8" class="empty-state">No jobs found</td>
                 </tr>
             </tbody>
         </table>
@@ -544,6 +553,18 @@ onMounted(async () => {
     font-family: "SF Mono", monospace;
     font-size: 13px;
     color: #9ca3af;
+}
+
+.kafka-cell {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.kafka-meta {
+    color: #a78bfa;
+    font-size: 12px;
 }
 
 .resource-path {
