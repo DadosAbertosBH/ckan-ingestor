@@ -22,7 +22,6 @@ import pytest
 from ingestor_orchestrator.models import (
     CkanDataJob,
     CkanDataJobResult,
-    CkanInstance,
     LatestResourceJob,
     MetadataSync,
     ResourceMetadataLabel,
