@@ -58,7 +58,6 @@ worker:
       cpu: 500m
       memory: 4Gi
     limits:
-      cpu: 500m
       memory: 4Gi
 
 # -- Kafka configuration
@@ -87,7 +86,6 @@ postgres:
       cpu: "100m"
     limits:
       memory: "512Mi"
-      cpu: "500m"
   # -- Backup configuration (CloudNativePG barmanObjectStore)
   backup:
     # -- Enable backup via barmanObjectStore (S3-compatible)
