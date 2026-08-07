@@ -133,9 +133,8 @@
                     <td><ResourceLabelBadge :labels="job.labels ?? []" /></td>
                     <td class="mono kafka-cell">
                         <span v-if="job.kafka_topic" class="kafka-meta">
-                            {{ job.kafka_topic }}[{{ job.kafka_partition }}] @{{
-                                job.kafka_offset
-                            }}
+                            {{ job.kafka_topic }}<br />[{{ job.kafka_partition }}]
+                            @{{ job.kafka_offset }}
                         </span>
                         <span v-else>\u2014</span>
                     </td>
@@ -559,7 +558,6 @@ onMounted(async () => {
     max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 .kafka-meta {

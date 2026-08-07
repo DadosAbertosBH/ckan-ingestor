@@ -89,9 +89,8 @@
                 <div v-if="job.kafka_topic" class="info-item info-item-kafka">
                     <span class="info-label">Kafka</span>
                     <span class="info-value mono kafka-meta">
-                        {{ job.kafka_topic }}[{{ job.kafka_partition }}] @{{
-                            job.kafka_offset
-                        }}
+                        {{ job.kafka_topic }}<br />[{{ job.kafka_partition }}]
+                        @{{ job.kafka_offset }}
                     </span>
                 </div>
                 <div class="info-item">

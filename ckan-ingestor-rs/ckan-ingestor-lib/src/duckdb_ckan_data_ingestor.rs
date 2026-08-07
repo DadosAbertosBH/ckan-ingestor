@@ -270,28 +270,19 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
                 }
                 self.create_table_from_batches(resource_id, &batches)
                     .map(|_| DatastoreResult::Success)
-                    .unwrap_or_else(|e| DatastoreResult::Error(e))
+                    .unwrap_or_else(DatastoreResult::Error)
             }
             Err(e) => DatastoreResult::Error(e),
         }
     }
 
     /// Try CSV ingestion with encoding fallback.
+    /// Uses atomic `CREATE TABLE AS SELECT * FROM read_csv(...)` to avoid
+    /// per-row INSERT pattern that triggers DuckLake internal errors.
     /// Returns Ok(true) on success, Ok(false) if all encodings exhausted,
     /// Err on unexpected errors.
     fn try_csv(&self, csv_reader: &CsvReader, resource: &CkanResource) -> Result<bool> {
-        let resource_id = &resource.id;
-
-        match csv_reader.read_batches(resource) {
-            Ok(batches) => {
-                self.create_table_from_batches(resource_id, &batches)?;
-                Ok(true)
-            }
-            Err(_) => {
-                // All encodings failed
-                Ok(false)
-            }
-        }
+        csv_reader.try_create_table(&resource.id, resource)
     }
 
     /// Try JSON ingestion via DuckDB's read_json.
@@ -308,7 +299,12 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
         Ok(())
     }
 
-    /// Create a DuckDB table from Arrow RecordBatches using the DuckDB appender.
+    /// Create a DuckDB table from Arrow RecordBatches using atomic
+    /// `CREATE TABLE AS SELECT * FROM read_csv(...)`.
+    ///
+    /// Writes batches to a temporary CSV, then loads atomically to avoid
+    /// the per-row INSERT pattern that triggers DuckLake internal errors
+    /// ("Calling GetValueInternal on a value that is NULL").
     fn create_table_from_batches(
         &self,
         resource_id: &str,
@@ -318,78 +314,63 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
             anyhow::bail!("No data to create table from");
         }
 
-        // Build CREATE TABLE statement from first batch's schema
-        let schema = batches[0].schema();
-        let columns: Vec<String> = schema
-            .fields()
-            .iter()
-            .map(|f| format!("\"{}\" VARCHAR", f.name()))
-            .collect();
-        let create_sql = format!(
-            "CREATE OR REPLACE TABLE \"{}\" ({})",
+        // Write Arrow batches to a temporary CSV file
+        let temp_path = std::env::temp_dir().join(format!("{}.csv", uuid::Uuid::new_v4()));
+        self.write_batches_to_csv(&temp_path, batches)?;
+
+        // Atomic CTAS — single statement, no per-row INSERTs
+        let result = self.conn.execute_batch(&format!(
+            "CREATE OR REPLACE TABLE \"{}\" AS SELECT * FROM read_csv('{}', header=true, auto_detect=true)",
             resource_id,
-            columns.join(", ")
-        );
-        self.conn.execute_batch(&create_sql)?;
+            temp_path.to_string_lossy()
+        ));
 
-        // Use a more reliable approach: export Arrow batches to CSV strings
-        // and use DuckDB's read_csv to load them.
-        // DuckDB appender with dynamic typing from Arrow is tricky.
-        // Instead, we flush to a temporary view using DuckDB's Arrow support.
-        //
-        // The simplest reliable approach: write to temp CSV then read_csv.
-        // But that requires filesystem access. For in-memory, we use
-        // the Arrow extension via DuckDB's native `arrow_scan` support.
-        //
-        // Actually, the cleanest approach for in-memory: use Arrow FFI
-        // registration which DuckDB supports natively.
+        // Cleanup temp file regardless of outcome
+        let _ = std::fs::remove_file(&temp_path);
 
-        // Use DuckDB's Arrow table function via native arrow_scan
-        // This is the most reliable approach for in-memory Arrow → DuckDB
-        self.load_batches_via_duckdb_execute(resource_id, batches)
+        result?;
+        Ok(())
     }
 
-    /// Load Arrow RecordBatches into a DuckDB table by executing per-batch
-    /// INSERT statements via DuckDB's Arrow → SQL conversion.
-    fn load_batches_via_duckdb_execute(
+    /// Write Arrow RecordBatches to a CSV file with proper quoting.
+    fn write_batches_to_csv(
         &self,
-        resource_id: &str,
+        path: &std::path::Path,
         batches: &[duckdb::arrow::array::RecordBatch],
     ) -> Result<()> {
-        // Create the table first (already done by caller)
-        // Convert batches to Arrow array stream and use DuckDB Arrow extension
-        // The duckdb crate supports Arrow via the `arrow` feature
+        use std::io::Write;
 
-        // Strategy: register each batch as a temporary view and INSERT from it.
-        // DuckDB Python can reference Arrow variables directly in SQL.
-        // In Rust, we need to go through the Arrow extension.
-        //
-        // Simplest approach: convert batches to Vec<Vec<Option<String>>> and
-        // use append_row with tuples.
+        let mut file = std::fs::File::create(path)?;
 
+        // Write header
+        if let Some(first) = batches.first() {
+            let schema = first.schema();
+            let headers: Vec<String> = schema
+                .fields()
+                .iter()
+                .map(|f| csv_quote_field(f.name()))
+                .collect();
+            writeln!(file, "{}", headers.join(","))?;
+        }
+
+        // Write data rows
         for batch in batches {
             let num_rows = batch.num_rows();
             let num_cols = batch.num_columns();
 
             for row_idx in 0..num_rows {
-                let mut row_values: Vec<String> = Vec::with_capacity(num_cols);
+                let mut row_parts: Vec<String> = Vec::with_capacity(num_cols);
                 for col_idx in 0..num_cols {
                     let col = batch.column(col_idx);
                     if col.is_null(row_idx) {
-                        row_values.push(String::new());
+                        row_parts.push(String::new());
                     } else {
                         let val =
                             duckdb::arrow::util::display::array_value_to_string(col, row_idx)?;
-                        row_values.push(val);
+                        row_parts.push(csv_quote_field(&val));
                     }
                 }
-                // Build an INSERT for this row
-                let placeholders = vec!["?"; num_cols].join(", ");
-                let sql = format!("INSERT INTO \"{}\" VALUES ({})", resource_id, placeholders);
-                let params: Vec<&dyn duckdb::ToSql> =
-                    row_values.iter().map(|v| v as &dyn duckdb::ToSql).collect();
-                self.conn
-                    .execute(&sql, duckdb::params_from_iter(params.iter()))?;
+                writeln!(file, "{}", row_parts.join(","))?;
             }
         }
 
@@ -407,6 +388,16 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
             duckdb::params![resource_id],
         )?;
         Ok(())
+    }
+}
+
+/// Quote a CSV field if it contains special characters (commas, quotes, newlines).
+fn csv_quote_field(field: &str) -> String {
+    if field.contains(',') || field.contains('"') || field.contains('\n') || field.contains('\r') {
+        let escaped = field.replace('"', "\"\"");
+        format!("\"{}\"", escaped)
+    } else {
+        field.to_string()
     }
 }
 
