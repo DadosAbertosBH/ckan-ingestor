@@ -15,11 +15,10 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, Result};
 use ckan_ingestor_lib::config::S3Settings;
 use ckan_ingestor_lib::ingestion_service::IngestionService;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
-use futures::FutureExt;
 use futures::StreamExt;
 use log::{error, info, warn};
 use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
@@ -156,30 +155,28 @@ impl Worker {
                                     };
                                     let _guard = lock.lock().await;
 
-                                    match process_message(&owned, &producer, s3.clone()).await {
-                                        Ok(()) => {
-                                            if let Err(e) = commit_offset_with_retry(
-                                                &topic,
-                                                partition,
-                                                owned.offset(),
-                                                &|tpl| consumer.commit(tpl, rdkafka::consumer::CommitMode::Sync),
-                                                10,
-                                            )
-                                            .await
-                                            {
-                                                error!(
-                                                    "Commit failed for {}/{}@{}: {}",
-                                                    topic, partition, owned.offset(), e
-                                                );
-                                            }
-                                        }
-                                        Err(e) => {
-                                            error!(
-                                                "Not committing offset {}/{}@{} — processing failed: {}",
+                                    process_message(&owned, &producer, s3.clone())
+                                        .await
+                                        .unwrap_or_else(|e| {
+                                            panic!(
+                                                "Processing failed for {}/{}@{}: {}",
                                                 topic, partition, owned.offset(), e
-                                            );
-                                        }
-                                    }
+                                            )
+                                        });
+                                    commit_offset_with_retry(
+                                        &topic,
+                                        partition,
+                                        owned.offset(),
+                                        &|tpl| consumer.commit(tpl, rdkafka::consumer::CommitMode::Sync),
+                                        10,
+                                    )
+                                    .await
+                                    .unwrap_or_else(|e| {
+                                        panic!(
+                                            "Commit failed for {}/{}@{}: {}",
+                                            topic, partition, owned.offset(), e
+                                        )
+                                    });
                                 });
                             }
                             Ok(Some(Err(e))) => {
@@ -213,70 +210,24 @@ async fn process_message(
     producer: &Arc<FutureProducer>,
     s3: Arc<S3DocumentIngestor>,
 ) -> Result<()> {
-    let result = std::panic::AssertUnwindSafe(process_message_inner(msg, producer, s3))
-        .catch_unwind()
-        .await;
-    match result {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(e)) => {
-            error!(
-                "Job processing failed [topic={} partition={} offset={}]: {}",
-                msg.topic(),
-                msg.partition(),
-                msg.offset(),
-                e
-            );
-            Err(e)
-        }
-        Err(panic_err) => {
-            let panic_msg = if let Some(s) = panic_err.downcast_ref::<&str>() {
-                s.to_string()
-            } else if let Some(s) = panic_err.downcast_ref::<String>() {
-                s.clone()
-            } else {
-                "unknown panic".to_string()
-            };
-            error!(
-                "Job panicked [topic={} partition={} offset={}]: {}",
-                msg.topic(),
-                msg.partition(),
-                msg.offset(),
-                panic_msg
-            );
-            Err(anyhow!("Panic: {}", panic_msg))
-        }
-    }
-}
+    let payload: &[u8] = msg.payload().ok_or_else(|| {
+        anyhow!(
+            "Empty message payload [topic={} partition={} offset={}]",
+            msg.topic(),
+            msg.partition(),
+            msg.offset()
+        )
+    })?;
 
-async fn process_message_inner(
-    msg: &rdkafka::message::OwnedMessage,
-    producer: &Arc<FutureProducer>,
-    s3: Arc<S3DocumentIngestor>,
-) -> Result<()> {
-    let payload: &[u8] = match msg.payload() {
-        Some(p) => p,
-        None => {
-            bail!(
-                "Empty message payload [topic={} partition={} offset={}]",
-                msg.topic(),
-                msg.partition(),
-                msg.offset()
-            );
-        }
-    };
-
-    let job_msg: JobMessage = match serde_json::from_slice(payload) {
-        Ok(m) => m,
-        Err(e) => {
-            bail!(
-                "Failed to parse job message [topic={} partition={} offset={}]: {}",
-                msg.topic(),
-                msg.partition(),
-                msg.offset(),
-                e
-            );
-        }
-    };
+    let job_msg: JobMessage = serde_json::from_slice(payload).map_err(|e| {
+        anyhow!(
+            "Failed to parse job message [topic={} partition={} offset={}]: {}",
+            msg.topic(),
+            msg.partition(),
+            msg.offset(),
+            e
+        )
+    })?;
 
     let job_id = job_msg.job_id.clone();
     let resource_id = job_msg.resource_id.clone();
@@ -433,7 +384,7 @@ async fn ensure_topics(bootstrap: &str, topic: &str, retry_topic: &str) {
         .iter()
         .map(|t| NewTopic {
             name: t,
-            num_partitions: 10,
+            num_partitions: 5,
             replication: TopicReplication::Fixed(1),
             config: vec![],
         })
