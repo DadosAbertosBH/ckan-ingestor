@@ -24,6 +24,14 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Panics in spawned tasks don't kill the process by default.
+    // We need abort-on-panic so that Docker/K8s restarts the worker,
+    // re-delivering the failed message for retry.
+    std::panic::set_hook(Box::new(|info| {
+        eprintln!("{}", info);
+        std::process::abort();
+    }));
+
     eprintln!("ckan-ingestor-consumer starting...");
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
