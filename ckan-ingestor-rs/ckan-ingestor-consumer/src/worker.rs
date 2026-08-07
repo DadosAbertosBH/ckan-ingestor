@@ -20,6 +20,7 @@ use ckan_ingestor_lib::config::S3Settings;
 use ckan_ingestor_lib::ingestion_service::IngestionService;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
 use futures::FutureExt;
+use futures::StreamExt;
 use log::{error, info, warn};
 use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
 use rdkafka::consumer::{Consumer, StreamConsumer};
@@ -31,6 +32,7 @@ use std::env;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
+use tokio::time::timeout as tokio_timeout;
 
 use crate::messages::{JobMessage, JobResultMessage};
 
@@ -109,6 +111,8 @@ impl Worker {
                 .set("enable.auto.commit", "false")
                 .set("enable.auto.offset.store", "false")
                 .set("max.poll.interval.ms", "1800000")
+                .set("session.timeout.ms", "45000")
+                .set("heartbeat.interval.ms", "15000")
                 .set("partition.assignment.strategy", "cooperative-sticky")
                 .create()?;
             consumer.subscribe(&[&topic, &retry_topic])?;
@@ -118,16 +122,21 @@ impl Worker {
 
             info!("Consumer stream started");
 
-            use futures::StreamExt;
+            let poll_timeout_secs: u64 = env::var("KAFKA_POLL_TIMEOUT_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(300);
+            let poll_timeout = Duration::from_secs(poll_timeout_secs);
+
             let stream_ended = loop {
                 tokio::select! {
                     _ = shutdown.notified() => {
                         info!("Shutdown signal received");
                         return Ok(());
                     }
-                    result = stream.next() => {
+                    result = next_with_timeout(&mut stream, poll_timeout) => {
                         match result {
-                            Some(Ok(msg)) => {
+                            Ok(Some(Ok(msg))) => {
                                 let topic = msg.topic().to_string();
                                 let partition = msg.partition();
                                 let owned = msg.detach();
@@ -149,40 +158,19 @@ impl Worker {
 
                                     match process_message(&owned, &producer, s3.clone()).await {
                                         Ok(()) => {
-                                            // Commit offset with up to 10 retries
-                                            let mut committed = false;
-                                            for attempt in 1..=10 {
-                                                let mut tpl = rdkafka::TopicPartitionList::new();
-                                                {
-                                                    let mut tp = tpl.add_partition(&topic, partition);
-                                                    let _ = tp.set_offset(rdkafka::Offset::Offset(owned.offset() + 1));
-                                                }
-                                                match consumer.commit(&tpl, rdkafka::consumer::CommitMode::Sync) {
-                                                    Ok(_) => {
-                                                        info!(
-                                                            "Committed offset {}/{}@{} (attempt {})",
-                                                            topic, partition, owned.offset(), attempt
-                                                        );
-                                                        committed = true;
-                                                        break;
-                                                    }
-                                                    Err(e) => {
-                                                        error!(
-                                                            "Failed to commit offset {}/{}@{} (attempt {}/10): {}",
-                                                            topic, partition, owned.offset(), attempt, e
-                                                        );
-                                                        if attempt < 10 {
-                                                            tokio::time::sleep(Duration::from_millis(100 * attempt)).await;
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            if !committed {
+                                            if let Err(e) = commit_offset_with_retry(
+                                                &topic,
+                                                partition,
+                                                owned.offset(),
+                                                &|tpl| consumer.commit(tpl, rdkafka::consumer::CommitMode::Sync),
+                                                10,
+                                            )
+                                            .await
+                                            {
                                                 error!(
-                                                    "FATAL: Failed to commit offset {}/{}@{} after 10 attempts, exiting",
-                                                    topic, partition, owned.offset()
+                                                    "Commit failed for {}/{}@{}: {}",
+                                                    topic, partition, owned.offset(), e
                                                 );
-                                                std::process::exit(1);
                                             }
                                         }
                                         Err(e) => {
@@ -194,10 +182,17 @@ impl Worker {
                                     }
                                 });
                             }
-                            Some(Err(e)) => {
+                            Ok(Some(Err(e))) => {
                                 error!("Consumer error: {}", e);
                             }
-                            None => {
+                            Ok(None) => {
+                                break true;
+                            }
+                            Err(_elapsed) => {
+                                warn!(
+                                    "Consumer poll timed out after {}s — recreating consumer",
+                                    poll_timeout_secs
+                                );
                                 break true;
                             }
                         }
@@ -522,4 +517,148 @@ async fn publish_result(producer: &Arc<FutureProducer>, msg: &JobResultMessage) 
         msg.job_id, msg.status, RESULT_TOPIC, partition, offset
     );
     Ok(())
+}
+
+// ── Stream stall detection ────────────────────────────────────────────
+
+/// Wraps `futures::StreamExt::next()` with a timeout.
+///
+/// Returns:
+/// - `Ok(Some(item))` — item received before timeout
+/// - `Ok(None)` — stream ended normally
+/// - `Err(Elapsed)` — timeout fired; the stream is stalled
+async fn next_with_timeout<S, I>(
+    stream: &mut S,
+    timeout_dur: Duration,
+) -> Result<Option<I>, tokio::time::error::Elapsed>
+where
+    S: futures::Stream<Item = I> + Unpin,
+{
+    tokio_timeout(timeout_dur, stream.next()).await
+}
+
+/// Commits a single offset with retry logic.
+///
+/// Returns `Ok(())` once the commit succeeds, or `Err` if all retries are
+/// exhausted.  Unlike the old inline code, this does **not** call
+/// `std::process::exit` — the caller decides what to do (typically log and
+/// let the message be re-delivered).
+async fn commit_offset_with_retry<F>(
+    topic: &str,
+    partition: i32,
+    offset: i64,
+    commit_fn: &F,
+    max_retries: u64,
+) -> Result<()>
+where
+    F: Fn(&rdkafka::TopicPartitionList) -> rdkafka::error::KafkaResult<()>,
+{
+    for attempt in 1..=max_retries {
+        let mut tpl = rdkafka::TopicPartitionList::new();
+        {
+            let mut tp = tpl.add_partition(topic, partition);
+            let _ = tp.set_offset(rdkafka::Offset::Offset(offset + 1));
+        }
+        match commit_fn(&tpl) {
+            Ok(_) => {
+                info!(
+                    "Committed offset {}/{}@{} (attempt {})",
+                    topic, partition, offset, attempt
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                error!(
+                    "Failed to commit offset {}/{}@{} (attempt {}/{}): {}",
+                    topic, partition, offset, attempt, max_retries, e
+                );
+                if attempt < max_retries {
+                    tokio::time::sleep(Duration::from_millis(100 * attempt)).await;
+                }
+            }
+        }
+    }
+    error!(
+        "Failed to commit offset {}/{}@{} after {} attempts — message will be re-delivered",
+        topic, partition, offset, max_retries
+    );
+    Err(anyhow!(
+        "Commit failed for {}/{}@{} after {} retries",
+        topic,
+        partition,
+        offset,
+        max_retries
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::stream::{self};
+    use std::time::Duration;
+
+    /// A stream that is permanently stalled — simulates a consumer whose
+    /// underlying TCP connection is broken and librdkafka cannot recover.
+    #[tokio::test]
+    async fn stalled_stream_triggers_timeout() {
+        let mut stalled = stream::pending::<u32>();
+        let result = next_with_timeout(&mut stalled, Duration::from_millis(50)).await;
+        assert!(
+            result.is_err(),
+            "Stalled stream must trigger Elapsed error, got {:?}",
+            result
+        );
+    }
+
+    /// An active stream that yields immediately must NOT trigger the timeout.
+    #[tokio::test]
+    async fn active_stream_does_not_trigger_timeout() {
+        let mut stream = stream::iter(vec![1, 2, 3]);
+        let result = next_with_timeout(&mut stream, Duration::from_millis(200)).await;
+        assert!(
+            matches!(result, Ok(Some(1))),
+            "Active stream should yield item, got {:?}",
+            result
+        );
+    }
+
+    /// A stream that ends normally returns Ok(None), not an error.
+    #[tokio::test]
+    async fn ended_stream_returns_none() {
+        let mut stream = stream::iter(Vec::<u32>::new());
+        let result = next_with_timeout(&mut stream, Duration::from_millis(200)).await;
+        assert!(
+            matches!(result, Ok(None)),
+            "Ended stream should return Ok(None), got {:?}",
+            result
+        );
+    }
+
+    /// Commit failure after all retries must NOT crash the process.
+    /// When the consumer connection is dead (e.g. after a reconnection),
+    /// the commit will fail. The message will be re-delivered to the new
+    /// consumer — at-least-once semantics are acceptable.
+    #[tokio::test]
+    async fn commit_failure_after_retries_does_not_panic() {
+        // Simulate a commit function that always fails.
+        let commit_fn = |_tpl: &rdkafka::TopicPartitionList| -> rdkafka::error::KafkaResult<()> {
+            Err(rdkafka::error::KafkaError::Canceled)
+        };
+
+        let result = commit_offset_with_retry(
+            "test-topic",
+            0,
+            42,
+            &commit_fn,
+            3, // max_retries
+        )
+        .await;
+
+        // Must not panic/exit — just return the error.
+        assert!(
+            result.is_err(),
+            "Commit failure should return Err, got {:?}",
+            result
+        );
+    }
 }
