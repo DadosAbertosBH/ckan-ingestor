@@ -1,0 +1,5 @@
+{
+  "fields": [{"id":"_id","type":"int"},{"id":"ORGAO/ENTIDADE","type":"text"},{"id":"TOTAL","type":"text"}],
+  "records": [
+    [1,"PRODABEL","14"]
+]}

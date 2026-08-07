@@ -1,0 +1,25 @@
+[package]
+name = "ckan_ingestor_consumer"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ckan-ingestor-consumer"
+path = "src/main.rs"
+
+[dependencies]
+ckan_ingestor_lib = { path = "../ckan-ingestor-lib" }
+rdkafka = { version = "0.37", features = ["cmake-build"] }
+tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "macros", "sync", "signal"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+futures = "0.3"
+log = "0.4"
+env_logger = "0.11"
+duckdb = { version = "1.5.5" }
+aws-config = { version = "1.1", default-features = false, features = ["behavior-version-latest", "rustls", "rt-tokio"] }
+aws-sdk-s3 = { version = "1.14", default-features = false, features = ["rustls", "rt-tokio"] }
+
+[dev-dependencies]
+httpmock = "0.7"

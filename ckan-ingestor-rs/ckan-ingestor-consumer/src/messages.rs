@@ -1,0 +1,55 @@
+// ckan-ingestor-rs
+//
+// This file is part of ckan-ingestor-rs.
+//
+// ckan-ingestor-rs is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// ckan-ingestor-rs is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
+
+use serde::{Deserialize, Serialize};
+
+/// Message consumed from `ckan.ingest.jobs` / `ckan.ingest.jobs.retry`.
+///
+/// All fields are guaranteed present by the producer.
+#[derive(Debug, Deserialize)]
+pub struct JobMessage {
+    pub job_id: String,
+    pub resource_id: String,
+    pub ckan_url: String,
+    #[serde(default)]
+    pub resource_url: String,
+    #[serde(default)]
+    pub resource_format: String,
+}
+
+/// The result message published to `ckan.ingest.jobs_result`.
+#[derive(Debug, Serialize)]
+pub struct JobResultMessage {
+    pub job_id: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rows_processed: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_rows: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_size: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encoding: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_columns: Option<i64>,
+    pub datastore_active: bool,
+    pub labels: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview: Option<Vec<serde_json::Value>>,
+}

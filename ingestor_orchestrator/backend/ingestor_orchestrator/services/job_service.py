@@ -58,7 +58,11 @@ class JobService:
         await self.db.flush()  # get job.id from DB-generated UUID
 
         # Publish to Kafka
-        record_meta = await self._publish_job(job.id, data.ckan_url)
+        record_meta = await self._publish_job(
+            job.id, job.resource_id, data.ckan_url,
+            resource_url=job.resource_url or "",
+            resource_format=job.resource_format or "",
+        )
 
         # Store Kafka routing metadata for debugging
         job.kafka_topic = record_meta.topic
@@ -85,7 +89,10 @@ class JobService:
 
         # Publish to retry topic
         record_meta = await self._publish_job(
-            job.id, job.ckan_url or "", retry=True
+            job.id, job.resource_id, job.ckan_url or "",
+            resource_url=job.resource_url or "",
+            resource_format=job.resource_format or "",
+            retry=True,
         )
 
         # Store Kafka routing metadata for debugging
@@ -106,71 +113,73 @@ class JobService:
         )
         return job
 
-    async def process_job(self, job_id: str, ckan_url: str = "") -> None:
-        """Called by the worker to process a job."""
+    async def apply_result(self, result_data: dict) -> None:
+        """Apply a result published by the ingestion worker.
+
+        Receives a dict with the shape published to ckan.ingest.jobs_result.
+        No Kafka dependency — the caller is responsible for consuming the topic.
+        """
+        job_id = result_data["job_id"]
+        status = result_data["status"]
+
         job = await self.db.get(CkanDataJob, job_id)
         if not job:
-            logger.error(f"Job {job_id} not found")
+            logger.error(f"Job {job_id} not found for result processing")
             return
 
-        job.status = JobStatus.PROCESSING
-        job.started_at = datetime.now(timezone.utc)
-        job.completed_at = None
-        job.updated_at = datetime.now(timezone.utc)
-        await self.db.commit()
+        if status == "PROCESSING":
+            job.status = JobStatus.PROCESSING
+            job.started_at = datetime.now(timezone.utc)
+            job.completed_at = None
+            job.updated_at = datetime.now(timezone.utc)
+            await self.db.commit()
+            return
 
-        try:
-            (
-                rows_processed,
-                preview,
-                expected_rows,
-                resource_size,
-                encoding,
-                datastore_active,
-                expected_columns,
-            ) = await asyncio.to_thread(
-                self._run_ingestion_sync, job.resource_id, ckan_url
-            )
-            result = CkanDataJobResult(
-                job_id=job.id,
-                success=True,
-                dataset_preview=self._sanitize_preview(preview),
-                rows_processed=rows_processed,
-                expected_rows=expected_rows,
-                resource_size=resource_size,
-                encoding=encoding,
-            )
-            self.db.add(result)
-            job.status = JobStatus.COMPLETED
-            job.completed_at = datetime.now(timezone.utc)
-            logger.info(f"Job {job.id} completed successfully ({rows_processed} rows)")
-
-            if rows_processed == 0:
-                await self._label_resource(job.resource_id, "empty")
-            else:
-                column_count = len(preview[0]) if preview else 0
-                await self._apply_ingestion_labels(
-                    resource_id=job.resource_id,
-                    rows_processed=rows_processed,
-                    expected_rows=expected_rows,
-                    resource_size=resource_size,
-                    encoding=encoding,
-                    datastore_active=datastore_active,
-                    column_count=column_count,
-                    expected_columns=expected_columns,
-                )
-        except Exception as e:
-            error_trace = traceback.format_exc()
+        if status == "FAILED":
+            error_message = result_data.get("error_message", "")
             result = CkanDataJobResult(
                 job_id=job.id,
                 success=False,
-                error_message=str(e)[:16_000],
-                error_trace=error_trace[:16_000],
+                error_message=error_message[:16_000],
+                error_trace="",
             )
             self.db.add(result)
             job.status = JobStatus.FAILED
             job.completed_at = datetime.now(timezone.utc)
-            logger.error(f"Job {job.id} failed: {e}")
+            job.updated_at = datetime.now(timezone.utc)
+            await self._update_latest_resource_status(job)
+            await self.db.commit()
+            logger.error(f"Job {job.id} failed: {error_message}")
+            return
+
+        # SUCCESS or "empty"
+        rows_processed = result_data.get("rows_processed", 0)
+        expected_rows = result_data.get("expected_rows")
+        resource_size = result_data.get("resource_size")
+        encoding = result_data.get("encoding")
+        _datastore_active = result_data.get("datastore_active", False)
+        _expected_columns = result_data.get("expected_columns")
+        labels = result_data.get("labels", [])
+
+        dataset_preview = sanitize_json_preview(result_data.get("preview"))
+
+        result = CkanDataJobResult(
+            job_id=job.id,
+            success=True,
+            dataset_preview=dataset_preview,
+            rows_processed=rows_processed,
+            expected_rows=expected_rows,
+            resource_size=resource_size,
+            encoding=encoding,
+        )
+        self.db.add(result)
+        job.status = JobStatus.COMPLETED
+        job.completed_at = datetime.now(timezone.utc)
+        logger.info(f"Job {job.id} completed ({rows_processed} rows)")
+
+        # Apply labels from the worker
+        for label in labels:
+            await self._label_resource(job.resource_id, label)
 
         job.updated_at = datetime.now(timezone.utc)
         await self._update_latest_resource_status(job)
@@ -401,7 +410,10 @@ class JobService:
     async def _publish_job(
         self,
         job_id: str,
+        resource_id: str,
         ckan_url: str = "",
+        resource_url: str = "",
+        resource_format: str = "",
         retry: bool = False,
     ):
         """Publish job to Kafka and return RecordMetadata."""
@@ -410,7 +422,13 @@ class JobService:
         from ingestor_orchestrator.kafka import get_kafka_producer
 
         topic = settings.kafka_topic_retry if retry else settings.kafka_topic
-        payload = json.dumps({"job_id": job_id, "ckan_url": ckan_url}).encode()
+        payload = json.dumps({
+            "job_id": job_id,
+            "resource_id": resource_id,
+            "ckan_url": ckan_url,
+            "resource_url": resource_url or "",
+            "resource_format": resource_format or "",
+        }).encode()
 
         def _send():
             producer = get_kafka_producer()

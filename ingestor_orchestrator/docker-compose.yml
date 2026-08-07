@@ -20,19 +20,26 @@ services:
     image: apache/kafka-native:4.2.1
     ports:
       - "9092:9092"
+      - "9094:9094"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_NUM_PARTITIONS: 10
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     volumes:
       - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9092"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
       - orchestrator_net
 
@@ -114,7 +121,7 @@ services:
       mysql:
         condition: service_healthy
       kafka:
-        condition: service_started
+        condition: service_healthy
       db-init:
         condition: service_completed_successfully
     env_file:
@@ -130,51 +137,38 @@ services:
     networks:
       - orchestrator_net
 
-  worker:
+  worker-rust:
     build:
-      context: ..
-      dockerfile: ingestor_orchestrator/Dockerfile
+      context: ../ckan-ingestor-rs
+      dockerfile: Dockerfile
+    init: true
+    restart: unless-stopped
     depends_on:
-      mysql:
-        condition: service_healthy
       kafka:
-        condition: service_started
+        condition: service_healthy
+      minio-setup:
+        condition: service_completed_successfully
       db-init:
         condition: service_completed_successfully
-    env_file:
-      - .env
     environment:
-      INGEST_ORCH_MYSQL_HOST: mysql
-      INGEST_ORCH_MYSQL_PORT: "3306"
-      INGEST_ORCH_MYSQL_USER: root
-      INGEST_ORCH_MYSQL_PASSWORD: ${INGEST_ORCH_MYSQL_PASSWORD:-ckan_orch_pass}
-      INGEST_ORCH_MYSQL_DATABASE: ${INGEST_ORCH_MYSQL_DATABASE:-ingestor_orchestrator}
-      INGEST_ORCH_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      WORKER_CONCURRENCY: "10"
-    command: python -m ingestor_orchestrator.worker.consumer
-    networks:
-      - orchestrator_net
-
-  frontend:
-    image: node:20-alpine
-    working_dir: /app
-    volumes:
-      - ./frontend:/app
-      - frontend_node_modules:/app/node_modules
-    ports:
-      - "5173:5173"
-    depends_on:
-      - api
-    environment:
-      - VITE_API_URL=http://api:8000
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC: ckan.ingest.jobs
+      KAFKA_TOPIC_RETRY: ckan.ingest.jobs.retry
+      KAFKA_GROUP_ID: ckan-worker
+      DUCKLAKE_DATABASE: ":memory:"
+      DUCKLAKE_CATALOG_URI: "postgres:dbname=ducklake_catalog host=postgres user=postgres password=postgres"
+      S3_ENDPOINT: minio:9000
+      S3_BUCKET: warehouse
+      S3_ACCESS_KEY_ID: admin
+      S3_SECRET_ACCESS_KEY: password
+      S3_USE_SSL: "false"
+      RUST_LOG: info
     networks:
       - orchestrator_net
 
 volumes:
   mysql_data:
   kafka_data:
-  frontend_node_modules:
 
 networks:
   orchestrator_net:

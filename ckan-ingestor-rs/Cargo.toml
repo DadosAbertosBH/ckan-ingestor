@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "ckan-ingestor-lib",
+    "ckan-ingestor-consumer",
+]
+resolver = "2"

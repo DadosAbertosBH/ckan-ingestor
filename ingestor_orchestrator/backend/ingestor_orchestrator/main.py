@@ -36,6 +36,7 @@ from ingestor_orchestrator.api import (
 from ingestor_orchestrator.config import settings
 from ingestor_orchestrator.db import async_session
 from ingestor_orchestrator.services.scheduler import Scheduler
+from ingestor_orchestrator.worker.result_consumer import ResultConsumer
 
 logger = logging.getLogger(__name__)
 
@@ -51,15 +52,21 @@ async def lifespan(app: FastAPI):
 
     scheduler = Scheduler()
     scheduler_task = asyncio.create_task(scheduler.start())
-    logger.info("Scheduler started")
+
+    result_consumer = ResultConsumer()
+    result_task = asyncio.create_task(result_consumer.start())
+
+    logger.info("Scheduler and result consumer started")
 
     yield
 
     # Shutdown
     scheduler.stop()
     scheduler_task.cancel()
+    result_consumer.stop()
+    result_task.cancel()
     try:
-        await scheduler_task
+        await asyncio.gather(scheduler_task, result_task, return_exceptions=True)
     except asyncio.CancelledError:
         pass
     logger.info("API server stopped")
