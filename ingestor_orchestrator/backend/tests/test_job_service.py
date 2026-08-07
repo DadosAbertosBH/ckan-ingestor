@@ -14,6 +14,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import datetime
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from ingestor_orchestrator.models import CkanDataJob, JobStatus
 from ingestor_orchestrator.services.job_service import JobService
@@ -110,3 +113,62 @@ class TestApplyResultPreview:
         import json
 
         json.dumps(stored)
+
+
+@pytest.mark.asyncio
+class TestApplyResultRetry:
+    async def test_retries_when_job_not_found(
+        self, db_session, default_instance
+    ):
+        """RED: apply_result must retry with backoff when the job
+        hasn't been committed yet (race condition fix).
+        """
+        job = CkanDataJob(
+            resource_id="r-retry-rc",
+            dataset_name="ds-retry-rc",
+            idempotency_key="r-retry-rc",
+            instance_id=default_instance.id,
+            status=JobStatus.PENDING,
+        )
+        db_session.add(job)
+        await db_session.flush()
+
+        data = _make_success_result_data()
+        data["job_id"] = job.id
+
+        service = JobService(db_session)
+
+        # Simulate: first 2 db.get calls return None, 3rd returns the job,
+        # 4th+ are for unrelated lookups (LatestResourceJob, etc.)
+        mock_get = AsyncMock(side_effect=[None, None, job, None])
+        with patch.object(service.db, "get", mock_get):
+            await service.apply_result(data)
+
+        assert mock_get.call_count >= 3, (
+            f"apply_result must retry when job not found, "
+            f"got {mock_get.call_count} calls"
+        )
+
+    async def test_stops_retrying_after_max_attempts(
+        self, db_session, default_instance
+    ):
+        """RED: apply_result must stop retrying after max attempts
+        and log the error instead of looping forever.
+        """
+        data = _make_success_result_data()
+        data["job_id"] = "nonexistent-job-id"
+
+        service = JobService(db_session)
+
+        # db.get always returns None (job truly doesn't exist)
+        mock_get = AsyncMock(return_value=None)
+        with patch.object(service.db, "get", mock_get):
+            await service.apply_result(data)
+
+        # Should stop after max retries (not infinite loop)
+        assert mock_get.call_count > 1, (
+            "apply_result should retry at least once"
+        )
+        assert mock_get.call_count <= 10, (
+            "apply_result must not retry forever"
+        )

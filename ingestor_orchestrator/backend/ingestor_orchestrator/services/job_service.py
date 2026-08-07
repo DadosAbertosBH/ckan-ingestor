@@ -113,16 +113,44 @@ class JobService:
         )
         return job
 
+    async def _get_job_with_retry(
+        self,
+        job_id: str,
+        max_retries: int = 5,
+        base_delay: float = 0.1,
+    ) -> CkanDataJob | None:
+        """Look up a job with exponential backoff.
+
+        Handles the race condition where a result message (PROCESSING,
+        SUCCESS, FAILED) arrives before create_job's transaction commits.
+        """
+        for attempt in range(max_retries):
+            job = await self.db.get(CkanDataJob, job_id)
+            if job is not None:
+                return job
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                logger.warning(
+                    f"Job {job_id} not found, retrying in {delay:.2f}s "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                await asyncio.sleep(delay)
+        return None
+
     async def apply_result(self, result_data: dict) -> None:
         """Apply a result published by the ingestion worker.
 
         Receives a dict with the shape published to ckan.ingest.jobs_result.
         No Kafka dependency — the caller is responsible for consuming the topic.
+
+        Retries with exponential backoff when the job isn't found — handles
+        the race condition where the result message arrives before the
+        create_job transaction is committed.
         """
         job_id = result_data["job_id"]
         status = result_data["status"]
 
-        job = await self.db.get(CkanDataJob, job_id)
+        job = await self._get_job_with_retry(job_id)
         if not job:
             logger.error(f"Job {job_id} not found for result processing")
             return

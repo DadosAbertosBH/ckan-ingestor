@@ -43,6 +43,18 @@ services:
     networks:
       - orchestrator_net
 
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v3.9.0
+    ports:
+      - "8080:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: kafka:9092
+    networks:
+      - orchestrator_net
+
   minio:
     image: quay.io/minio/minio:RELEASE.2024-08-03T04-33-23Z
     ports:
