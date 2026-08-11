@@ -17,7 +17,7 @@
 
 use rdkafka::client::ClientContext;
 use rdkafka::consumer::{ConsumerContext, Rebalance};
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::worker_coordinator::Command;
 
