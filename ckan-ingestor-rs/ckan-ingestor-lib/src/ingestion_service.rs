@@ -24,6 +24,24 @@ use crate::s3_document_ingestor::S3DocumentIngestor;
 use anyhow::Result;
 use duckdb::arrow::array::RecordBatch;
 
+/// Maximum length of a preview value before it gets replaced with a placeholder.
+/// Kafka messages have size limits; very large text columns can cause memory issues.
+pub const PREVIEW_MAX_VALUE_LEN: usize = 1000;
+
+/// Truncate a JSON value if it's a string exceeding `PREVIEW_MAX_VALUE_LEN`.
+/// Returns the original value unchanged for non-strings and short strings.
+pub fn truncate_preview_value(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::String(s) if s.len() > PREVIEW_MAX_VALUE_LEN => {
+            serde_json::Value::String(format!(
+                "[TRUNCATED: value too large for preview ({} bytes)]",
+                s.len()
+            ))
+        }
+        other => other,
+    }
+}
+
 /// High-level ingestion service — mirrors Python's `_run_ingestion_sync`
 /// but lives in the library layer so the worker stays thin.
 ///
@@ -154,7 +172,7 @@ impl IngestionService {
                             row_idx,
                         )
                         .unwrap_or_default();
-                        serde_json::Value::String(s)
+                        truncate_preview_value(serde_json::Value::String(s))
                     };
                     row_map.insert(name.clone(), val);
                 }

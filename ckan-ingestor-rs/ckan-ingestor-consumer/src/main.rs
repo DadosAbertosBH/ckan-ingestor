@@ -15,8 +15,12 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
+mod coordinator_consumer_context;
+mod message_source;
 mod messages;
 mod worker;
+mod worker_coordinator;
+mod worker_thread;
 
 use anyhow::Result;
 use log::info;

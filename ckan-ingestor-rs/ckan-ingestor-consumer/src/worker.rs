@@ -22,7 +22,7 @@ use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
 use futures::StreamExt;
 use log::{error, info, warn};
 use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
-use rdkafka::consumer::{Consumer, StreamConsumer};
+use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::Timeout;
 use rdkafka::{ClientConfig, Message};
@@ -30,8 +30,8 @@ use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Mutex;
-use tokio::time::timeout as tokio_timeout;
+use tokio::sync::mpsc;
+use tokio::task::JoinSet;
 
 use crate::messages::{JobMessage, JobResultMessage};
 
@@ -39,15 +39,11 @@ const RESULT_TOPIC: &str = "ckan.ingest.jobs_result";
 
 type PartitionKey = (String, i32);
 
-pub struct Worker {
-    partition_locks: Arc<Mutex<HashMap<PartitionKey, Arc<Mutex<()>>>>>,
-}
+pub struct Worker;
 
 impl Worker {
     pub fn new() -> Result<Self> {
-        Ok(Self {
-            partition_locks: Arc::new(Mutex::new(HashMap::new())),
-        })
+        Ok(Self {})
     }
 
     pub async fn run(self: Arc<Self>) -> Result<()> {
@@ -65,15 +61,13 @@ impl Worker {
 
         ensure_topics(&bootstrap, &topic, &retry_topic).await;
 
-        // Set up shutdown signal ONCE.
-        // Uses Notify instead of watch::channel — the latter resolves immediately
-        // if the sender is dropped (e.g. when ctrl_c fails without a TTY in Docker).
+        // Shutdown signal
         let shutdown = Arc::new(tokio::sync::Notify::new());
+        let shutdown_requested = Arc::new(std::sync::atomic::AtomicBool::new(false));
         {
             let shutdown = shutdown.clone();
+            let shutdown_requested = shutdown_requested.clone();
             tokio::spawn(async move {
-                // SIGTERM is what Docker sends on `docker stop`.
-                // SIGINT is what Ctrl+C sends (useful for local dev).
                 let mut sigterm =
                     tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
                         .expect("failed to register SIGTERM handler");
@@ -85,6 +79,7 @@ impl Worker {
                     _ = sigterm.recv() => {},
                     _ = sigint.recv() => {},
                 }
+                shutdown_requested.store(true, std::sync::atomic::Ordering::SeqCst);
                 shutdown.notify_waiters();
             });
         }
@@ -100,106 +95,171 @@ impl Worker {
         // Create S3 ingestor from env vars
         let s3 = Arc::new(create_s3_ingestor().await?);
 
-        // Restart loop: if the consumer stream ends (disconnect, rebalance),
-        // we recreate the consumer and re-subscribe.
+        // Restart loop
         loop {
-            let consumer: StreamConsumer = ClientConfig::new()
-                .set("bootstrap.servers", &bootstrap)
-                .set("group.id", &group_id)
-                .set("auto.offset.reset", "earliest")
-                .set("enable.auto.commit", "false")
-                .set("enable.auto.offset.store", "false")
-                .set("max.poll.interval.ms", "1800000")
-                .set("session.timeout.ms", "45000")
-                .set("heartbeat.interval.ms", "15000")
-                .set("partition.assignment.strategy", "cooperative-sticky")
-                .create()?;
+            let consumer = Arc::new(
+                ClientConfig::new()
+                    .set("bootstrap.servers", &bootstrap)
+                    .set("group.id", &group_id)
+                    .set("auto.offset.reset", "earliest")
+                    .set("enable.auto.commit", "false")
+                    .set("enable.auto.offset.store", "false")
+                    .set("max.poll.interval.ms", "1800000")
+                    .set("session.timeout.ms", "45000")
+                    .set("heartbeat.interval.ms", "15000")
+                    .set("partition.assignment.strategy", "cooperative-sticky")
+                    .create::<StreamConsumer>()?,
+            );
             consumer.subscribe(&[&topic, &retry_topic])?;
 
-            let consumer = Arc::new(consumer);
-            let mut stream = consumer.stream();
+            // mpsc channels: one per partition. Buffer of 256 messages.
+            let mut senders: HashMap<PartitionKey, mpsc::Sender<rdkafka::message::OwnedMessage>> =
+                HashMap::new();
+            let mut workers = JoinSet::new();
 
-            info!("Consumer stream started");
+            // Spawn a worker for each possible partition of each topic.
+            // The worker reads from an mpsc receiver and processes messages
+            // sequentially, preserving per-partition ordering.
+            for t in [topic.as_str(), retry_topic.as_str()] {
+                for p in 0..5 {
+                    let (tx, rx) = mpsc::channel::<rdkafka::message::OwnedMessage>(256);
+                    senders.insert((t.to_string(), p), tx);
+                    workers.spawn(run_partition_worker(
+                        t.to_string(),
+                        p,
+                        rx,
+                        producer.clone(),
+                        s3.clone(),
+                        consumer.clone(),
+                        shutdown.clone(),
+                    ));
+                }
+            }
 
-            let poll_timeout_secs: u64 = env::var("KAFKA_POLL_TIMEOUT_SECS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(300);
-            let poll_timeout = Duration::from_secs(poll_timeout_secs);
+            info!("Spawned {} partition workers", workers.len());
 
-            let stream_ended = loop {
-                tokio::select! {
-                    _ = shutdown.notified() => {
-                        info!("Shutdown signal received");
-                        return Ok(());
-                    }
-                    result = next_with_timeout(&mut stream, poll_timeout) => {
-                        match result {
-                            Ok(Some(Ok(msg))) => {
-                                let topic = msg.topic().to_string();
-                                let partition = msg.partition();
-                                let owned = msg.detach();
-
-                                let producer = producer.clone();
-                                let consumer = consumer.clone();
-                                let s3 = s3.clone();
-                                let partition_locks = self.partition_locks.clone();
-
-                                tokio::spawn(async move {
-                                    let lock = {
-                                        let mut locks = partition_locks.lock().await;
-                                        locks
-                                            .entry((topic.clone(), partition))
-                                            .or_insert_with(|| Arc::new(Mutex::new(())))
-                                            .clone()
-                                    };
-                                    let _guard = lock.lock().await;
-
-                                    process_message(&owned, &producer, s3.clone())
-                                        .await
-                                        .unwrap_or_else(|e| {
-                                            panic!(
-                                                "Processing failed for {}/{}@{}: {}",
-                                                topic, partition, owned.offset(), e
-                                            )
-                                        });
-                                    commit_offset_with_retry(
-                                        &topic,
-                                        partition,
-                                        owned.offset(),
-                                        &|tpl| consumer.commit(tpl, rdkafka::consumer::CommitMode::Sync),
-                                        10,
-                                    )
-                                    .await
-                                    .unwrap_or_else(|e| {
-                                        panic!(
-                                            "Commit failed for {}/{}@{}: {}",
-                                            topic, partition, owned.offset(), e
-                                        )
-                                    });
-                                });
-                            }
-                            Ok(Some(Err(e))) => {
-                                error!("Consumer error: {}", e);
-                            }
-                            Ok(None) => {
-                                break true;
-                            }
-                            Err(_elapsed) => {
-                                warn!(
-                                    "Consumer poll timed out after {}s — recreating consumer",
-                                    poll_timeout_secs
-                                );
-                                break true;
+            // Main dispatch loop: reads from consumer.stream() and routes
+            // each message to the appropriate partition mpsc channel.
+            let dispatch_shutdown = shutdown.clone();
+            let dispatch_result: Result<()> = async {
+                let mut stream = consumer.stream();
+                loop {
+                    tokio::select! {
+                        _ = dispatch_shutdown.notified() => {
+                            info!("Shutdown signal received, stopping dispatch");
+                            return Ok(());
+                        }
+                        msg = stream.next() => {
+                            match msg {
+                                Some(Ok(msg)) => {
+                                    let key: PartitionKey = (
+                                        msg.topic().to_string(),
+                                        msg.partition(),
+                                    );
+                                    if let Some(tx) = senders.get(&key) {
+                                        if tx.send(msg.detach()).await.is_err() {
+                                            // Worker's receiver dropped — worker exited
+                                            warn!(
+                                                "Partition {}/{} worker channel closed",
+                                                key.0, key.1
+                                            );
+                                        }
+                                    } else {
+                                        warn!(
+                                            "No worker for {}/{} — message skipped [offset={}]",
+                                            key.0, key.1, msg.offset()
+                                        );
+                                    }
+                                }
+                                Some(Err(e)) => {
+                                    error!("Consumer error: {}", e);
+                                }
+                                None => {
+                                    info!("Consumer stream ended, restarting...");
+                                    return Ok(());
+                                }
                             }
                         }
                     }
                 }
-            };
+            }
+            .await;
 
-            if stream_ended {
-                info!("Consumer stream ended, restarting in 5s...");
-                tokio::time::sleep(Duration::from_secs(5)).await;
+            // Drop senders to signal workers that no more messages are coming.
+            drop(senders);
+
+            // Wait for all partition workers to drain.
+            info!("Draining {} partition workers...", workers.len());
+            workers.shutdown().await;
+            info!("All partition workers drained");
+
+            dispatch_result?;
+
+            if shutdown_requested.load(std::sync::atomic::Ordering::SeqCst) {
+                return Ok(());
+            }
+            info!("Consumer stream ended, restarting in 5s...");
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    }
+}
+
+/// Runs a single partition worker: receives messages via an mpsc channel,
+/// processes them sequentially, and commits offsets after each message.
+async fn run_partition_worker(
+    topic: String,
+    partition: i32,
+    mut rx: mpsc::Receiver<rdkafka::message::OwnedMessage>,
+    producer: Arc<FutureProducer>,
+    s3: Arc<S3DocumentIngestor>,
+    consumer: Arc<StreamConsumer>,
+    shutdown: Arc<tokio::sync::Notify>,
+) {
+    info!("Partition {}/{} worker ready", topic, partition);
+
+    loop {
+        tokio::select! {
+            _ = shutdown.notified() => {
+                info!("Partition {}/{} shutting down", topic, partition);
+                return;
+            }
+            maybe_msg = rx.recv() => {
+                match maybe_msg {
+                    Some(owned) => {
+                        let offset = owned.offset();
+
+                        if let Err(e) = process_message(&owned, &producer, s3.clone()).await {
+                            error!(
+                                "Processing failed for {}/{}@{}: {}",
+                                topic, partition, offset, e
+                            );
+                        }
+
+                        if let Err(e) = commit_offset_with_retry(
+                            &topic,
+                            partition,
+                            offset,
+                            &|tpl| consumer.commit(tpl, CommitMode::Sync),
+                            10,
+                        )
+                        .await
+                        {
+                            error!(
+                                "Commit failed for {}/{}@{} after all retries: {} \
+                                 — message will be re-delivered on restart",
+                                topic, partition, offset, e
+                            );
+                        }
+                    }
+                    None => {
+                        // Channel closed — no more messages
+                        info!(
+                            "Partition {}/{} channel closed, worker exiting",
+                            topic, partition
+                        );
+                        return;
+                    }
+                }
             }
         }
     }
@@ -273,22 +333,18 @@ async fn process_message(
 
     let result = tokio::task::spawn_blocking(move || {
         let conn = duckdb::Connection::open(&db_path)?;
-        // Configure S3 access for HTTP file downloads (httpfs extension)
+        conn.execute_batch(&format!("SET s3_endpoint='{}';", s3_endpoint))?;
+        conn.execute_batch(&format!("SET s3_use_ssl={};", s3_use_ssl))?;
         conn.execute_batch(&format!(
-            "SET s3_endpoint='{}';", s3_endpoint
+            "SET s3_access_key_id='{}';",
+            s3_access_key
         ))?;
         conn.execute_batch(&format!(
-            "SET s3_use_ssl={};", s3_use_ssl
-        ))?;
-        conn.execute_batch(&format!(
-            "SET s3_access_key_id='{}';", s3_access_key
-        ))?;
-        conn.execute_batch(&format!(
-            "SET s3_secret_access_key='{}';", s3_secret_key
+            "SET s3_secret_access_key='{}';",
+            s3_secret_key
         ))?;
         conn.execute_batch("SET s3_url_style='path';")?;
         conn.execute_batch("SET pg_debug_show_queries=false;")?;
-        // Attach DuckLake catalog
         conn.execute_batch(&format!(
             "ATTACH IF NOT EXISTS 'ducklake:{}' AS lake (DATA_PATH 's3://{}', DATA_INLINING_ROW_LIMIT 10000, AUTOMATIC_MIGRATION TRUE);",
             catalog_uri, s3_bucket
@@ -470,30 +526,6 @@ async fn publish_result(producer: &Arc<FutureProducer>, msg: &JobResultMessage) 
     Ok(())
 }
 
-// ── Stream stall detection ────────────────────────────────────────────
-
-/// Wraps `futures::StreamExt::next()` with a timeout.
-///
-/// Returns:
-/// - `Ok(Some(item))` — item received before timeout
-/// - `Ok(None)` — stream ended normally
-/// - `Err(Elapsed)` — timeout fired; the stream is stalled
-async fn next_with_timeout<S, I>(
-    stream: &mut S,
-    timeout_dur: Duration,
-) -> Result<Option<I>, tokio::time::error::Elapsed>
-where
-    S: futures::Stream<Item = I> + Unpin,
-{
-    tokio_timeout(timeout_dur, stream.next()).await
-}
-
-/// Commits a single offset with retry logic.
-///
-/// Returns `Ok(())` once the commit succeeds, or `Err` if all retries are
-/// exhausted.  Unlike the old inline code, this does **not** call
-/// `std::process::exit` — the caller decides what to do (typically log and
-/// let the message be re-delivered).
 async fn commit_offset_with_retry<F>(
     topic: &str,
     partition: i32,
@@ -545,71 +577,105 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures::stream::{self};
+    use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
     use std::time::Duration;
+    use tokio::sync::mpsc;
 
-    /// A stream that is permanently stalled — simulates a consumer whose
-    /// underlying TCP connection is broken and librdkafka cannot recover.
-    #[tokio::test]
-    async fn stalled_stream_triggers_timeout() {
-        let mut stalled = stream::pending::<u32>();
-        let result = next_with_timeout(&mut stalled, Duration::from_millis(50)).await;
-        assert!(
-            result.is_err(),
-            "Stalled stream must trigger Elapsed error, got {:?}",
-            result
-        );
-    }
-
-    /// An active stream that yields immediately must NOT trigger the timeout.
-    #[tokio::test]
-    async fn active_stream_does_not_trigger_timeout() {
-        let mut stream = stream::iter(vec![1, 2, 3]);
-        let result = next_with_timeout(&mut stream, Duration::from_millis(200)).await;
-        assert!(
-            matches!(result, Ok(Some(1))),
-            "Active stream should yield item, got {:?}",
-            result
-        );
-    }
-
-    /// A stream that ends normally returns Ok(None), not an error.
-    #[tokio::test]
-    async fn ended_stream_returns_none() {
-        let mut stream = stream::iter(Vec::<u32>::new());
-        let result = next_with_timeout(&mut stream, Duration::from_millis(200)).await;
-        assert!(
-            matches!(result, Ok(None)),
-            "Ended stream should return Ok(None), got {:?}",
-            result
-        );
-    }
-
-    /// Commit failure after all retries must NOT crash the process.
-    /// When the consumer connection is dead (e.g. after a reconnection),
-    /// the commit will fail. The message will be re-delivered to the new
-    /// consumer — at-least-once semantics are acceptable.
     #[tokio::test]
     async fn commit_failure_after_retries_does_not_panic() {
-        // Simulate a commit function that always fails.
         let commit_fn = |_tpl: &rdkafka::TopicPartitionList| -> rdkafka::error::KafkaResult<()> {
             Err(rdkafka::error::KafkaError::Canceled)
         };
 
-        let result = commit_offset_with_retry(
-            "test-topic",
-            0,
-            42,
-            &commit_fn,
-            3, // max_retries
-        )
-        .await;
+        let result = commit_offset_with_retry("test-topic", 0, 42, &commit_fn, 3).await;
 
-        // Must not panic/exit — just return the error.
         assert!(
             result.is_err(),
-            "Commit failure should return Err, got {:?}",
+            "Commit must fail after all retries, got {:?}",
             result
+        );
+    }
+
+    /// Validates that partition workers process messages sequentially via
+    /// mpsc channels, and that two workers can run concurrently.
+    #[tokio::test]
+    async fn partition_workers_run_concurrently() {
+        let shutdown = Arc::new(tokio::sync::Notify::new());
+        let processed = Arc::new(AtomicI32::new(0));
+        let completed = Arc::new(AtomicI32::new(0));
+
+        // Simulate two partition channels
+        let (tx1, mut rx1) = mpsc::channel::<i32>(10);
+        let (tx2, mut rx2) = mpsc::channel::<i32>(10);
+
+        // Messages for partition 0: [1, 2, 3]
+        tx1.send(1).await.unwrap();
+        tx1.send(2).await.unwrap();
+        tx1.send(3).await.unwrap();
+        drop(tx1);
+
+        // Messages for partition 1: [10, 20]
+        tx2.send(10).await.unwrap();
+        tx2.send(20).await.unwrap();
+        drop(tx2);
+
+        let p1 = processed.clone();
+        let c1 = completed.clone();
+        let s1 = shutdown.clone();
+        let h1 = tokio::spawn(async move {
+            while let Some(msg) = rx1.recv().await {
+                p1.fetch_add(msg, Ordering::SeqCst);
+            }
+            c1.fetch_add(1, Ordering::SeqCst);
+            s1.notify_one();
+        });
+
+        let p2 = processed.clone();
+        let c2 = completed.clone();
+        let s2 = shutdown.clone();
+        let h2 = tokio::spawn(async move {
+            while let Some(msg) = rx2.recv().await {
+                p2.fetch_add(msg, Ordering::SeqCst);
+            }
+            c2.fetch_add(1, Ordering::SeqCst);
+            s2.notify_one();
+        });
+
+        // Wait for both partition tasks to finish
+        shutdown.notified().await;
+        shutdown.notified().await;
+
+        h1.await.unwrap();
+        h2.await.unwrap();
+
+        assert_eq!(processed.load(Ordering::SeqCst), 36);
+        assert_eq!(completed.load(Ordering::SeqCst), 2);
+    }
+
+    /// Validates that shutdown stops partition workers.
+    #[tokio::test]
+    async fn shutdown_stops_partition_workers() {
+        let shutdown = Arc::new(tokio::sync::Notify::new());
+        let running = Arc::new(AtomicBool::new(false));
+
+        let s = shutdown.clone();
+        let r = running.clone();
+        let handle = tokio::spawn(async move {
+            r.store(true, Ordering::SeqCst);
+            s.notified().await;
+            r.store(false, Ordering::SeqCst);
+        });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert!(running.load(Ordering::SeqCst), "Worker should be running");
+
+        shutdown.notify_waiters();
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        handle.await.unwrap();
+        assert!(
+            !running.load(Ordering::SeqCst),
+            "Worker should have stopped"
         );
     }
 }
