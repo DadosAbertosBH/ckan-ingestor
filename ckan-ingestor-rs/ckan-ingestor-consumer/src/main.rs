@@ -18,6 +18,7 @@
 mod coordinator_consumer_context;
 mod message_source;
 mod messages;
+mod result_publisher;
 mod worker;
 mod worker_coordinator;
 mod worker_thread;

@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 /// Message consumed from `ckan.ingest.jobs` / `ckan.ingest.jobs.retry`.
 ///
 /// All fields are guaranteed present by the producer.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct JobMessage {
     pub job_id: String,
     pub resource_id: String,
