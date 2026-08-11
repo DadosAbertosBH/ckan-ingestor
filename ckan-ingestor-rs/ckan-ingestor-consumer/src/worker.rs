@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use ckan_ingestor_lib::config::S3Settings;
 use ckan_ingestor_lib::ingestion_service::IngestionService;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
@@ -507,7 +507,7 @@ async fn publish_result(producer: &Arc<FutureProducer>, msg: &JobResultMessage) 
         .key(&msg.job_id)
         .payload(&payload);
 
-    let (partition, offset) = producer
+    let delivery = producer
         .send(record, Timeout::After(Duration::from_secs(10)))
         .await
         .map_err(|(e, _)| {
@@ -521,7 +521,7 @@ async fn publish_result(producer: &Arc<FutureProducer>, msg: &JobResultMessage) 
 
     info!(
         "Published result for job {} [{}] to {} [{}:{}]",
-        msg.job_id, msg.status, RESULT_TOPIC, partition, offset
+        msg.job_id, msg.status, RESULT_TOPIC, delivery.partition, delivery.offset
     );
     Ok(())
 }
