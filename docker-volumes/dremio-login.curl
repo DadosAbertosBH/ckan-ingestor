@@ -1,8 +1,0 @@
-curl -X POST 'http://localhost:9047/apiv2/login' \
---header 'Content-Type: application/json' \
---data-raw '{
-"userName": "admin",
-"password": "ge071730Wu"
-}'
-
-ocueuof6me0q6eejh8d6ss0p0h

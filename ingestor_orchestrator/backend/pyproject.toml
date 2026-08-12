@@ -22,7 +22,6 @@ dependencies = [
 
 [project.scripts]
 orchestrator-api = "ingestor_orchestrator.main:run"
-orchestrator-worker = "ingestor_orchestrator.worker.consumer:run_standalone"
 orchestrator-scheduler = "ingestor_orchestrator.services.scheduler:run_standalone"
 orchestrator-sync-metadata = "ingestor_orchestrator.services.metadata_sync:run_standalone"
 

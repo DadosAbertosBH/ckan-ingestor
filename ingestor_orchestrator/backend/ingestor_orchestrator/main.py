@@ -36,7 +36,7 @@ from ingestor_orchestrator.api import (
 from ingestor_orchestrator.config import settings
 from ingestor_orchestrator.db import async_session
 from ingestor_orchestrator.services.scheduler import Scheduler
-from ingestor_orchestrator.worker.result_consumer import ResultConsumer
+from ingestor_orchestrator.result_consumer import ResultConsumer
 
 logger = logging.getLogger(__name__)
 

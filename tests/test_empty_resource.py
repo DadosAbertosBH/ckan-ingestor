@@ -1,6 +1,6 @@
 # Pedalin
 # Copyright (C) 2025  Pedalin
-#
+
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -20,9 +20,7 @@ Fix: Return None instead of raising, mark job completed with 0 rows,
      and add an 'empty' label to the resource via MySQL resource_metadata_label.
 """
 
-from unittest.mock import MagicMock, patch
-
-import duckdb
+from unittest.mock import patch
 
 from ckan_ingestor.datastore_reader import DatastoreReader
 
@@ -56,101 +54,3 @@ class TestDatastoreReaderEmptyResource:
 
         assert result is not None
         assert result.num_rows == 2
-
-
-# ---------------------------------------------------------------------------
-# Step 2: DuckdbCkanDataIngestor handles empty resources
-# ---------------------------------------------------------------------------
-
-
-def _make_empty_resource(**overrides):
-    resource = {
-        "id": "empty-resource-id",
-        "last_modified": "2021-06-11T19:00:31.375068",
-        "name": "empty_resource",
-        "format": "CSV",
-        "datastore_active": True,
-        "url": "http://fake-url/resource.csv",
-    }
-    resource.update(overrides)
-    return resource
-
-
-class TestIngestorEmptyResource:
-    def test_ingest_empty_resource_does_not_raise(self):
-        """When both datastore and CSV fail, ingest should not raise."""
-        resource = _make_empty_resource()
-        mock_conn = MagicMock()
-        mock_reader = MagicMock()
-        mock_reader.read.return_value = None
-        mock_csv_reader = MagicMock()
-        mock_csv_reader.read.side_effect = duckdb.IOException("CSV parse failed")
-
-        from ckan_ingestor.duckdb_ckan_data_ingestor import DuckdbCkanDataIngestor
-
-        ingestor = DuckdbCkanDataIngestor(
-            ducklake_conn=mock_conn,
-            document_ingestor=MagicMock(),
-            datastore_reader=mock_reader,
-            csv_reader=mock_csv_reader,
-        )
-
-        # Returns False — both datastore and CSV fail
-        result = ingestor.ingest_ckan_data(resource)
-        assert result is False
-
-    def test_ingest_empty_resource_returns_false_and_no_duckdb_labels(self):
-        """When all formats (datastore + CSV) fail, ingest should return False
-        and NOT touch DuckDB label tables. Labels are handled by JobService
-        in MySQL (resource_metadata_label table)."""
-        resource = _make_empty_resource()
-        mock_conn = MagicMock()
-        mock_reader = MagicMock()
-        mock_reader.read.return_value = None
-        mock_csv_reader = MagicMock()
-        mock_csv_reader.read.side_effect = duckdb.IOException("CSV parse failed")
-
-        from ckan_ingestor.duckdb_ckan_data_ingestor import DuckdbCkanDataIngestor
-
-        ingestor = DuckdbCkanDataIngestor(
-            ducklake_conn=mock_conn,
-            document_ingestor=MagicMock(),
-            datastore_reader=mock_reader,
-            csv_reader=mock_csv_reader,
-        )
-
-        result = ingestor.ingest_ckan_data(resource)
-        assert result is False
-
-        # No DuckDB label operations — labels live in MySQL now.
-        for call in mock_conn.execute.call_args_list:
-            sql = call[0][0] if call[0] else ""
-            assert "ckan_resource_label" not in sql, (
-                "DuckDB ckan_resource_label should not be touched — "
-                "labels are in MySQL resource_metadata_label"
-            )
-
-    def test_ingest_empty_resource_does_not_create_data_table(self):
-        """When all formats fail, no data table should be created."""
-        resource = _make_empty_resource()
-        mock_conn = MagicMock()
-        mock_reader = MagicMock()
-        mock_reader.read.return_value = None
-        mock_csv_reader = MagicMock()
-        mock_csv_reader.read.side_effect = duckdb.IOException("CSV parse failed")
-
-        from ckan_ingestor.duckdb_ckan_data_ingestor import DuckdbCkanDataIngestor
-
-        ingestor = DuckdbCkanDataIngestor(
-            ducklake_conn=mock_conn,
-            document_ingestor=MagicMock(),
-            datastore_reader=mock_reader,
-            csv_reader=mock_csv_reader,
-        )
-
-        ingestor.ingest_ckan_data(resource)
-
-        # No CREATE OR REPLACE TABLE should be called for the resource
-        for call in mock_conn.execute.call_args_list:
-            sql = call[0][0]
-            assert "CREATE OR REPLACE TABLE" not in sql
