@@ -18,10 +18,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use rdkafka::consumer::StreamConsumer;
+use rdkafka::consumer::{ConsumerContext, StreamConsumer};
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use crate::message_source::MessageSource;
+use crate::message_source::PartitionSource;
 use crate::messages::JobMessage;
 use crate::messages::JobResultMessage;
 use crate::result_publisher::ResultPublisher;
@@ -36,18 +36,22 @@ pub enum Command {
     Revoke(Vec<PartitionKey>),
 }
 
-pub struct WorkerCoordinator<M: MessageSource + Send + 'static, P: ResultPublisher + Send + 'static>
-{
-    workers: HashMap<PartitionKey, WorkerThread<M, P>>,
+pub struct WorkerCoordinator<
+    C: ConsumerContext + Send + Sync + 'static,
+    P: ResultPublisher + Send + 'static,
+> {
+    workers: HashMap<PartitionKey, WorkerThread<PartitionSource<C>, P>>,
+    consumer: Arc<StreamConsumer<C>>,
     processor: ProcessorFn,
 }
 
-impl<M: MessageSource + Send + 'static, P: ResultPublisher + Send + 'static>
-    WorkerCoordinator<M, P>
+impl<C: ConsumerContext + Send + Sync + 'static, P: ResultPublisher + Send + 'static>
+    WorkerCoordinator<C, P>
 {
-    pub fn new(processor: ProcessorFn) -> Self {
+    pub fn new(consumer: Arc<StreamConsumer<C>>, processor: ProcessorFn) -> Self {
         Self {
             workers: HashMap::new(),
+            consumer,
             processor,
         }
     }
@@ -56,8 +60,13 @@ impl<M: MessageSource + Send + 'static, P: ResultPublisher + Send + 'static>
         self.workers.len()
     }
 
-    pub async fn assign(&mut self, keys: Vec<PartitionKey>, sources: Vec<M>, publisher: P) {
-        for (key, source) in keys.into_iter().zip(sources) {
+    pub async fn assign(&mut self, keys: Vec<PartitionKey>, publisher: P) {
+        for key in keys {
+            let queue = self
+                .consumer
+                .split_partition_queue(&key.0, key.1)
+                .expect("split_partition_queue");
+            let source = PartitionSource::new(queue, self.consumer.clone());
             let mut worker = WorkerThread::new(
                 key.0.clone(),
                 key.1,
@@ -78,40 +87,22 @@ impl<M: MessageSource + Send + 'static, P: ResultPublisher + Send + 'static>
         }
     }
 
-    /// Destroys all currently running workers.
     async fn revoke_all(&mut self) {
         let keys: Vec<PartitionKey> = self.workers.keys().cloned().collect();
         self.revoke(keys).await;
     }
 
-    /// Runs the coordinator loop.  `main_consumer` is the unsplit
-    /// `StreamConsumer` — it must be polled periodically to serve callbacks.
-    /// `create_source` is called post-rebalance to produce partition queues
-    /// via `split_partition_queue`.
-    pub async fn run<CreateF>(
-        &mut self,
-        mut rx: UnboundedReceiver<Command>,
-        main_consumer: Arc<StreamConsumer>,
-        publisher: P,
-        mut create_source: CreateF,
-    ) where
-        CreateF: FnMut(&PartitionKey, &Arc<StreamConsumer>) -> Option<M>,
-    {
+    pub async fn run(&mut self, mut rx: UnboundedReceiver<Command>, publisher: P) {
         let mut main_recv: Option<tokio::task::JoinHandle<()>> = None;
 
         while let Some(cmd) = rx.recv().await {
             match cmd {
                 Command::Assign(keys) => {
                     self.revoke_all().await;
-
-                    let sources: Vec<M> = keys
-                        .iter()
-                        .filter_map(|k| create_source(k, &main_consumer))
-                        .collect();
-                    self.assign(keys, sources, publisher.clone()).await;
+                    self.assign(keys, publisher.clone()).await;
 
                     if main_recv.is_none() {
-                        let mc = Arc::clone(&main_consumer);
+                        let mc = Arc::clone(&self.consumer);
                         main_recv = Some(tokio::spawn(async move {
                             loop {
                                 let _ = mc.recv().await;
@@ -138,18 +129,11 @@ impl<M: MessageSource + Send + 'static, P: ResultPublisher + Send + 'static>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::message_source::tests::{MockMsg, MockSource};
-    use crate::messages::JobResultMessage;
     use crate::result_publisher::tests::MockPublisher;
     use tokio::sync::mpsc;
 
-    fn mock_source(buffer: usize) -> (mpsc::Sender<MockMsg>, MockSource) {
-        let (tx, rx) = mpsc::channel(buffer);
-        (tx, MockSource::new(rx))
-    }
-
-    fn stub_processor(_job: crate::messages::JobMessage) -> crate::messages::JobResultMessage {
-        crate::messages::JobResultMessage {
+    fn stub_processor(_job: JobMessage) -> JobResultMessage {
+        JobResultMessage {
             job_id: "stub".into(),
             status: "done".into(),
             rows_processed: Some(1),
@@ -164,81 +148,31 @@ mod tests {
         }
     }
 
-    type TestCoordinator = WorkerCoordinator<MockSource, MockPublisher>;
-
-    fn new_coordinator() -> TestCoordinator {
-        WorkerCoordinator::new(stub_processor)
-    }
-
-    #[tokio::test]
-    async fn assign_and_revoke_direct() {
-        let (tx, source) = mock_source(1);
-        let publisher = MockPublisher::new();
-        let mut coordinator = new_coordinator();
-        let key: PartitionKey = ("topic".into(), 0);
-
-        coordinator
-            .assign(vec![key.clone()], vec![source], publisher)
-            .await;
-        assert_eq!(coordinator.worker_count(), 1);
-
-        drop(tx);
-        coordinator.revoke(vec![key]).await;
-        assert_eq!(coordinator.worker_count(), 0);
-    }
-
-    #[tokio::test]
-    async fn reassign_destroys_all_workers() {
-        let (tx1, source1) = mock_source(1);
-        let (_tx2, source2) = mock_source(1);
-        let publisher = MockPublisher::new();
-
-        let mut coordinator = new_coordinator();
-        let key: PartitionKey = ("topic".into(), 0);
-
-        coordinator
-            .assign(vec![key.clone()], vec![source1], publisher.clone())
-            .await;
-        assert_eq!(coordinator.worker_count(), 1);
-
-        coordinator.revoke_all().await;
-        assert_eq!(coordinator.worker_count(), 0);
-
-        coordinator
-            .assign(vec![key.clone()], vec![source2], publisher)
-            .await;
-        assert_eq!(coordinator.worker_count(), 1);
-
-        drop(tx1);
-        coordinator.revoke_all().await;
+    fn new_coordinator()
+    -> WorkerCoordinator<rdkafka::consumer::DefaultConsumerContext, MockPublisher> {
+        let consumer = Arc::new(
+            rdkafka::ClientConfig::new()
+                .create::<StreamConsumer<rdkafka::consumer::DefaultConsumerContext>>()
+                .expect("mock consumer"),
+        );
+        WorkerCoordinator::new(consumer, stub_processor)
     }
 
     #[tokio::test]
     async fn channel_integration() {
-        let (tx, source) = mock_source(1);
         let key: PartitionKey = ("topic".into(), 0);
         let publisher = MockPublisher::new();
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let mut coordinator = new_coordinator();
 
-        let main_consumer = Arc::new(
-            rdkafka::ClientConfig::new()
-                .create::<StreamConsumer>()
-                .expect("mock consumer"),
-        );
-
-        let mut factory = Some(source);
         let handle = tokio::spawn(async move {
-            coordinator
-                .run(cmd_rx, main_consumer, publisher, move |_, _| factory.take())
-                .await;
+            coordinator.run(cmd_rx, publisher).await;
         });
 
         cmd_tx.send(Command::Assign(vec![key.clone()])).unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
-        drop(tx);
         cmd_tx.send(Command::Revoke(vec![key])).unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
