@@ -1,5 +1,5 @@
-# Pedalin
-# Copyright (C) 2025  Pedalin
+# Noctcloud Desenvolvimento LTDA
+# Copyright (C) 2026  Noctcloud Desenvolvimento LTDA
 import json
 
 # This program is free software: you can redistribute it and/or modify

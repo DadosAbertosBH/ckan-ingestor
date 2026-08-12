@@ -24,7 +24,13 @@ license-check:
   script:
     - |
       missing=0
-      for f in $(find . -name '*.py' -not -path './.venv/*' -not -path '*/site-packages/*' -not -path '*/.venv/*'); do
+      for f in $(find . \( -name '*.py' -o -name '*.rs' \) \
+          -not -path './.venv/*' \
+          -not -path '*/site-packages/*' \
+          -not -path '*/.venv/*' \
+          -not -path './env/*' \
+          -not -path '*/target/*' \
+          -not -path '*/.cargo/*'); do
         if ! grep -qi 'GNU AFFERO' "$f"; then
           echo "MISSING LICENSE HEADER: $f"
           missing=1
