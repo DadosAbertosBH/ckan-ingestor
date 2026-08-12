@@ -92,6 +92,10 @@ impl<M: MessageSource + Send + 'static, P: ResultPublisher + Send + 'static> Wor
                                 serde_json::from_slice(payload).expect("failed to deserialize job message");
                             let result = processor(job);
                             publisher.publish(result).await.expect("failed to publish result");
+                            source
+                                .commit(&topic, partition, m.offset())
+                                .await
+                                .expect("failed to commit offset");
                         }
                         Err(e) => {
                             log::error!(
@@ -119,12 +123,10 @@ impl<M: MessageSource + Send + 'static, P: ResultPublisher + Send + 'static> Wor
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{JobMessage, JobResultMessage, ResultPublisher, WorkerThread};
     use crate::message_source::tests::{MockMsg, MockSource};
-    use crate::result_publisher::ResultPublisher;
     use crate::result_publisher::tests::MockPublisher;
     use std::future::Future;
-    use std::pin::Pin;
     use tokio::sync::mpsc;
 
     /// A publisher that always fails — used to test panic on publish failure.
@@ -221,6 +223,37 @@ mod tests {
         let results = published.lock().unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].job_id, "stub");
+    }
+
+    #[tokio::test]
+    async fn commits_offset_after_publish() {
+        let (tx, source): (mpsc::Sender<MockMsg>, MockSource) = mock_source(1);
+        let committed = source.committed.clone();
+        let publisher = MockPublisher::new();
+
+        let mut worker = WorkerThread::new("t".into(), 0, source, publisher, stub_processor);
+        worker.run();
+
+        let job = JobMessage {
+            job_id: "job-1".into(),
+            resource_id: "res-1".into(),
+            ckan_url: "http://ckan".into(),
+            resource_url: "".into(),
+            resource_format: "".into(),
+        };
+        tx.send(MockMsg {
+            payload: serde_json::to_vec(&job).unwrap(),
+            offset: 42,
+        })
+        .await
+        .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        worker.shutdown().await;
+
+        let commits = committed.lock().unwrap();
+        assert_eq!(commits.len(), 1);
+        assert_eq!(commits[0], ("t".to_string(), 0, 42));
     }
 
     #[tokio::test]

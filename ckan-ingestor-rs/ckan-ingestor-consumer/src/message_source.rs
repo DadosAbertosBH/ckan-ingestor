@@ -15,33 +15,119 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
+use rdkafka::TopicPartitionList;
 use rdkafka::consumer::stream_consumer::StreamPartitionQueue;
-use rdkafka::consumer::{ConsumerContext, StreamConsumer};
+use rdkafka::consumer::{CommitMode, Consumer, ConsumerContext, StreamConsumer};
 use rdkafka::error::KafkaError;
 use rdkafka::message::{Message, OwnedMessage};
+use std::future::Future;
+use std::sync::Arc;
 
 pub trait MessageSource {
     type Msg: Message + Send;
 
-    fn recv(&self) -> impl Future<Output = Result<Self::Msg, KafkaError>> + Send;
+    fn recv(&self) -> impl std::future::Future<Output = Result<Self::Msg, KafkaError>> + Send;
+
+    fn commit(
+        &self,
+        topic: &str,
+        partition: i32,
+        offset: i64,
+    ) -> impl std::future::Future<Output = Result<(), KafkaError>> + Send;
 }
 
 impl MessageSource for StreamConsumer {
     type Msg = OwnedMessage;
 
-    fn recv(&self) -> impl Future<Output = Result<Self::Msg, KafkaError>> + Send {
+    fn recv(&self) -> impl std::future::Future<Output = Result<Self::Msg, KafkaError>> + Send {
         async { StreamConsumer::recv(self).await.map(|m| m.detach()) }
+    }
+
+    fn commit(
+        &self,
+        topic: &str,
+        partition: i32,
+        offset: i64,
+    ) -> impl std::future::Future<Output = Result<(), KafkaError>> + Send {
+        let mut tpl = TopicPartitionList::new();
+        {
+            let mut elem = tpl.add_partition(topic, partition);
+            let _ = elem.set_offset(rdkafka::Offset::Offset(offset + 1));
+        }
+        let result = Consumer::commit(self, &tpl, CommitMode::Sync);
+        std::future::ready(result)
     }
 }
 
-impl<C> MessageSource for StreamPartitionQueue<C>
+// ---------------------------------------------------------------------------
+// Tests
+/// SAFETY: StreamPartitionQueue is Send but not Sync. In our usage,
+/// each queue is owned by a single tokio task (one per partition),
+/// so concurrent access never occurs.
+struct SyncQueue<C, R>(StreamPartitionQueue<C, R>)
+where
+    C: ConsumerContext;
+
+unsafe impl<C: ConsumerContext, R> Sync for SyncQueue<C, R> {}
+
+impl<C: ConsumerContext, R> std::ops::Deref for SyncQueue<C, R> {
+    type Target = StreamPartitionQueue<C, R>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Wraps a partition queue with the main consumer so that commits are
+/// routed to the consumer while recv comes from the queue.
+pub struct PartitionSource<C, R>
 where
     C: ConsumerContext,
 {
+    queue: SyncQueue<C, R>,
+    consumer: Arc<StreamConsumer<C, R>>,
+}
+
+impl<C, R> PartitionSource<C, R>
+where
+    C: ConsumerContext + Send + Sync + 'static,
+    R: rdkafka::util::AsyncRuntime,
+{
+    pub fn new(queue: StreamPartitionQueue<C, R>, consumer: Arc<StreamConsumer<C, R>>) -> Self {
+        Self {
+            queue: SyncQueue(queue),
+            consumer,
+        }
+    }
+}
+
+impl<C, R> MessageSource for PartitionSource<C, R>
+where
+    C: ConsumerContext + Send + Sync + 'static,
+    R: rdkafka::util::AsyncRuntime,
+{
     type Msg = OwnedMessage;
 
-    async fn recv(&self) -> Result<Self::Msg, KafkaError> {
-        StreamPartitionQueue::recv(self).await.map(|m| m.detach())
+    fn recv(&self) -> impl Future<Output = Result<Self::Msg, KafkaError>> + Send {
+        async {
+            StreamPartitionQueue::recv(&self.queue)
+                .await
+                .map(|m| m.detach())
+        }
+    }
+
+    fn commit(
+        &self,
+        topic: &str,
+        partition: i32,
+        offset: i64,
+    ) -> impl Future<Output = Result<(), KafkaError>> + Send {
+        let mut tpl = TopicPartitionList::new();
+        {
+            let mut elem = tpl.add_partition(topic, partition);
+            let _ = elem.set_offset(rdkafka::Offset::Offset(offset + 1));
+        }
+        let result = Consumer::commit(self.consumer.as_ref(), &tpl, CommitMode::Sync);
+        std::future::ready(result)
     }
 }
 
@@ -53,7 +139,9 @@ where
 pub(crate) mod tests {
     use super::*;
     use rdkafka::message::{OwnedHeaders, Timestamp};
-    use tokio::sync::{Mutex, mpsc};
+    use std::sync::{Arc, Mutex};
+    use tokio::sync::Mutex as AsyncMutex;
+    use tokio::sync::mpsc;
 
     pub(crate) struct MockMsg {
         pub payload: Vec<u8>,
@@ -74,52 +162,69 @@ pub(crate) mod tests {
         fn key(&self) -> Option<&[u8]> {
             None
         }
-
         fn topic(&self) -> &str {
             "mock"
         }
-
         fn partition(&self) -> i32 {
             0
         }
-
         fn offset(&self) -> i64 {
             self.offset
         }
-
         fn timestamp(&self) -> Timestamp {
             Timestamp::NotAvailable
         }
-
         unsafe fn payload_mut(&mut self) -> Option<&mut [u8]> {
             None
         }
-
         fn headers(&self) -> Option<&OwnedHeaders> {
             None
         }
     }
 
     pub(crate) struct MockSource {
-        rx: Mutex<mpsc::Receiver<MockMsg>>,
+        rx: AsyncMutex<mpsc::Receiver<MockMsg>>,
+        pub committed: Arc<Mutex<Vec<(String, i32, i64)>>>,
     }
 
     impl MockSource {
         pub fn new(rx: mpsc::Receiver<MockMsg>) -> Self {
-            Self { rx: Mutex::new(rx) }
+            Self {
+                rx: AsyncMutex::new(rx),
+                committed: Arc::new(Mutex::new(vec![])),
+            }
         }
     }
 
     impl MessageSource for MockSource {
         type Msg = MockMsg;
 
-        async fn recv(&self) -> Result<MockMsg, rdkafka::error::KafkaError> {
-            self.rx
+        fn recv(
+            &self,
+        ) -> impl std::future::Future<Output = Result<MockMsg, rdkafka::error::KafkaError>> + Send
+        {
+            async {
+                self.rx
+                    .lock()
+                    .await
+                    .recv()
+                    .await
+                    .ok_or(rdkafka::error::KafkaError::Canceled)
+            }
+        }
+
+        fn commit(
+            &self,
+            topic: &str,
+            partition: i32,
+            offset: i64,
+        ) -> impl std::future::Future<Output = Result<(), rdkafka::error::KafkaError>> + Send
+        {
+            self.committed
                 .lock()
-                .await
-                .recv()
-                .await
-                .ok_or(rdkafka::error::KafkaError::Canceled)
+                .unwrap()
+                .push((topic.into(), partition, offset));
+            std::future::ready(Ok(()))
         }
     }
 }
