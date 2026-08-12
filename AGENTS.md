@@ -9,6 +9,17 @@ Avoid negative ontologies on executions and/or explanations — frame actions po
 - **ckan-ingestor** (this repo): Application source code, Helm chart
 - **argocd-applications** (`noctcloud/argocd-applications`): GitOps deployment config — ArgoCD Application, ExternalSecret, Crossplane resources. Local copy at `./argocd-applications/`.
 
+## Use uv — Always
+
+Always use `uv` to run Python commands — installing dependencies, running tests, linting, and any script. Never call `python` or `.venv/bin/python` directly.
+
+```bash
+uv run <command>     # run a command in the project environment
+uv sync              # install/sync dependencies
+uv run pytest ...    # tests
+uv run ruff check    # lint
+```
+
 ## TDD — Always
 
 Every implementation, bug fix, or adjustment must follow TDD:
@@ -16,8 +27,8 @@ Every implementation, bug fix, or adjustment must follow TDD:
 1. **RED** — write a failing test that reproduces the bug or validates the expected behavior
 2. **GREEN** — apply the minimal fix to make the test pass
 3. Run the full suite:
-   - `cd /Users/guilhermecastro/Projects/ckan-ingestor && .venv/bin/python -m pytest tests/ -q`
-   - `cd /Users/guilhermecastro/Projects/ckan-ingestor/ingestor_orchestrator/backend && .venv/bin/python -m pytest tests/ -q`
+   - `cd /Users/guilhermecastro/Projects/ckan-ingestor && uv run pytest tests/ -q`
+   - `cd /Users/guilhermecastro/Projects/ckan-ingestor/ingestor_orchestrator/backend && uv run pytest tests/ -q`
 
 Never jump straight to code without a test first. If you do, revert and start with the test.
 
