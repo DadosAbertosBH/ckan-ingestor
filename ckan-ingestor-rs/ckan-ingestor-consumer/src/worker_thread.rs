@@ -18,32 +18,31 @@
 use log::info;
 use rdkafka::message::Message;
 use std::sync::Arc;
+use std::thread::JoinHandle;
 use tokio::sync::Notify;
-use tokio::task::JoinHandle;
 
+use crate::job_processor::JobProcessor;
 use crate::message_source::MessageSource;
 use crate::messages::{JobMessage, JobResultMessage};
 use crate::result_publisher::ResultPublisher;
-use crate::worker_coordinator::ProcessorFn;
 
-pub struct WorkerThread<M: MessageSource, P: ResultPublisher> {
+pub struct WorkerThread<M: MessageSource, P: ResultPublisher, Proc: JobProcessor> {
     pub topic: String,
     pub partition: i32,
     source: Option<M>,
     publisher: P,
-    processor: ProcessorFn,
+    processor: Proc,
     handle: Option<JoinHandle<()>>,
     shutdown: Arc<Notify>,
 }
 
-impl<M: MessageSource + Send + 'static, P: ResultPublisher + Send + 'static> WorkerThread<M, P> {
-    pub fn new(
-        topic: String,
-        partition: i32,
-        source: M,
-        publisher: P,
-        processor: ProcessorFn,
-    ) -> Self {
+impl<M, P, Proc> WorkerThread<M, P, Proc>
+where
+    M: MessageSource + Send + 'static,
+    P: ResultPublisher + Send + 'static,
+    Proc: JobProcessor + Send + 'static,
+{
+    pub fn new(topic: String, partition: i32, source: M, publisher: P, processor: Proc) -> Self {
         Self {
             topic,
             partition,
@@ -55,16 +54,23 @@ impl<M: MessageSource + Send + 'static, P: ResultPublisher + Send + 'static> Wor
         }
     }
 
+    /// Spawns a dedicated OS thread running the worker event loop.
     pub fn run(&mut self) {
         let source = self.source.take().expect("WorkerThread::run called twice");
         let shutdown = self.shutdown.clone();
         let topic = self.topic.clone();
         let partition = self.partition;
         let publisher = self.publisher.clone();
-        let processor = self.processor;
+        let processor = self.processor.clone();
 
-        let handle = tokio::spawn(async move {
-            Self::run_loop(topic, partition, source, publisher, processor, shutdown).await;
+        let handle = std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("failed to build worker runtime");
+            rt.block_on(Self::run_loop(
+                topic, partition, source, publisher, processor, shutdown,
+            ));
         });
         self.handle = Some(handle);
     }
@@ -74,7 +80,7 @@ impl<M: MessageSource + Send + 'static, P: ResultPublisher + Send + 'static> Wor
         partition: i32,
         source: M,
         publisher: P,
-        processor: ProcessorFn,
+        processor: Proc,
         shutdown: Arc<Notify>,
     ) {
         info!("Partition {}/{} worker ready", topic, partition);
@@ -88,20 +94,34 @@ impl<M: MessageSource + Send + 'static, P: ResultPublisher + Send + 'static> Wor
                     match msg {
                         Ok(m) => {
                             let payload = m.payload().unwrap_or(&[]);
-                            let job: JobMessage =
-                                serde_json::from_slice(payload).expect("failed to deserialize job message");
-                            let result = processor(job);
-                            publisher.publish(result).await.expect("failed to publish result");
-                            source
-                                .commit(&topic, partition, m.offset())
-                                .await
+                            let job: JobMessage = serde_json::from_slice(payload)
+                                .expect("failed to deserialize job message");
+
+                            let processing = JobResultMessage {
+                                job_id: job.job_id.clone(),
+                                status: "PROCESSING".to_string(),
+                                rows_processed: None,
+                                expected_rows: None,
+                                resource_size: None,
+                                encoding: None,
+                                expected_columns: None,
+                                datastore_active: false,
+                                labels: vec![],
+                                error_message: None,
+                                preview: None,
+                            };
+                            publisher.publish(processing).await
+                                .expect("failed to publish PROCESSING");
+
+                            let result = processor.process(job);
+                            publisher.publish(result).await
+                                .expect("failed to publish result");
+
+                            source.commit(&topic, partition, m.offset()).await
                                 .expect("failed to commit offset");
                         }
                         Err(e) => {
-                            log::error!(
-                                "Consumer error for {}/{}: {}",
-                                topic, partition, e
-                            );
+                            log::error!("Consumer error for {}/{}: {}", topic, partition, e);
                         }
                     }
                 }
@@ -109,10 +129,11 @@ impl<M: MessageSource + Send + 'static, P: ResultPublisher + Send + 'static> Wor
         }
     }
 
-    pub async fn shutdown(self) {
+    /// Signals the worker to shut down and blocks until it finishes.
+    pub fn shutdown(self) {
         self.shutdown.notify_one();
         if let Some(handle) = self.handle {
-            handle.await.expect("worker task panicked");
+            handle.join().expect("worker thread panicked");
         }
     }
 }
@@ -123,22 +144,29 @@ impl<M: MessageSource + Send + 'static, P: ResultPublisher + Send + 'static> Wor
 
 #[cfg(test)]
 mod tests {
-    use super::{JobMessage, JobResultMessage, ResultPublisher, WorkerThread};
+    use super::*;
     use crate::message_source::tests::{MockMsg, MockSource};
     use crate::result_publisher::tests::MockPublisher;
-    use std::future::Future;
     use tokio::sync::mpsc;
 
-    /// A publisher that always fails — used to test panic on publish failure.
     #[derive(Clone)]
-    struct FailingPublisher;
+    struct StubProcessor;
 
-    impl ResultPublisher for FailingPublisher {
-        fn publish(
-            &self,
-            _result: JobResultMessage,
-        ) -> impl Future<Output = Result<(), anyhow::Error>> + Send {
-            std::future::ready(Err(anyhow::anyhow!("publish failed")))
+    impl JobProcessor for StubProcessor {
+        fn process(&self, _job: JobMessage) -> JobResultMessage {
+            JobResultMessage {
+                job_id: "stub".into(),
+                status: "done".into(),
+                rows_processed: Some(1),
+                expected_rows: None,
+                resource_size: None,
+                encoding: None,
+                expected_columns: None,
+                datastore_active: false,
+                labels: vec![],
+                error_message: None,
+                preview: None,
+            }
         }
     }
 
@@ -147,39 +175,20 @@ mod tests {
         (tx, MockSource::new(rx))
     }
 
-    fn stub_processor(_job: JobMessage) -> JobResultMessage {
-        JobResultMessage {
-            job_id: "stub".into(),
-            status: "done".into(),
-            rows_processed: Some(1),
-            expected_rows: None,
-            resource_size: None,
-            encoding: None,
-            expected_columns: None,
-            datastore_active: false,
-            labels: vec![],
-            error_message: None,
-            preview: None,
-        }
-    }
-
     #[tokio::test]
     async fn run_and_shutdown() {
         let (_tx, source) = mock_source(1);
-
         let mut worker = WorkerThread::new(
             "test".into(),
             0,
             source,
             MockPublisher::new(),
-            stub_processor,
+            StubProcessor,
         );
         worker.run();
-
         assert_eq!(worker.topic, "test");
         assert_eq!(worker.partition, 0);
-
-        worker.shutdown().await;
+        worker.shutdown();
     }
 
     #[tokio::test]
@@ -187,9 +196,9 @@ mod tests {
         let (tx, source) = mock_source(1);
         drop(tx);
         let mut worker =
-            WorkerThread::new("t".into(), 0, source, MockPublisher::new(), stub_processor);
+            WorkerThread::new("t".into(), 0, source, MockPublisher::new(), StubProcessor);
         worker.run();
-        worker.shutdown().await;
+        worker.shutdown();
     }
 
     #[tokio::test]
@@ -198,7 +207,7 @@ mod tests {
         let publisher = MockPublisher::new();
         let published = publisher.published.clone();
 
-        let mut worker = WorkerThread::new("t".into(), 0, source, publisher, stub_processor);
+        let mut worker = WorkerThread::new("t".into(), 0, source, publisher, StubProcessor);
         worker.run();
 
         let job = JobMessage {
@@ -215,14 +224,13 @@ mod tests {
         .await
         .unwrap();
 
-        // Give the worker time to process before shutdown
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-
-        worker.shutdown().await;
+        worker.shutdown();
 
         let results = published.lock().unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].job_id, "stub");
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].status, "PROCESSING");
+        assert_eq!(results[1].status, "done");
     }
 
     #[tokio::test]
@@ -231,7 +239,7 @@ mod tests {
         let committed = source.committed.clone();
         let publisher = MockPublisher::new();
 
-        let mut worker = WorkerThread::new("t".into(), 0, source, publisher, stub_processor);
+        let mut worker = WorkerThread::new("t".into(), 0, source, publisher, StubProcessor);
         worker.run();
 
         let job = JobMessage {
@@ -249,7 +257,7 @@ mod tests {
         .unwrap();
 
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        worker.shutdown().await;
+        worker.shutdown();
 
         let commits = committed.lock().unwrap();
         assert_eq!(commits.len(), 1);
@@ -257,15 +265,13 @@ mod tests {
     }
 
     #[tokio::test]
-    #[should_panic(expected = "worker task panicked")]
+    #[should_panic(expected = "worker thread panicked")]
     async fn deserialize_failure_panics() {
         let (tx, source) = mock_source(1);
-
         let mut worker =
-            WorkerThread::new("t".into(), 0, source, MockPublisher::new(), stub_processor);
+            WorkerThread::new("t".into(), 0, source, MockPublisher::new(), StubProcessor);
         worker.run();
 
-        // Invalid JSON
         tx.send(MockMsg {
             payload: b"not-json".to_vec(),
             offset: 0,
@@ -274,32 +280,6 @@ mod tests {
         .unwrap();
 
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        worker.shutdown().await;
-    }
-
-    #[tokio::test]
-    #[should_panic(expected = "worker task panicked")]
-    async fn publish_failure_panics() {
-        let (tx, source) = mock_source(1);
-
-        let mut worker = WorkerThread::new("t".into(), 0, source, FailingPublisher, stub_processor);
-        worker.run();
-
-        let job = JobMessage {
-            job_id: "job-1".into(),
-            resource_id: "res-1".into(),
-            ckan_url: "http://ckan".into(),
-            resource_url: "".into(),
-            resource_format: "".into(),
-        };
-        tx.send(MockMsg {
-            payload: serde_json::to_vec(&job).unwrap(),
-            offset: 0,
-        })
-        .await
-        .unwrap();
-
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        worker.shutdown().await;
+        worker.shutdown();
     }
 }

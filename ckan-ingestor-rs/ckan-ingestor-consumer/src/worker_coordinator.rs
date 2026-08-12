@@ -21,15 +21,12 @@ use std::sync::Arc;
 use rdkafka::consumer::{ConsumerContext, StreamConsumer};
 use tokio::sync::mpsc::UnboundedReceiver;
 
+use crate::job_processor::JobProcessor;
 use crate::message_source::PartitionSource;
-use crate::messages::JobMessage;
-use crate::messages::JobResultMessage;
 use crate::result_publisher::ResultPublisher;
 use crate::worker_thread::WorkerThread;
 
 type PartitionKey = (String, i32);
-
-pub type ProcessorFn = fn(JobMessage) -> JobResultMessage;
 
 pub enum Command {
     Assign(Vec<PartitionKey>),
@@ -39,16 +36,20 @@ pub enum Command {
 pub struct WorkerCoordinator<
     C: ConsumerContext + Send + Sync + 'static,
     P: ResultPublisher + Send + 'static,
+    Proc: JobProcessor,
 > {
-    workers: HashMap<PartitionKey, WorkerThread<PartitionSource<C>, P>>,
+    workers: HashMap<PartitionKey, WorkerThread<PartitionSource<C>, P, Proc>>,
     consumer: Arc<StreamConsumer<C>>,
-    processor: ProcessorFn,
+    processor: Proc,
 }
 
-impl<C: ConsumerContext + Send + Sync + 'static, P: ResultPublisher + Send + 'static>
-    WorkerCoordinator<C, P>
+impl<C, P, Proc> WorkerCoordinator<C, P, Proc>
+where
+    C: ConsumerContext + Send + Sync + 'static,
+    P: ResultPublisher + Send + 'static,
+    Proc: JobProcessor,
 {
-    pub fn new(consumer: Arc<StreamConsumer<C>>, processor: ProcessorFn) -> Self {
+    pub fn new(consumer: Arc<StreamConsumer<C>>, processor: Proc) -> Self {
         Self {
             workers: HashMap::new(),
             consumer,
@@ -72,7 +73,7 @@ impl<C: ConsumerContext + Send + Sync + 'static, P: ResultPublisher + Send + 'st
                 key.1,
                 source,
                 publisher.clone(),
-                self.processor,
+                self.processor.clone(),
             );
             worker.run();
             self.workers.insert(key, worker);
@@ -82,7 +83,9 @@ impl<C: ConsumerContext + Send + Sync + 'static, P: ResultPublisher + Send + 'st
     pub async fn revoke(&mut self, keys: Vec<PartitionKey>) {
         for key in keys {
             if let Some(worker) = self.workers.remove(&key) {
-                worker.shutdown().await;
+                tokio::task::spawn_blocking(move || worker.shutdown())
+                    .await
+                    .expect("worker shutdown panicked");
             }
         }
     }
@@ -92,28 +95,42 @@ impl<C: ConsumerContext + Send + Sync + 'static, P: ResultPublisher + Send + 'st
         self.revoke(keys).await;
     }
 
-    pub async fn run(&mut self, mut rx: UnboundedReceiver<Command>, publisher: P) {
+    pub async fn run(
+        &mut self,
+        mut rx: UnboundedReceiver<Command>,
+        publisher: P,
+        shutdown: Arc<tokio::sync::Notify>,
+    ) {
         let mut main_recv: Option<tokio::task::JoinHandle<()>> = None;
 
-        while let Some(cmd) = rx.recv().await {
-            match cmd {
-                Command::Assign(keys) => {
-                    self.revoke_all().await;
-                    self.assign(keys, publisher.clone()).await;
+        loop {
+            tokio::select! {
+                _ = shutdown.notified() => break,
+                cmd = rx.recv() => {
+                    match cmd {
+                        Some(Command::Assign(keys)) => {
+                            self.revoke_all().await;
+                            self.assign(keys, publisher.clone()).await;
 
-                    if main_recv.is_none() {
-                        let mc = Arc::clone(&self.consumer);
-                        main_recv = Some(tokio::spawn(async move {
-                            loop {
-                                let _ = mc.recv().await;
-                                log::warn!("Main consumer received unexpected message");
+                            if main_recv.is_none() {
+                                let mc = Arc::clone(&self.consumer);
+                                main_recv = Some(tokio::spawn(async move {
+                                    loop {
+                                        let _ = mc.recv().await;
+                                        log::warn!("Main consumer received unexpected message");
+                                    }
+                                }));
                             }
-                        }));
+                        }
+                        Some(Command::Revoke(keys)) => self.revoke(keys).await,
+                        None => break,
                     }
                 }
-                Command::Revoke(keys) => self.revoke(keys).await,
             }
         }
+
+        // Gracefully stop all remaining workers.
+        self.revoke_all().await;
 
         if let Some(recv) = main_recv {
             recv.abort();
@@ -129,33 +146,41 @@ impl<C: ConsumerContext + Send + Sync + 'static, P: ResultPublisher + Send + 'st
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::job_processor::JobProcessor;
+    use crate::messages::{JobMessage, JobResultMessage};
     use crate::result_publisher::tests::MockPublisher;
     use tokio::sync::mpsc;
 
-    fn stub_processor(_job: JobMessage) -> JobResultMessage {
-        JobResultMessage {
-            job_id: "stub".into(),
-            status: "done".into(),
-            rows_processed: Some(1),
-            expected_rows: None,
-            resource_size: None,
-            encoding: None,
-            expected_columns: None,
-            datastore_active: false,
-            labels: vec![],
-            error_message: None,
-            preview: None,
+    #[derive(Clone)]
+    struct StubProcessor;
+
+    impl JobProcessor for StubProcessor {
+        fn process(&self, _job: JobMessage) -> JobResultMessage {
+            JobResultMessage {
+                job_id: "stub".into(),
+                status: "done".into(),
+                rows_processed: Some(1),
+                expected_rows: None,
+                resource_size: None,
+                encoding: None,
+                expected_columns: None,
+                datastore_active: false,
+                labels: vec![],
+                error_message: None,
+                preview: None,
+            }
         }
     }
 
     fn new_coordinator()
-    -> WorkerCoordinator<rdkafka::consumer::DefaultConsumerContext, MockPublisher> {
+    -> WorkerCoordinator<rdkafka::consumer::DefaultConsumerContext, MockPublisher, StubProcessor>
+    {
         let consumer = Arc::new(
             rdkafka::ClientConfig::new()
                 .create::<StreamConsumer<rdkafka::consumer::DefaultConsumerContext>>()
                 .expect("mock consumer"),
         );
-        WorkerCoordinator::new(consumer, stub_processor)
+        WorkerCoordinator::new(consumer, StubProcessor)
     }
 
     #[tokio::test]
@@ -165,9 +190,10 @@ mod tests {
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let mut coordinator = new_coordinator();
+        let shutdown = Arc::new(tokio::sync::Notify::new());
 
         let handle = tokio::spawn(async move {
-            coordinator.run(cmd_rx, publisher).await;
+            coordinator.run(cmd_rx, publisher, shutdown).await;
         });
 
         cmd_tx.send(Command::Assign(vec![key.clone()])).unwrap();

@@ -19,6 +19,7 @@ use anyhow::Result;
 use aws_sdk_s3::Client as S3Client;
 use reqwest::Client as HttpClient;
 
+#[derive(Clone)]
 pub struct S3DocumentIngestor {
     pub public_url: String,
     pub s3_client: S3Client,
