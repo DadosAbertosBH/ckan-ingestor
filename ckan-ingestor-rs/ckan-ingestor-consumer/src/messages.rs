@@ -32,7 +32,7 @@ pub struct JobMessage {
 }
 
 /// The result message published to `ckan.ingest.jobs_result`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct JobResultMessage {
     pub job_id: String,
     pub status: String,

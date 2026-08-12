@@ -101,7 +101,15 @@ where
         publisher: P,
         shutdown: Arc<tokio::sync::Notify>,
     ) {
-        let mut main_recv: Option<tokio::task::JoinHandle<()>> = None;
+        // Start the main consumer poll loop immediately — it drives the
+        // rebalance callback, which in turn triggers split_partition_queue.
+        let mc = Arc::clone(&self.consumer);
+        let main_recv = tokio::spawn(async move {
+            loop {
+                let _ = mc.recv().await;
+                log::warn!("Main consumer received unexpected message");
+            }
+        });
 
         loop {
             tokio::select! {
@@ -111,16 +119,6 @@ where
                         Some(Command::Assign(keys)) => {
                             self.revoke_all().await;
                             self.assign(keys, publisher.clone()).await;
-
-                            if main_recv.is_none() {
-                                let mc = Arc::clone(&self.consumer);
-                                main_recv = Some(tokio::spawn(async move {
-                                    loop {
-                                        let _ = mc.recv().await;
-                                        log::warn!("Main consumer received unexpected message");
-                                    }
-                                }));
-                            }
                         }
                         Some(Command::Revoke(keys)) => self.revoke(keys).await,
                         None => break,
@@ -132,10 +130,8 @@ where
         // Gracefully stop all remaining workers.
         self.revoke_all().await;
 
-        if let Some(recv) = main_recv {
-            recv.abort();
-            let _ = recv.await;
-        }
+        main_recv.abort();
+        let _ = main_recv.await;
     }
 }
 
