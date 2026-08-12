@@ -85,6 +85,5 @@ async def db_session(engine, _create_tables):
         engine, class_=AsyncSession, expire_on_commit=False
     )
     async with async_session() as session:
-        async with session.begin():
-            yield session
-            await session.rollback()
+        yield session
+        await session.rollback()

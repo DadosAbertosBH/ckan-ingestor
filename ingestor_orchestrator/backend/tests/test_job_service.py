@@ -36,6 +36,7 @@ def _make_success_result_data(preview=None):
     return data
 
 
+@pytest.mark.asyncio
 class TestApplyResultPreview:
     async def test_preview_is_none_when_missing(self, db_session, default_instance):
         """RED: dataset_preview must be None when result_data has no 'preview' key."""
@@ -55,7 +56,7 @@ class TestApplyResultPreview:
         service = JobService(db_session)
         await service.apply_result(data)
 
-        await db_session.refresh(job)
+        await db_session.refresh(job, attribute_names=["results"])
         assert len(job.results) == 1
         assert job.results[0].dataset_preview is None
 
@@ -80,7 +81,7 @@ class TestApplyResultPreview:
         service = JobService(db_session)
         await service.apply_result(data)
 
-        await db_session.refresh(job)
+        await db_session.refresh(job, attribute_names=["results"])
         assert len(job.results) == 1
         assert job.results[0].dataset_preview == preview
 
@@ -106,7 +107,7 @@ class TestApplyResultPreview:
         service = JobService(db_session)
         await service.apply_result(data)
 
-        await db_session.refresh(job)
+        await db_session.refresh(job, attribute_names=["results"])
         stored = job.results[0].dataset_preview
         assert stored is not None
         # Should be serializable (no TypeError on json.dumps)

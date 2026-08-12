@@ -289,7 +289,7 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
     fn try_json(&self, resource: &CkanResource) -> Result<()> {
         let resource_id = &resource.id;
         let query = format!(
-            "SELECT * FROM read_json('{}', maximum_object_size=67108864)",
+            "SELECT * FROM read_json('{}', maximum_object_size=33554432)",
             resource.url
         );
         self.conn.execute(

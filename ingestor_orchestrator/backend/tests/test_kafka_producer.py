@@ -39,13 +39,16 @@ async def test_publish_sends_job_id_and_ckan_url():
 
     with patch(_FACTORY_PATH, return_value=producer):
         service = JobService(AsyncMock())
-        await service._publish_job("test-job", "https://dados.pbh.gov.br")
+        await service._publish_job(
+            "test-job", "resource-1", ckan_url="https://dados.pbh.gov.br"
+        )
 
     producer.send.assert_called_once()
     args, _kwargs = producer.send.call_args
     assert args[0] == "ckan.ingest.jobs"
     payload = json.loads(args[1].decode())
     assert payload["job_id"] == "test-job"
+    assert payload["resource_id"] == "resource-1"
     assert payload["ckan_url"] == "https://dados.pbh.gov.br"
 
 
@@ -56,7 +59,7 @@ async def test_publish_retry_uses_retry_topic():
 
     with patch(_FACTORY_PATH, return_value=producer):
         service = JobService(AsyncMock())
-        await service._publish_job("retry-job", retry=True)
+        await service._publish_job("retry-job", "resource-1", retry=True)
 
     args, _ = producer.send.call_args
     assert args[0] == "ckan.ingest.jobs.retry"
