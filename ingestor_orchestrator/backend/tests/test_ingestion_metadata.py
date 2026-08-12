@@ -15,7 +15,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """Tests for ingestion metadata — expected_rows, resource_size, encoding, labels."""
 
-from unittest.mock import MagicMock, patch
 
 import pytest
 import pytest_asyncio

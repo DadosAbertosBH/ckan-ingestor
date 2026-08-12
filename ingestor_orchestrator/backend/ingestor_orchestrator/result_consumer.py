@@ -18,7 +18,6 @@ import json
 import logging
 import signal
 
-from ingestor_orchestrator.config import settings
 from ingestor_orchestrator.db import async_session
 from ingestor_orchestrator.kafka_queue import create_kafka_consumer
 from ingestor_orchestrator.services.job_service import JobService
