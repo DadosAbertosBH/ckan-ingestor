@@ -67,9 +67,35 @@ test:
     - uv run pytest
     - uv cache prune --ci
   rules:
+    - if: $CI_COMMIT_TAG
     - changes:
         - "ckan_ingestor/**/*"
         - "ingestor_orchestrator/**/*"
+
+test-rust:
+  stage: test
+  image: rust:1.97.1-slim-trixie
+  variables:
+    # Force libduckdb-sys to download the prebuilt DuckDB library so that
+    # tests and builds can link against it on Linux runners.
+    DUCKDB_DOWNLOAD_LIB: "1"
+    CARGO_HOME: .cargo-home
+  cache:
+    - key:
+        files:
+          - ckan-ingestor-rs/Cargo.lock
+      paths:
+        - $CARGO_HOME
+  script:
+    - apt-get update && apt-get install -y --no-install-recommends build-essential cmake libssl-dev libcurl4-openssl-dev pkg-config && rm -rf /var/lib/apt/lists/*
+    - cd ckan-ingestor-rs
+    - cargo fmt --all -- --check
+    - cargo clippy --all-targets -- -D warnings
+    - cargo test --all
+  rules:
+    - if: $CI_COMMIT_TAG
+    - changes:
+        - "ckan-ingestor-rs/**/*"
 
 build-orchestrator:
   stage: build
@@ -111,7 +137,8 @@ build-worker:
       fi
       docker buildx build \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
-        --cache-from $CI_REGISTRY_IMAGE/worker:latest \
+        --cache-from type=registry,ref=$CI_REGISTRY_IMAGE/worker-cache:latest \
+        --cache-to type=registry,ref=$CI_REGISTRY_IMAGE/worker-cache:latest,mode=max \
         --platform linux/amd64,linux/arm64 \
         $TAG_ARGS \
         --file ckan-ingestor-rs/Dockerfile \
