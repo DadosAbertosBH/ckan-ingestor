@@ -14,13 +14,11 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
-use aws_config::meta::region::RegionProviderChain;
-use aws_config::BehaviorVersion;
-use aws_sdk_s3::config::Credentials;
-use aws_sdk_s3::operation::RequestId;
-use aws_sdk_s3::Client;
 use ckan_ingestor_lib::config::S3Settings;
 use rstest::fixture;
+use s3::creds::Credentials;
+use s3::region::Region;
+use s3::{Bucket, BucketConfiguration};
 use testcontainers::{core::IntoContainerPort, runners::AsyncRunner, GenericImage, ImageExt};
 use tokio::sync::OnceCell;
 
@@ -57,64 +55,45 @@ async fn ensure_minio() -> &'static String {
 }
 
 #[fixture]
-pub async fn s3_client() -> Client {
+pub async fn s3_settings() -> S3Settings {
     let address = ensure_minio().await;
-    //noinspection HttpUrlsUsage
-    let endpoint_uri = format!("http://{}", address);
-    let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
-    let creds = Credentials::new("minioadmin", "minioadmin", None, None, "test");
-
-    let sdk_config = aws_config::defaults(BehaviorVersion::latest())
-        .region(region_provider)
-        .endpoint_url(endpoint_uri)
-        .credentials_provider(creds)
-        .load()
-        .await;
-
-    Client::new(&sdk_config)
-}
-
-pub async fn setup_minio_bucket_and_policy(client: &Client) {
-    let bucket = "warehouse";
-    let policy = serde_json::json!({
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Principal": {"AWS": "*"},
-                "Action": [
-                    "s3:GetObject",
-                    "s3:PutObject",
-                    "s3:DeleteObject",
-                    "s3:ListMultipartUploadParts",
-                    "s3:AbortMultipartUpload"
-                ],
-                "Resource": format!("arn:aws:s3:::{}{}", bucket, "/docs/*"),
-            }
-        ]
-    });
-    let _ = client.create_bucket().bucket(bucket).send().await.unwrap();
-    let result = client
-        .put_bucket_policy()
-        .bucket(bucket)
-        .policy(policy.to_string())
-        .send()
-        .await
-        .unwrap();
-    assert!(result.request_id().is_some())
-}
-
-#[fixture]
-pub async fn s3_settings(#[future] s3_client: Client) -> S3Settings {
-    let s3_client = s3_client.await;
-    setup_minio_bucket_and_policy(&s3_client).await;
-    let address = ensure_minio().await;
-    S3Settings {
+    let settings = S3Settings {
         endpoint: address.clone(),
         bucket: "warehouse".into(),
         use_ssl: false,
         access_key_id: "minioadmin".to_string(),
         secret_access_key: "minioadmin".to_string(),
+        url_style: "path".into(),
         ..Default::default()
+    };
+
+    // Create the bucket (path-style, for MinIO).
+    let region = Region::Custom {
+        region: "us-east-1".into(),
+        endpoint: format!("http://{}", address),
+    };
+    let credentials =
+        Credentials::new(Some("minioadmin"), Some("minioadmin"), None, None, None).unwrap();
+    if Bucket::new("warehouse", region, credentials)
+        .unwrap()
+        .exists()
+        .await
+        .unwrap_or(false)
+    {
+        return settings;
     }
+    let creds = Credentials::new(Some("minioadmin"), Some("minioadmin"), None, None, None).unwrap();
+    let _ = Bucket::create_with_path_style(
+        "warehouse",
+        Region::Custom {
+            region: "us-east-1".into(),
+            endpoint: format!("http://{}", address),
+        },
+        creds,
+        BucketConfiguration::public(),
+    )
+    .await
+    .expect("Failed to create MinIO bucket");
+
+    settings
 }

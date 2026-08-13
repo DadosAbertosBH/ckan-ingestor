@@ -110,7 +110,6 @@ O `.gitlab-ci.yml` constrói e publica as imagens no registry do GitLab:
 
 | Imagem | Dockerfile |
 |---|---|
-| `$CI_REGISTRY_IMAGE` | `Dockerfile` (raiz) |
 | `$CI_REGISTRY_IMAGE/orchestrator` | `ingestor_orchestrator/Dockerfile` |
 | `$CI_REGISTRY_IMAGE/worker` | `ckan-ingestor-rs/Dockerfile` |
 

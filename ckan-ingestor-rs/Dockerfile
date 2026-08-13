@@ -17,15 +17,19 @@ COPY Cargo.toml Cargo.lock ./
 COPY ckan-ingestor-lib/Cargo.toml ckan-ingestor-lib/
 COPY ckan-ingestor-consumer/Cargo.toml ckan-ingestor-consumer/
 
+# Build dependencies using dummy sources — this layer is cached and reused
+# as long as Cargo.toml/Cargo.lock don't change.
+RUN mkdir -p ckan-ingestor-lib/src ckan-ingestor-consumer/src && \
+    echo 'pub fn dummy() {}' > ckan-ingestor-lib/src/lib.rs && \
+    echo 'fn main() {}' > ckan-ingestor-consumer/src/main.rs && \
+    DUCKDB_DOWNLOAD_LIB=1 cargo build --release -p ckan_ingestor_consumer
+
 # Copy actual source code
 COPY ckan-ingestor-lib/ ckan-ingestor-lib/
 COPY ckan-ingestor-consumer/ ckan-ingestor-consumer/
 
-# Build release binary
-RUN --mount=type=cache,target=/src/target \
-    --mount=type=cache,target=/usr/local/cargo/registry \
-    DUCKDB_DOWNLOAD_LIB=1 \
-    cargo build --release -p ckan_ingestor_consumer && \
+# Build release binary (dependencies already compiled in the previous layer)
+RUN DUCKDB_DOWNLOAD_LIB=1 cargo build --release -p ckan_ingestor_consumer && \
     cp target/release/ckan-ingestor-consumer /usr/local/bin/ && \
     cp target/duckdb-download/*/1.5.5/libduckdb.so /usr/local/lib/
 

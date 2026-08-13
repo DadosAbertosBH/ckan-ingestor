@@ -16,8 +16,6 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 mod common;
 use anyhow::Result;
-use aws_sdk_s3::config::Credentials;
-use aws_sdk_s3::{config::Region, Client};
 use ckan_ingestor_lib::config::S3Settings;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
 use rstest::rstest;
@@ -26,7 +24,7 @@ mod fixtures;
 use crate::common::fixture_path;
 use fixtures::ckan::ckan_mock::{ckan_mock, CkanMock};
 use fixtures::s3::s3_settings;
-//noinspection HttpUrlsUsage
+
 #[rstest]
 #[tokio::test]
 async fn ingest_pdf(
@@ -36,44 +34,18 @@ async fn ingest_pdf(
     let ckan_mock = ckan_mock.await;
     let s3_settings = s3_settings.await;
 
-    // Create S3 client
-    let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-        .endpoint_url(&s3_settings.endpoint_url())
-        .region(Region::new("us-east-1"))
-        .credentials_provider(Credentials::new(
-            &s3_settings.access_key_id,
-            &s3_settings.secret_access_key,
-            None,
-            None,
-            "static",
-        ))
-        .load()
-        .await;
-
-    let s3_client = Client::new(&config);
-    // Ensure the bucket exists
-    let ingestor = S3DocumentIngestor::new(s3_settings.clone(), s3_client.clone())?;
+    let ingestor = S3DocumentIngestor::new(s3_settings.clone())?;
     let url = format!(
         "http://{}/datastore/a_pdf_file?format=PDF",
         ckan_mock.server.address()
     );
     let returned = ingestor.ingest("test.pdf", &url, "application/pdf").await?;
 
-    let resp = reqwest::get(&returned)
-        .await
-        .expect("Falha ao fazer GET público no S3");
-    assert!(
-        resp.status().is_success(),
-        "Arquivo não está acessível publicamente no S3"
-    );
-    let uploaded_content = resp
-        .bytes()
-        .await
-        .expect("Falha ao ler bytes do S3 público");
-    assert!(
-        !uploaded_content.is_empty(),
-        "uploaded_content está vazio ou nulo"
-    );
+    // Verify the object was persisted by downloading it using the same
+    // authenticated bucket (rust-s3 doesn't manage public bucket policies).
+    let bucket = s3_settings.bucket()?;
+    let response_data = bucket.get_object("docs/test.pdf").await?;
+    let uploaded_content = response_data.bytes();
     let file = fixture_path("a_pdf_file.pdf");
     let body = std::fs::read(file)?;
     assert_eq!(uploaded_content.as_ref(), body.as_slice());

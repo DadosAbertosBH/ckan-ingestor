@@ -45,12 +45,9 @@ api:
 worker:
   enabled: true
   replicaCount: 2
-  # -- Maximum number of messages processed in parallel across all partitions.
-  # Ordering is preserved within each partition.
-  concurrency: 4
   image:
     registry: ""
-    repository: ingestor-orchestrator
+    repository: worker
     tag: ""
     pullPolicy: ""
   resources:
@@ -117,12 +114,14 @@ mysql:
 # -- DuckLake configuration
 ducklake:
   catalogUri: ""
+  database: ":memory:"
   dataPath:
     accessKeyId: ""
     endpoint: ""
     bucket: "public-datasets"
     secretAccessKey: ""
     urlStyle: "path"
+    useSsl: "false"
 
 # -- Existing secret name for sensitive values (if set, skips creating a new secret)
 existingSecret: ""

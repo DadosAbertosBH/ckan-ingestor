@@ -28,18 +28,26 @@ spec:
         - name: worker
           image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "worker") }}
           imagePullPolicy: {{ .Values.worker.image.pullPolicy | default .Values.global.image.pullPolicy }}
-          command: ["python", "-m", "ingestor_orchestrator.worker.consumer"]
           env:
-            - name: WORKER_CONCURRENCY
-              value: {{ .Values.worker.concurrency | quote }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+            - name: KAFKA_TOPIC
+              value: {{ .Values.kafka.topic | quote }}
+            - name: KAFKA_TOPIC_RETRY
+              value: {{ .Values.kafka.topicRetry | quote }}
+            - name: KAFKA_GROUP_ID
+              value: {{ .Values.kafka.groupId | quote }}
+            - name: S3_ENDPOINT
+              value: {{ .Values.ducklake.dataPath.endpoint | quote }}
+            - name: S3_BUCKET
+              value: {{ .Values.ducklake.dataPath.bucket | quote }}
+            - name: S3_USE_SSL
+              value: {{ .Values.ducklake.dataPath.useSsl | quote }}
           envFrom:
             - configMapRef:
                 name: {{ include "ingestor-orchestrator.fullname" . }}
             - secretRef:
                 name: {{ include "ingestor-orchestrator.secretName" . }}
-            {{- include "ingestor-orchestrator.postgresEnvFrom" . | nindent 12 }}
-          env:
-            {{- include "ingestor-orchestrator.cnpgDucklakeEnv" . | nindent 12 }}
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
 {{- end }}

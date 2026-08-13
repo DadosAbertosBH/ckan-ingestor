@@ -161,22 +161,5 @@ async fn create_s3_ingestor() -> Result<S3DocumentIngestor> {
         use_ssl: env::var("S3_USE_SSL").map(|v| v == "true").unwrap_or(false),
         ..S3Settings::default()
     };
-    let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-        .endpoint_url(format!(
-            "{}://{}",
-            if settings.use_ssl { "https" } else { "http" },
-            settings.endpoint
-        ))
-        .region(aws_sdk_s3::config::Region::new("us-east-1"))
-        .credentials_provider(aws_sdk_s3::config::Credentials::new(
-            &settings.access_key_id,
-            &settings.secret_access_key,
-            None,
-            None,
-            "static",
-        ))
-        .load()
-        .await;
-    let s3_client = aws_sdk_s3::Client::new(&config);
-    S3DocumentIngestor::new(settings, s3_client)
+    S3DocumentIngestor::new(settings)
 }

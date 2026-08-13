@@ -1,0 +1,50 @@
+suite: Worker deployment (Rust)
+templates:
+  - deployment-worker.yaml
+tests:
+  - it: uses the Rust worker image
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "/worker:"
+
+  - it: injects Kafka configuration
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KAFKA_BOOTSTRAP_SERVERS
+            value: "kafka:9092"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KAFKA_TOPIC
+            value: "ckan.ingest.jobs"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KAFKA_TOPIC_RETRY
+            value: "ckan.ingest.jobs.retry"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KAFKA_GROUP_ID
+            value: "ckan-worker"
+
+  - it: injects S3 configuration
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: S3_BUCKET
+            value: "public-datasets"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: S3_USE_SSL
+            value: "false"
+
+  - it: does not override the image entrypoint
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].command

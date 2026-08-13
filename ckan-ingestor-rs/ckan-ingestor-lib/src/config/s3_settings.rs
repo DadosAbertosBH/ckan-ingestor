@@ -51,4 +51,28 @@ impl S3Settings {
         let scheme = if self.use_ssl { "https" } else { "http" };
         format!("{}://{}", scheme, self.endpoint)
     }
+
+    /// Build a `rust-s3` `Bucket` configured for this settings. Custom
+    /// endpoint (MinIO, etc.) is used when `endpoint` is not the default
+    /// S3 host.
+    pub fn bucket(&self) -> anyhow::Result<Box<s3::bucket::Bucket>> {
+        let region = s3::region::Region::Custom {
+            region: self.region.clone(),
+            endpoint: self.endpoint_url(),
+        };
+        let credentials = s3::creds::Credentials::new(
+            Some(&self.access_key_id),
+            Some(&self.secret_access_key),
+            None,
+            None,
+            None,
+        )?;
+        let bucket = s3::bucket::Bucket::new(&self.bucket, region, credentials)?;
+        let bucket = if self.url_style == "path" {
+            bucket.with_path_style()
+        } else {
+            bucket
+        };
+        Ok(bucket)
+    }
 }

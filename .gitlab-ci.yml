@@ -71,25 +71,6 @@ test:
         - "ckan_ingestor/**/*"
         - "ingestor_orchestrator/**/*"
 
-build:
-  stage: build
-  script:
-    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
-    - docker pull $CI_REGISTRY_IMAGE:latest || true
-    - docker context create builder
-    - docker buildx create builder --use
-    - |
-      TAG_ARGS="--tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA --tag $CI_REGISTRY_IMAGE:latest"
-      if [ -n "$CI_COMMIT_TAG" ]; then
-        TAG_ARGS="$TAG_ARGS --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG"
-      fi
-      docker buildx build \
-        --build-arg BUILDKIT_INLINE_CACHE=1 \
-        --cache-from $CI_REGISTRY_IMAGE:latest \
-        --platform linux/amd64,linux/arm64 \
-        $TAG_ARGS \
-        --push .
-
 build-orchestrator:
   stage: build
   script:
@@ -117,8 +98,10 @@ build-orchestrator:
 
 build-worker:
   stage: build
+  timeout: 2h
   script:
     - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
+    - docker pull $CI_REGISTRY_IMAGE/worker:latest || true
     - docker context create builder
     - docker buildx create builder --use
     - |
@@ -128,8 +111,7 @@ build-worker:
       fi
       docker buildx build \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
-        --cache-from type=registry,ref=$CI_REGISTRY_IMAGE/worker-cache:latest \
-        --cache-to type=registry,ref=$CI_REGISTRY_IMAGE/worker-cache:latest,mode=max \
+        --cache-from $CI_REGISTRY_IMAGE/worker:latest \
         --platform linux/amd64,linux/arm64 \
         $TAG_ARGS \
         --file ckan-ingestor-rs/Dockerfile \

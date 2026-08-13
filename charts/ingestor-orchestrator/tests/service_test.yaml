@@ -6,7 +6,7 @@ tests:
     asserts:
       - isKind:
           of: Service
-      - isNullOrMissing:
+      - notExists:
           path: metadata.annotations
 
   - it: should render service with custom annotations
