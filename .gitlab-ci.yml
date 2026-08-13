@@ -88,6 +88,7 @@ test-rust:
         - $CARGO_HOME
   script:
     - apt-get update && apt-get install -y --no-install-recommends build-essential cmake libssl-dev libcurl4-openssl-dev pkg-config && rm -rf /var/lib/apt/lists/*
+    - rustup component add rustfmt clippy
     - cd ckan-ingestor-rs
     - cargo fmt --all -- --check
     - cargo clippy --all-targets -- -D warnings
