@@ -27,6 +27,7 @@ use fixtures::s3::s3_settings;
 
 #[rstest]
 #[tokio::test]
+#[ignore = "requires a Docker daemon to run MinIO via testcontainers"]
 async fn ingest_pdf(
     #[future] s3_settings: S3Settings,
     #[future] ckan_mock: CkanMock,

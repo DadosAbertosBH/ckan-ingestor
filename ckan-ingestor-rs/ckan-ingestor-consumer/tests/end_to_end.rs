@@ -53,6 +53,7 @@ impl JobProcessor for StubProcessor {
 }
 
 #[tokio::test]
+#[ignore = "requires a Docker daemon to run Kafka via testcontainers"]
 async fn end_to_end_message_flow() -> anyhow::Result<()> {
     // 1. Start a single-node Kafka broker (KRaft mode).
     let _kafka = GenericImage::new("apache/kafka-native", "4.2.1")
