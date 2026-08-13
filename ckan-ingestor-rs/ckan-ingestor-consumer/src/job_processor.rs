@@ -17,7 +17,9 @@
 
 use ckan_ingestor_lib::ingestion_service::IngestionService;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
+use duckdb::Connection;
 
+use crate::duckdb_factory::DuckdbFactory;
 use crate::messages::{JobMessage, JobResultMessage};
 
 // ---------------------------------------------------------------------------
@@ -37,14 +39,37 @@ pub trait JobProcessor: Clone + Send + 'static {
 // RealJobProcessor — production implementation
 // ---------------------------------------------------------------------------
 
-#[derive(Clone)]
 pub struct RealJobProcessor {
     s3: S3DocumentIngestor,
+    factory: DuckdbFactory,
+    conn: Connection,
 }
 
 impl RealJobProcessor {
-    pub fn new(s3: S3DocumentIngestor) -> Self {
-        Self { s3 }
+    pub fn new(s3: S3DocumentIngestor, factory: DuckdbFactory) -> anyhow::Result<Self> {
+        let conn = factory.open()?;
+        Ok(Self { s3, factory, conn })
+    }
+}
+
+impl Clone for RealJobProcessor {
+    fn clone(&self) -> Self {
+        // Clone the underlying connection and re-apply session settings, which
+        // are per-connection and not inherited by `try_clone`. Each clone runs
+        // on its own OS thread (one per Kafka partition), so each gets its own
+        // connection to the same DuckLake catalog.
+        let conn = self
+            .conn
+            .try_clone()
+            .expect("failed to clone duckdb connection");
+        self.factory
+            .configure(&conn)
+            .expect("failed to configure cloned duckdb connection");
+        Self {
+            s3: self.s3.clone(),
+            factory: self.factory.clone(),
+            conn,
+        }
     }
 }
 
@@ -52,7 +77,7 @@ impl JobProcessor for RealJobProcessor {
     fn process(&self, job: JobMessage) -> JobResultMessage {
         let datastore_url = format!("{}/datastore/dump", job.ckan_url.trim_end_matches('/'));
 
-        let result = run_ingestion(&job, &datastore_url, &self.s3);
+        let result = run_ingestion(&self.conn, &job, &datastore_url, &self.s3);
 
         match result {
             Ok(outcome) => JobResultMessage {
@@ -90,37 +115,13 @@ impl JobProcessor for RealJobProcessor {
 }
 
 fn run_ingestion(
+    conn: &Connection,
     job: &JobMessage,
     datastore_url: &str,
     s3: &S3DocumentIngestor,
 ) -> Result<ckan_ingestor_lib::ingestion_orchestrator::IngestionOutcome, anyhow::Error> {
-    let db_path = std::env::var("DUCKLAKE_DATABASE").expect("DUCKLAKE_DATABASE must be set");
-    let catalog_uri =
-        std::env::var("DUCKLAKE_CATALOG_URI").expect("DUCKLAKE_CATALOG_URI must be set");
-    let s3_endpoint = std::env::var("S3_ENDPOINT").expect("S3_ENDPOINT must be set");
-    let s3_bucket = std::env::var("S3_BUCKET").expect("S3_BUCKET must be set");
-    let s3_access_key = std::env::var("S3_ACCESS_KEY_ID").expect("S3_ACCESS_KEY_ID must be set");
-    let s3_secret_key =
-        std::env::var("S3_SECRET_ACCESS_KEY").expect("S3_SECRET_ACCESS_KEY must be set");
-    let s3_use_ssl = std::env::var("S3_USE_SSL")
-        .map(|v| v == "true")
-        .unwrap_or(false);
-
-    let conn = duckdb::Connection::open(&db_path)?;
-    conn.execute_batch(&format!("SET s3_endpoint='{}';", s3_endpoint))?;
-    conn.execute_batch(&format!("SET s3_use_ssl={};", s3_use_ssl))?;
-    conn.execute_batch(&format!("SET s3_access_key_id='{}';", s3_access_key))?;
-    conn.execute_batch(&format!("SET s3_secret_access_key='{}';", s3_secret_key))?;
-    conn.execute_batch("SET s3_url_style='path';")?;
-    conn.execute_batch("SET pg_debug_show_queries=false;")?;
-    conn.execute_batch(&format!(
-        "ATTACH IF NOT EXISTS 'ducklake:{}' AS lake (DATA_PATH 's3://{}', DATA_INLINING_ROW_LIMIT 10000, AUTOMATIC_MIGRATION TRUE);",
-        catalog_uri, s3_bucket
-    ))?;
-    conn.execute_batch("USE lake;")?;
-    conn.execute_batch("SET ducklake_max_retry_count = 100;")?;
     IngestionService::run(
-        &conn,
+        conn,
         &job.resource_id,
         &job.resource_url,
         &job.resource_format,

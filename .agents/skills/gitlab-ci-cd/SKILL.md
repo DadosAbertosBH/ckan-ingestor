@@ -35,23 +35,42 @@ This prevents CI pipeline failures on the `test` stage.
 
 ## Instructions
 
+### ALWAYS pass `--repo` to every `glab` command
+
+This checkout is shared between two remotes (`pedalin/ckan-ingestor` and
+`noctcloud/argocd-applications`), so `glab` may prompt interactively for which
+base repository to use — which hangs non-interactive shells. Always disambiguate
+with `--repo` on **every** `glab` invocation, e.g.:
+
+```bash
+glab ci status --repo pedalin/ckan-ingestor
+glab ci view <pipeline-id> --repo pedalin/ckan-ingestor
+glab ci trace <job-id> --repo pedalin/ckan-ingestor
+glab ci retry <job-id> --repo pedalin/ckan-ingestor
+glab mr list --repo pedalin/ckan-ingestor
+glab mr view <id> --repo pedalin/ckan-ingestor
+```
+
+When the work concerns the GitOps repo instead, use
+`--repo noctcloud/argocd-applications`.
+
 1. Use `glab` to check current pipeline and job status:
-   - `glab ci status` — list recent pipelines
-   - `glab ci view <pipeline-id>` — pipeline details
-   - `glab ci trace <job-id>` — job logs
+   - `glab ci status --repo pedalin/ckan-ingestor` — list recent pipelines
+   - `glab ci view <pipeline-id> --repo pedalin/ckan-ingestor` — pipeline details
+   - `glab ci trace <job-id> --repo pedalin/ckan-ingestor` — job logs
 
 2. If there are failures:
-   - Analyze the job log with `glab ci trace`
+   - Analyze the job log with `glab ci trace --repo pedalin/ckan-ingestor`
    - Identify the root cause (lint error, test failure, build issue, deploy error)
    - Fix the relevant files in the project
    - Explain what caused the failure and what was fixed
 
 3. If you need to re-run:
-   - `glab ci retry <job-id>` — retry a specific job
+   - `glab ci retry <job-id> --repo pedalin/ckan-ingestor` — retry a specific job
 
 4. For merge requests:
-   - `glab mr list` — list open MRs
-   - `glab mr view <id>` — MR details
+   - `glab mr list --repo pedalin/ckan-ingestor` — list open MRs
+   - `glab mr view <id> --repo pedalin/ckan-ingestor` — MR details
 
 ## Available Tools
 

@@ -23,12 +23,17 @@ COPY ckan-ingestor-consumer/ ckan-ingestor-consumer/
 
 # Build release binary (cargo registry and target caches are mounted so
 # they persist via the registry cache between builds).
+# The shared /src/target cache can contain libduckdb.so for more than one
+# platform, so resolve the exact Rust target triple and copy only that
+# platform's lib — this avoids GNU cp's "will not overwrite just-created"
+# failure (and copying the wrong arch) during multi-platform builds.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     DUCKDB_DOWNLOAD_LIB=1 \
     cargo build --release -p ckan_ingestor_consumer && \
     cp target/release/ckan-ingestor-consumer /usr/local/bin/ && \
-    cp target/duckdb-download/*/1.5.5/libduckdb.so /usr/local/lib/
+    RUST_TARGET="$(rustc -vV | sed -n 's/^host: //p')" && \
+    cp -f "target/duckdb-download/${RUST_TARGET}/1.5.5/libduckdb.so" /usr/local/lib/
 
 # --- Runtime image ---
 FROM debian:trixie-slim
