@@ -27,6 +27,7 @@ pub fn fixture_path(file: &str) -> PathBuf {
 /// Create a dummy S3DocumentIngestor for tests that don't need real S3.
 /// Uses localhost with dummy credentials — the S3 client will fail if actually
 /// called, but CSV/datastore/JSON tests never invoke S3 operations.
+#[allow(dead_code)]
 pub fn dummy_s3_ingestor() -> &'static ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor {
     use ckan_ingestor_lib::config::S3Settings;
     use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;

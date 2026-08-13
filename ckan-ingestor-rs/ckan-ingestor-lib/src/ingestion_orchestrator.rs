@@ -56,6 +56,7 @@ pub struct IngestionOutcome {
 
 impl IngestionOutcome {
     /// Create a new outcome with derived status.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         rows_processed: i64,
         preview: Vec<serde_json::Value>,

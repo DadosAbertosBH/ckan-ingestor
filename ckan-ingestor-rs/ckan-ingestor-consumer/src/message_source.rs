@@ -68,6 +68,7 @@ where
 {
     type Msg = OwnedMessage;
 
+    #[allow(clippy::manual_async_fn)]
     fn recv(&self) -> impl Future<Output = Result<Self::Msg, KafkaError>> + Send {
         async {
             StreamPartitionQueue::recv(&self.queue)
@@ -158,6 +159,7 @@ pub(crate) mod tests {
     impl MessageSource for MockSource {
         type Msg = MockMsg;
 
+        #[allow(clippy::manual_async_fn)]
         fn recv(
             &self,
         ) -> impl std::future::Future<Output = Result<MockMsg, rdkafka::error::KafkaError>> + Send
