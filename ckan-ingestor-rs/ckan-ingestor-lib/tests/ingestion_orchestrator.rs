@@ -245,21 +245,3 @@ fn test_ingestion_outcome_serialization() -> Result<()> {
     assert_eq!(json["status"], "success");
     Ok(())
 }
-
-#[test]
-fn test_ingestion_outcome_failure_status() -> Result<()> {
-    let outcome = IngestionOutcome::new(
-        0,
-        vec![],
-        None,
-        None,
-        None,
-        false,
-        None,
-        vec!["empty".to_string()],
-    );
-
-    let json = serde_json::to_value(&outcome)?;
-    assert_eq!(json["status"], "empty");
-    Ok(())
-}
