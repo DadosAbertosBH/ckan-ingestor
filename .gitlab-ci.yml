@@ -86,6 +86,7 @@ test-rust:
           - ckan-ingestor-rs/Cargo.lock
       paths:
         - $CARGO_HOME
+        - ckan-ingestor-rs/target
   script:
     - apt-get update && apt-get install -y --no-install-recommends build-essential cmake libssl-dev libcurl4-openssl-dev pkg-config && rm -rf /var/lib/apt/lists/*
     - rustup component add rustfmt clippy
@@ -126,6 +127,8 @@ build-orchestrator:
 build-worker:
   stage: build
   timeout: 2h
+  tags:
+    - saas-linux-medium-amd64
   script:
     - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
     - docker pull $CI_REGISTRY_IMAGE/worker:latest || true
