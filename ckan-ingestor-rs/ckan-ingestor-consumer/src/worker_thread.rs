@@ -113,7 +113,18 @@ where
                             publisher.publish(processing).await
                                 .expect("failed to publish PROCESSING");
 
-                            let result = processor.process(job);
+                            // Run the synchronous, blocking processor on the
+                            // blocking pool. The real processor drives async
+                            // work (S3 upload) to completion internally via
+                            // `Handle::block_on`, which would panic with
+                            // "Cannot start a runtime from within a runtime" if
+                            // executed on the async runtime's worker thread.
+                            let processor = processor.clone();
+                            let result = tokio::task::spawn_blocking(move || {
+                                processor.process(job)
+                            })
+                            .await
+                            .expect("processor panicked");
                             publisher.publish(result).await
                                 .expect("failed to publish result");
 
@@ -170,6 +181,37 @@ mod tests {
         }
     }
 
+    /// A processor that calls `block_on` synchronously, mirroring the real
+    /// `DocumentReader::do_read` / `S3DocumentIngestor::ingest_blocking`.
+    /// This panics with "Cannot start a runtime from within a runtime" when
+    /// invoked from inside a tokio runtime.
+    #[derive(Clone)]
+    struct BlockingProcessor;
+
+    impl JobProcessor for BlockingProcessor {
+        fn process(&self, _job: JobMessage) -> JobResultMessage {
+            // Simulate the synchronous blocking work that the real processor
+            // performs (S3 upload) by blocking on an async future with the
+            // current tokio handle. This panics with "Cannot start a runtime
+            // from within a runtime" when invoked from inside a tokio runtime.
+            let handle = tokio::runtime::Handle::current();
+            handle.block_on(async { 42 });
+            JobResultMessage {
+                job_id: "blocking".into(),
+                status: "done".into(),
+                rows_processed: Some(1),
+                expected_rows: None,
+                resource_size: None,
+                encoding: None,
+                expected_columns: None,
+                datastore_active: false,
+                labels: vec![],
+                error_message: None,
+                preview: None,
+            }
+        }
+    }
+
     fn mock_source(buffer: usize) -> (mpsc::Sender<MockMsg>, MockSource) {
         let (tx, rx) = mpsc::channel(buffer);
         (tx, MockSource::new(rx))
@@ -208,6 +250,38 @@ mod tests {
         let published = publisher.published.clone();
 
         let mut worker = WorkerThread::new("t".into(), 0, source, publisher, StubProcessor);
+        worker.run();
+
+        let job = JobMessage {
+            job_id: "job-1".into(),
+            resource_id: "res-1".into(),
+            ckan_url: "http://ckan".into(),
+            resource_url: "".into(),
+            resource_format: "".into(),
+        };
+        tx.send(MockMsg {
+            payload: serde_json::to_vec(&job).unwrap(),
+            offset: 42,
+        })
+        .await
+        .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        worker.shutdown();
+
+        let results = published.lock().unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].status, "PROCESSING");
+        assert_eq!(results[1].status, "done");
+    }
+
+    #[tokio::test]
+    async fn processes_blocking_processor_without_panicking() {
+        let (tx, source) = mock_source(1);
+        let publisher = MockPublisher::new();
+        let published = publisher.published.clone();
+
+        let mut worker = WorkerThread::new("t".into(), 0, source, publisher, BlockingProcessor);
         worker.run();
 
         let job = JobMessage {
