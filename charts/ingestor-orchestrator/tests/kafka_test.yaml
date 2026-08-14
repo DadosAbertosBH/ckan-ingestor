@@ -19,3 +19,24 @@ tests:
           kind: KafkaTopic
           apiVersion: kafka.strimzi.io/v1
         template: kafka-topics.yaml
+
+  - it: should use the configured partitions for the primary topic
+    set:
+      kafka.topics.autocreate: true
+      kafka.partitions: 6
+    asserts:
+      - equal:
+          path: spec.partitions
+          value: 6
+        documentIndex: 0
+        template: kafka-topics.yaml
+
+  - it: uses a default of 3 partitions when not configured
+    set:
+      kafka.topics.autocreate: true
+    asserts:
+      - equal:
+          path: spec.partitions
+          value: 3
+        documentIndex: 0
+        template: kafka-topics.yaml

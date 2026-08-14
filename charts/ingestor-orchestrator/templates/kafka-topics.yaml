@@ -9,8 +9,8 @@ metadata:
     strimzi.io/cluster: {{ .Values.kafka.clusterName }}
 spec:
   topicName: {{ .Values.kafka.topic }}
-  partitions: 3
-  replicas: 1
+  partitions: {{ .Values.kafka.partitions }}
+  replicas: {{ .Values.kafka.replicas }}
   config:
     retention.ms: 604800000
 ---
@@ -24,8 +24,8 @@ metadata:
     strimzi.io/cluster: {{ .Values.kafka.clusterName }}
 spec:
   topicName: {{ .Values.kafka.topicRetry }}
-  partitions: 3
-  replicas: 1
+  partitions: {{ .Values.kafka.partitions }}
+  replicas: {{ .Values.kafka.replicas }}
   config:
     retention.ms: 604800000
 {{- end }}
