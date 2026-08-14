@@ -120,9 +120,6 @@ build-orchestrator:
         --push .
   rules:
     - if: $CI_COMMIT_TAG
-    - changes:
-        - "ingestor_orchestrator/**/*"
-        - "ckan_ingestor/**/*"
 
 .build-worker-base:
   image: docker
@@ -148,8 +145,6 @@ build-orchestrator:
         --push $WORKER_CONTEXT
   rules:
     - if: $CI_COMMIT_TAG
-    - changes:
-        - "ckan-ingestor-rs/**/*"
 
 build-worker-amd64:
   extends: .build-worker-base
@@ -192,5 +187,3 @@ build-worker:
       fi
   rules:
     - if: $CI_COMMIT_TAG
-    - changes:
-        - "ckan-ingestor-rs/**/*"
