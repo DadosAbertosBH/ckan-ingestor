@@ -129,6 +129,11 @@ services:
       dockerfile: ingestor_orchestrator/Dockerfile
     ports:
       - "8000:8000"
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: "1024M"
     depends_on:
       mysql:
         condition: service_healthy
@@ -155,6 +160,11 @@ services:
       dockerfile: Dockerfile
     init: true
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: "1024M"
     depends_on:
       kafka:
         condition: service_healthy

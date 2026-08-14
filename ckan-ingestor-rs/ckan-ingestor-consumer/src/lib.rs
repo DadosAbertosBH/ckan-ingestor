@@ -107,10 +107,10 @@ pub async fn run() -> Result<()> {
 
     let factory = DuckdbFactory::from_env();
     let processor = RealJobProcessor::new(s3, factory)?;
-    let mut coordinator = WorkerCoordinator::new(consumer, processor);
+    let mut coordinator = WorkerCoordinator::new(consumer, processor, cmd_rx);
 
     info!("CKAN Ingestor Consumer started");
-    coordinator.run(cmd_rx, producer, shutdown.clone()).await;
+    coordinator.run(producer, shutdown.clone()).await;
 
     info!("CKAN Ingestor Consumer stopped");
     Ok(())

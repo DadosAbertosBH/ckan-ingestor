@@ -113,14 +113,14 @@ async fn end_to_end_message_flow() -> anyhow::Result<()> {
     let consumer = Arc::new(consumer);
     consumer.subscribe(&["ckan.ingest.jobs", "ckan.ingest.jobs.retry"])?;
 
-    let mut coordinator = WorkerCoordinator::new(consumer, StubProcessor);
+    let mut coordinator = WorkerCoordinator::new(consumer, StubProcessor, cmd_rx);
     let shutdown = Arc::new(Notify::new());
 
     let producer_for_coordinator = producer.clone();
     let shutdown_for_coordinator = shutdown.clone();
     let coordinator_handle = tokio::spawn(async move {
         coordinator
-            .run(cmd_rx, producer_for_coordinator, shutdown_for_coordinator)
+            .run(producer_for_coordinator, shutdown_for_coordinator)
             .await;
     });
 

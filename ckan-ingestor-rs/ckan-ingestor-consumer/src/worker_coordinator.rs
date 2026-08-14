@@ -41,6 +41,7 @@ pub struct WorkerCoordinator<
     workers: HashMap<PartitionKey, WorkerThread<PartitionSource<C>, P, Proc>>,
     consumer: Arc<StreamConsumer<C>>,
     processor: Proc,
+    rx: UnboundedReceiver<Command>,
 }
 
 impl<C, P, Proc> WorkerCoordinator<C, P, Proc>
@@ -49,11 +50,16 @@ where
     P: ResultPublisher + Send + 'static,
     Proc: JobProcessor,
 {
-    pub fn new(consumer: Arc<StreamConsumer<C>>, processor: Proc) -> Self {
+    pub fn new(
+        consumer: Arc<StreamConsumer<C>>,
+        processor: Proc,
+        rx: UnboundedReceiver<Command>,
+    ) -> Self {
         Self {
             workers: HashMap::new(),
             consumer,
             processor,
+            rx,
         }
     }
 
@@ -95,12 +101,7 @@ where
         self.revoke(keys).await;
     }
 
-    pub async fn run(
-        &mut self,
-        mut rx: UnboundedReceiver<Command>,
-        publisher: P,
-        shutdown: Arc<tokio::sync::Notify>,
-    ) {
+    pub async fn run(&mut self, publisher: P, shutdown: Arc<tokio::sync::Notify>) {
         // Start the main consumer poll loop immediately — it drives the
         // rebalance callback, which in turn triggers split_partition_queue.
         let mc = Arc::clone(&self.consumer);
@@ -114,7 +115,7 @@ where
         loop {
             tokio::select! {
                 _ = shutdown.notified() => break,
-                cmd = rx.recv() => {
+                cmd = self.rx.recv() => {
                     match cmd {
                         Some(Command::Assign(keys)) => {
                             self.revoke_all().await;
@@ -168,15 +169,16 @@ mod tests {
         }
     }
 
-    fn new_coordinator()
-    -> WorkerCoordinator<rdkafka::consumer::DefaultConsumerContext, MockPublisher, StubProcessor>
+    fn new_coordinator(
+        cmd_rx: UnboundedReceiver<Command>,
+    ) -> WorkerCoordinator<rdkafka::consumer::DefaultConsumerContext, MockPublisher, StubProcessor>
     {
         let consumer = Arc::new(
             rdkafka::ClientConfig::new()
                 .create::<StreamConsumer<rdkafka::consumer::DefaultConsumerContext>>()
                 .expect("mock consumer"),
         );
-        WorkerCoordinator::new(consumer, StubProcessor)
+        WorkerCoordinator::new(consumer, StubProcessor, cmd_rx)
     }
 
     #[tokio::test]
@@ -185,11 +187,11 @@ mod tests {
         let publisher = MockPublisher::new();
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
-        let mut coordinator = new_coordinator();
+        let mut coordinator = new_coordinator(cmd_rx);
         let shutdown = Arc::new(tokio::sync::Notify::new());
 
         let handle = tokio::spawn(async move {
-            coordinator.run(cmd_rx, publisher, shutdown).await;
+            coordinator.run(publisher, shutdown).await;
         });
 
         cmd_tx.send(Command::Assign(vec![key.clone()])).unwrap();
