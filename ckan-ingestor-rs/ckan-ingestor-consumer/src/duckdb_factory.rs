@@ -46,8 +46,15 @@ impl DuckdbConfig {
     pub fn from_env() -> Self {
         Self {
             db_path: std::env::var("DUCKLAKE_DATABASE").expect("DUCKLAKE_DATABASE must be set"),
-            catalog_uri: std::env::var("DUCKLAKE_CATALOG_URI")
-                .expect("DUCKLAKE_CATALOG_URI must be set"),
+            catalog_uri: build_catalog_uri(
+                std::env::var("DUCKLAKE_CATALOG_URI").ok(),
+                std::env::var("DUCKLAKE_HOST").ok(),
+                std::env::var("DUCKLAKE_PORT").ok(),
+                std::env::var("DUCKLAKE_DBNAME").ok(),
+                std::env::var("DUCKLAKE_USERNAME").ok(),
+                std::env::var("DUCKLAKE_PASSWORD").ok(),
+            )
+            .expect("DUCKLAKE_CATALOG_URI or DUCKLAKE_HOST/DUCKLAKE_DBNAME/DUCKLAKE_USERNAME/DUCKLAKE_PASSWORD must be set"),
             s3_protocol: std::env::var("S3_PROTOCOL").unwrap_or_else(|_| "s3".to_string()),
             s3_endpoint: std::env::var("S3_ENDPOINT").expect("S3_ENDPOINT must be set"),
             s3_bucket: std::env::var("S3_BUCKET").expect("S3_BUCKET must be set"),
@@ -60,6 +67,38 @@ impl DuckdbConfig {
                 .unwrap_or(false),
         }
     }
+}
+
+/// Build the DuckLake catalog URI.
+///
+/// Mirrors the Python `DucklakeSettings.get_catalog_uri`:
+/// - prefers an explicit `DUCKLAKE_CATALOG_URI`,
+/// - otherwise assembles one from the individual `DUCKLAKE_HOST`/`PORT`/`DBNAME`/
+///   `USERNAME`/`PASSWORD` params (set by the CNPG secret),
+/// - otherwise returns `None` (no usable catalog URI).
+fn build_catalog_uri(
+    catalog_uri: Option<String>,
+    host: Option<String>,
+    port: Option<String>,
+    dbname: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
+) -> Option<String> {
+    if let Some(uri) = catalog_uri.filter(|v| !v.is_empty()) {
+        return Some(uri);
+    }
+
+    let host = host.filter(|v| !v.is_empty())?;
+    let dbname = dbname.filter(|v| !v.is_empty())?;
+    let username = username.filter(|v| !v.is_empty())?;
+    let password = password.filter(|v| !v.is_empty())?;
+    let port = port
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "5432".to_string());
+
+    Some(format!(
+        "postgres:host={host} port={port} dbname={dbname} user={username} password={password}"
+    ))
 }
 
 /// Opens and configures DuckLake connections.
@@ -134,5 +173,65 @@ fn bool_str(b: bool) -> String {
         "true".to_string()
     } else {
         "false".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_catalog_uri;
+
+    fn some(s: &str) -> Option<String> {
+        Some(s.to_string())
+    }
+
+    #[test]
+    fn prefers_explicit_catalog_uri() {
+        let uri = build_catalog_uri(
+            some("postgres:host=x dbname=test"),
+            some("ignored"),
+            some("5432"),
+            some("ignored"),
+            some("ignored"),
+            some("ignored"),
+        );
+        assert_eq!(uri.as_deref(), Some("postgres:host=x dbname=test"));
+    }
+
+    #[test]
+    fn builds_uri_from_individual_params() {
+        let uri = build_catalog_uri(
+            None,
+            some("myhost"),
+            some("5432"),
+            some("mydb"),
+            some("myuser"),
+            some("mypass"),
+        );
+        assert_eq!(
+            uri.as_deref(),
+            Some("postgres:host=myhost port=5432 dbname=mydb user=myuser password=mypass")
+        );
+    }
+
+    #[test]
+    fn defaults_port_to_5432_when_missing() {
+        let uri = build_catalog_uri(
+            None,
+            some("myhost"),
+            None,
+            some("mydb"),
+            some("myuser"),
+            some("mypass"),
+        );
+        assert_eq!(
+            uri.as_deref(),
+            Some("postgres:host=myhost port=5432 dbname=mydb user=myuser password=mypass")
+        );
+    }
+
+    #[test]
+    fn returns_none_when_individual_params_incomplete() {
+        let uri = build_catalog_uri(None, some("myhost"), None, None, None, None);
+        assert_eq!(uri, None);
     }
 }
