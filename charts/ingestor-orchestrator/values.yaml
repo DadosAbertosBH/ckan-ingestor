@@ -62,15 +62,6 @@ kafka:
   topic: "ckan.ingest.jobs"
   topicRetry: "ckan.ingest.jobs.retry"
   groupId: "ckan-worker"
-  topics:
-    # -- Create KafkaTopics via Strimzi. Disable if topics are managed elsewhere.
-    autocreate: false
-  # -- Number of partitions for auto-created topics
-  partitions: 3
-  # -- Number of replicas for auto-created topics
-  replicas: 1
-  # -- Strimzi Kafka cluster name for topic creation
-  clusterName: "ingestor-kafka"
 
 # -- PostgreSQL configuration (CloudNativePG)
 postgres:
