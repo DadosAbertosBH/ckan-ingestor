@@ -77,7 +77,7 @@ impl<'a> CsvReader<'a> {
             None
         });
 
-        let encodings = ["utf-8", "latin-1", "utf-16"];
+        let encodings = ["utf-8", "latin-1", "CP1252", "utf-16"];
 
         for encoding in &encodings {
             match self.try_read_csv(&csv_path, encoding) {
@@ -187,5 +187,41 @@ impl CkanReader for CsvReader<'_> {
 
     fn do_read(&self, resource: &CkanResource) -> Result<Vec<RecordBatch>> {
         self.read_batches(resource)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn fixture_path(file: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("data")
+            .join(file)
+    }
+
+    /// A semicolon-delimited CSV containing quoted fields with embedded
+    /// semicolons must still be parsed into a table with all records.
+    #[test]
+    fn do_read_parses_windows1152_enconde_semicolon_delimited_csv() -> Result<()> {
+        let conn = Connection::open_in_memory()?;
+        let reader = CsvReader::new(&conn);
+
+        let csv_path = fixture_path("renuncia-fiscal-informacoes-conceituais-2024.csv");
+        let resource = CkanResource {
+            id: "5d16743c-0f6b-411d-aa7c-734a24b02812".to_string(),
+            url: csv_path.to_str().unwrap().to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+        };
+
+        let batches = reader.do_read(&resource)?;
+        let total: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+        assert_eq!(total, 31, "should read all 31 data records");
+
+        Ok(())
     }
 }
