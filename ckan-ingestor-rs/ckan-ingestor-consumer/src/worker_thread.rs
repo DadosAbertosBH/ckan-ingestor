@@ -31,7 +31,7 @@ pub struct WorkerThread<M: MessageSource, P: ResultPublisher, Proc: JobProcessor
     pub partition: i32,
     source: Option<M>,
     publisher: P,
-    processor: Proc,
+    processor: Option<Proc>,
     handle: Option<JoinHandle<()>>,
     shutdown: Arc<Notify>,
 }
@@ -48,7 +48,7 @@ where
             partition,
             source: Some(source),
             publisher,
-            processor,
+            processor: Some(processor),
             handle: None,
             shutdown: Arc::new(Notify::new()),
         }
@@ -61,21 +61,25 @@ where
         let topic = self.topic.clone();
         let partition = self.partition;
         let publisher = self.publisher.clone();
-        let processor = self.processor.clone();
+        let processor = self
+            .processor
+            .take()
+            .expect("WorkerThread::run called twice");
 
         let handle = std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .expect("failed to build worker runtime");
-            rt.block_on(Self::run_loop(
-                topic, partition, source, publisher, processor, shutdown,
-            ));
+            Self::run_loop(
+                &rt, topic, partition, source, publisher, processor, shutdown,
+            );
         });
         self.handle = Some(handle);
     }
 
-    async fn run_loop(
+    fn run_loop(
+        rt: &tokio::runtime::Runtime,
         topic: String,
         partition: i32,
         source: M,
@@ -85,56 +89,46 @@ where
     ) {
         info!("Partition {}/{} worker ready", topic, partition);
         loop {
-            tokio::select! {
-                _ = shutdown.notified() => {
+            let message = rt.block_on(async {
+                tokio::select! {
+                    _ = shutdown.notified() => None,
+                    msg = source.recv() => Some(msg),
+                }
+            });
+
+            match message {
+                None => {
                     info!("Partition {}/{} shutting down", topic, partition);
                     return;
                 }
-                msg = source.recv() => {
-                    match msg {
-                        Ok(m) => {
-                            let payload = m.payload().unwrap_or(&[]);
-                            let job: JobMessage = serde_json::from_slice(payload)
-                                .expect("failed to deserialize job message");
+                Some(Ok(m)) => {
+                    let payload = m.payload().unwrap_or(&[]);
+                    let job: JobMessage =
+                        serde_json::from_slice(payload).expect("failed to deserialize job message");
 
-                            let processing = JobResultMessage {
-                                job_id: job.job_id.clone(),
-                                status: "PROCESSING".to_string(),
-                                rows_processed: None,
-                                expected_rows: None,
-                                resource_size: None,
-                                encoding: None,
-                                expected_columns: None,
-                                datastore_active: false,
-                                labels: vec![],
-                                error_message: None,
-                                preview: None,
-                            };
-                            publisher.publish(processing).await
-                                .expect("failed to publish PROCESSING");
+                    let processing = JobResultMessage {
+                        job_id: job.job_id.clone(),
+                        status: "PROCESSING".to_string(),
+                        rows_processed: None,
+                        expected_rows: None,
+                        encoding: None,
+                        expected_columns: None,
+                        datastore_active: false,
+                        error_message: None,
+                        preview: None,
+                    };
+                    rt.block_on(publisher.publish(processing))
+                        .expect("failed to publish PROCESSING");
 
-                            // Run the synchronous, blocking processor on the
-                            // blocking pool. The real processor drives async
-                            // work (S3 upload) to completion internally via
-                            // `Handle::block_on`, which would panic with
-                            // "Cannot start a runtime from within a runtime" if
-                            // executed on the async runtime's worker thread.
-                            let processor = processor.clone();
-                            let result = tokio::task::spawn_blocking(move || {
-                                processor.process(job)
-                            })
-                            .await
-                            .expect("processor panicked");
-                            publisher.publish(result).await
-                                .expect("failed to publish result");
+                    let result = processor.process(job);
+                    rt.block_on(publisher.publish(result))
+                        .expect("failed to publish result");
 
-                            source.commit(&topic, partition, m.offset()).await
-                                .expect("failed to commit offset");
-                        }
-                        Err(e) => {
-                            log::error!("Consumer error for {}/{}: {}", topic, partition, e);
-                        }
-                    }
+                    rt.block_on(source.commit(&topic, partition, m.offset()))
+                        .expect("failed to commit offset");
+                }
+                Some(Err(e)) => {
+                    log::error!("Consumer error for {}/{}: {}", topic, partition, e);
                 }
             }
         }
@@ -155,6 +149,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use super::*;
     use crate::message_source::tests::{MockMsg, MockSource};
     use crate::result_publisher::tests::MockPublisher;
@@ -170,42 +166,58 @@ mod tests {
                 status: "done".into(),
                 rows_processed: Some(1),
                 expected_rows: None,
-                resource_size: None,
                 encoding: None,
                 expected_columns: None,
                 datastore_active: false,
-                labels: vec![],
                 error_message: None,
                 preview: None,
             }
         }
     }
 
-    /// A processor that calls `block_on` synchronously, mirroring the real
-    /// `DocumentReader::do_read` / `S3DocumentIngestor::ingest_blocking`.
-    /// This panics with "Cannot start a runtime from within a runtime" when
-    /// invoked from inside a tokio runtime.
-    #[derive(Clone)]
-    struct BlockingProcessor;
+    struct CloneCountingProcessor {
+        clones: Arc<AtomicUsize>,
+    }
 
-    impl JobProcessor for BlockingProcessor {
-        fn process(&self, _job: JobMessage) -> JobResultMessage {
-            // Simulate the synchronous blocking work that the real processor
-            // performs (S3 upload) by blocking on an async future with the
-            // current tokio handle. This panics with "Cannot start a runtime
-            // from within a runtime" when invoked from inside a tokio runtime.
-            let handle = tokio::runtime::Handle::current();
-            handle.block_on(async { 42 });
+    impl Clone for CloneCountingProcessor {
+        fn clone(&self) -> Self {
+            self.clones.fetch_add(1, Ordering::SeqCst);
+            Self {
+                clones: self.clones.clone(),
+            }
+        }
+    }
+
+    impl JobProcessor for CloneCountingProcessor {
+        fn process(&self, job: JobMessage) -> JobResultMessage {
             JobResultMessage {
-                job_id: "blocking".into(),
+                job_id: job.job_id,
                 status: "done".into(),
-                rows_processed: Some(1),
+                rows_processed: None,
                 expected_rows: None,
-                resource_size: None,
                 encoding: None,
                 expected_columns: None,
                 datastore_active: false,
-                labels: vec![],
+                error_message: None,
+                preview: None,
+            }
+        }
+    }
+
+    #[derive(Clone)]
+    struct OutsideTokioProcessor;
+
+    impl JobProcessor for OutsideTokioProcessor {
+        fn process(&self, job: JobMessage) -> JobResultMessage {
+            assert!(tokio::runtime::Handle::try_current().is_err());
+            JobResultMessage {
+                job_id: job.job_id,
+                status: "done".into(),
+                rows_processed: None,
+                expected_rows: None,
+                encoding: None,
+                expected_columns: None,
+                datastore_active: false,
                 error_message: None,
                 preview: None,
             }
@@ -276,12 +288,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn processes_blocking_processor_without_panicking() {
+    async fn keeps_the_same_processor_for_every_message() {
         let (tx, source) = mock_source(1);
-        let publisher = MockPublisher::new();
-        let published = publisher.published.clone();
-
-        let mut worker = WorkerThread::new("t".into(), 0, source, publisher, BlockingProcessor);
+        let clones = Arc::new(AtomicUsize::new(0));
+        let processor = CloneCountingProcessor {
+            clones: clones.clone(),
+        };
+        let mut worker = WorkerThread::new("t".into(), 0, source, MockPublisher::new(), processor);
         worker.run();
 
         let job = JobMessage {
@@ -301,10 +314,35 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         worker.shutdown();
 
-        let results = published.lock().unwrap();
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].status, "PROCESSING");
-        assert_eq!(results[1].status, "done");
+        assert_eq!(clones.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn runs_the_processor_outside_the_tokio_runtime() {
+        let (tx, source) = mock_source(1);
+        let publisher = MockPublisher::new();
+        let published = publisher.published.clone();
+        let mut worker = WorkerThread::new("t".into(), 0, source, publisher, OutsideTokioProcessor);
+        worker.run();
+
+        let job = JobMessage {
+            job_id: "job-1".into(),
+            resource_id: "res-1".into(),
+            ckan_url: "http://ckan".into(),
+            resource_url: "".into(),
+            resource_format: "".into(),
+        };
+        tx.send(MockMsg {
+            payload: serde_json::to_vec(&job).unwrap(),
+            offset: 42,
+        })
+        .await
+        .unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        worker.shutdown();
+
+        assert_eq!(published.lock().unwrap().last().unwrap().status, "done");
     }
 
     #[tokio::test]

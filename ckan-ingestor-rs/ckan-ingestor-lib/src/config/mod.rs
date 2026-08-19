@@ -21,3 +21,34 @@ pub use s3_settings::S3Settings;
 mod ducklake_settings;
 mod rest_catalog_settings;
 mod s3_settings;
+
+#[cfg(test)]
+mod tests {
+    use super::{DucklakeSettings, RestCatalogSettings, S3Settings};
+
+    #[test]
+    fn defaults_describe_the_local_development_environment() {
+        let s3 = S3Settings::default();
+        let ducklake = DucklakeSettings::default();
+        let catalog = RestCatalogSettings::default();
+
+        assert_eq!(s3.endpoint_url(), "https://s3.amazonaws.com");
+        assert_eq!(s3.bucket, "warehouse");
+        assert_eq!(ducklake.database, "public");
+        assert_eq!(ducklake.catalog_uri, ":memory:");
+        assert_eq!(ducklake.data_path.bucket, "warehouse");
+        assert_eq!(catalog.uri, "http://localhost:8080/catalog");
+        assert_eq!(catalog.warehouse, "demo");
+    }
+
+    #[test]
+    fn s3_endpoint_url_uses_http_when_ssl_is_disabled() {
+        let settings = S3Settings {
+            endpoint: "minio.local:9000".to_string(),
+            use_ssl: false,
+            ..S3Settings::default()
+        };
+
+        assert_eq!(settings.endpoint_url(), "http://minio.local:9000");
+    }
+}

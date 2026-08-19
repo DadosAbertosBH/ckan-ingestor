@@ -41,11 +41,9 @@ impl JobProcessor for StubProcessor {
             status: "done".to_string(),
             rows_processed: Some(1),
             expected_rows: None,
-            resource_size: None,
             encoding: None,
             expected_columns: None,
             datastore_active: false,
-            labels: vec![],
             error_message: None,
             preview: None,
         }

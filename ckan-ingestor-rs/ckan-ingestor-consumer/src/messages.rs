@@ -41,13 +41,10 @@ pub struct JobResultMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expected_rows: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub resource_size: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expected_columns: Option<i64>,
     pub datastore_active: bool,
-    pub labels: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

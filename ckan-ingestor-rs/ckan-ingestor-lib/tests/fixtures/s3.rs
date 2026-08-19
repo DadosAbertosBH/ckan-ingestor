@@ -15,48 +15,43 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 use ckan_ingestor_lib::config::S3Settings;
-use rstest::fixture;
 use s3::creds::Credentials;
 use s3::region::Region;
 use s3::{Bucket, BucketConfiguration};
-use testcontainers::{core::IntoContainerPort, runners::AsyncRunner, GenericImage, ImageExt};
-use tokio::sync::OnceCell;
+use std::sync::OnceLock;
+use testcontainers::{core::IntoContainerPort, runners::SyncRunner, GenericImage, ImageExt};
 
-static MINIO_ADDRESS: OnceCell<String> = OnceCell::const_new();
+static MINIO_ADDRESS: OnceLock<String> = OnceLock::new();
 
-async fn ensure_minio() -> &'static String {
-    MINIO_ADDRESS
-        .get_or_init(|| async {
-            let minio = GenericImage::new("minio/minio", "RELEASE.2024-09-22T00-33-43Z")
-                .with_exposed_port(9000.tcp())
-                .with_exposed_port(9001.tcp())
-                .with_env_var("MINIO_ACCESS_KEY", "minioadmin")
-                .with_env_var("MINIO_SECRET_KEY", "minioadmin")
-                .with_cmd(vec![
-                    "server".to_string(),
-                    "/data".to_string(),
-                    "--address".to_string(),
-                    ":9000".to_string(),
-                    "--console-address".to_string(),
-                    ":9001".to_string(),
-                ]);
+fn ensure_minio() -> &'static String {
+    MINIO_ADDRESS.get_or_init(|| {
+        let minio = GenericImage::new("minio/minio", "RELEASE.2024-09-22T00-33-43Z")
+            .with_exposed_port(9000.tcp())
+            .with_exposed_port(9001.tcp())
+            .with_env_var("MINIO_ACCESS_KEY", "minioadmin")
+            .with_env_var("MINIO_SECRET_KEY", "minioadmin")
+            .with_cmd(vec![
+                "server".to_string(),
+                "/data".to_string(),
+                "--address".to_string(),
+                ":9000".to_string(),
+                "--console-address".to_string(),
+                ":9001".to_string(),
+            ]);
 
-            let container = minio.start().await.expect("Can't start minio.");
-            let port = container
-                .get_host_port_ipv4(9000)
-                .await
-                .expect("Failed to get host port for MinIO");
+        let container = minio.start().expect("Can't start minio.");
+        let port = container
+            .get_host_port_ipv4(9000)
+            .expect("Failed to get host port for MinIO");
 
-            std::mem::forget(container);
+        std::mem::forget(container);
 
-            format!("127.0.0.1:{}", port)
-        })
-        .await
+        format!("127.0.0.1:{}", port)
+    })
 }
 
-#[fixture]
-pub async fn s3_settings() -> S3Settings {
-    let address = ensure_minio().await;
+pub fn s3_settings() -> S3Settings {
+    let address = ensure_minio();
     let settings = S3Settings {
         endpoint: address.clone(),
         bucket: "warehouse".into(),
@@ -77,7 +72,6 @@ pub async fn s3_settings() -> S3Settings {
     if Bucket::new("warehouse", region, credentials)
         .unwrap()
         .exists()
-        .await
         .unwrap_or(false)
     {
         return settings;
@@ -92,7 +86,6 @@ pub async fn s3_settings() -> S3Settings {
         creds,
         BucketConfiguration::public(),
     )
-    .await
     .expect("Failed to create MinIO bucket");
 
     settings

@@ -1,22 +1,38 @@
+// ckan-ingestor-rs
+//
+// This file is part of ckan-ingestor-rs.
+//
+// ckan-ingestor-rs is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// ckan-ingestor-rs is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 use crate::ckan_resource::CkanResource;
 use crate::readers::ckan_reader::{CkanReader, FailedResult, ReadResult};
 use log::info;
 
 /// Aggregate multiple types of a readers
 /// into a single struct
-pub struct MultipleReader {
-    readers: Vec<Box<dyn CkanReader>>,
+pub struct MultipleReader<'a> {
+    readers: Vec<Box<dyn CkanReader + 'a>>,
     supported_formarts: Vec<String>,
 }
 
-impl MultipleReader {
-    pub fn new(readers: Vec<Box<dyn CkanReader>>) -> Self {
-        let mut supported_formarts = readers
-            .iter()
-            .flat_map(|b| b.supported_formats())
-            .cloned()
-            .collect::<Vec<String>>();
-        supported_formarts.dedup();
+impl<'a> MultipleReader<'a> {
+    pub fn new(readers: Vec<Box<dyn CkanReader + 'a>>) -> Self {
+        let mut supported_formarts = Vec::new();
+        for format in readers.iter().flat_map(|reader| reader.supported_formats()) {
+            if !supported_formarts.contains(format) {
+                supported_formarts.push(format.clone());
+            }
+        }
         Self {
             readers,
             supported_formarts: supported_formarts,
@@ -24,7 +40,7 @@ impl MultipleReader {
     }
 }
 
-impl CkanReader for MultipleReader {
+impl CkanReader for MultipleReader<'_> {
     fn supported_formats(&self) -> &[String] {
         return &self.supported_formarts;
     }

@@ -47,3 +47,47 @@ impl DatasetFetcher for CkanDatasetFetcher {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use httpmock::{Method::GET, MockServer};
+
+    use super::{CkanDatasetFetcher, DatasetFetcher};
+
+    #[test]
+    fn fetches_the_dataset_list_from_the_ckan_action_endpoint() {
+        let server = MockServer::start();
+        let request = server.mock(|when, then| {
+            when.method(GET)
+                .path("/api/action/current_package_list_with_resources")
+                .query_param("limit", "1000");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"result":[{"id":"dataset-1"}]}"#);
+        });
+        let fetcher = CkanDatasetFetcher::new(server.base_url());
+
+        let datasets = fetcher.fetch().expect("CKAN response is valid");
+
+        request.assert();
+        assert_eq!(datasets, vec![serde_json::json!({"id": "dataset-1"})]);
+    }
+
+    #[test]
+    fn rejects_a_response_without_an_array_result() {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET)
+                .path("/api/action/current_package_list_with_resources")
+                .query_param("limit", "1000");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"result":{"id":"dataset-1"}}"#);
+        });
+        let fetcher = CkanDatasetFetcher::new(server.base_url());
+
+        let error = fetcher.fetch().expect_err("result must be an array");
+
+        assert!(error.to_string().contains("result is not array"));
+    }
+}

@@ -16,9 +16,9 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 mod common;
 use anyhow::Result;
-use ckan_ingestor_lib::ckan_reader::CkanReader;
 use ckan_ingestor_lib::ckan_resource::CkanResource;
-use ckan_ingestor_lib::csv_reader::CsvReader;
+use ckan_ingestor_lib::readers::ckan_reader::CkanReader;
+use ckan_ingestor_lib::readers::csv_reader::CsvReader;
 use common::fixture_path;
 
 #[test]
@@ -39,10 +39,9 @@ fn parse_latin_encoded_csv() -> Result<()> {
     // Python equivalent: test_parse_latin_encoded_csv_file
     // Just verifies it doesn't error. DuckDB with encoding='latin-1'
     // may fall through to PyArrow fallback for semicolon-delimited files.
-    let batches = reader.read(&resource)?;
-    let total: usize = batches.iter().map(|batch| batch.num_rows()).sum();
-    assert!(total > 0, "Should parse at least 1 row");
-    assert!(reader.last_encoding().is_some());
+    let result = reader.read(&resource)?;
+    assert!(result.rows_processed > 0, "Should parse at least 1 row");
+    assert!(result.encoding.is_some());
     Ok(())
 }
 
@@ -61,12 +60,11 @@ fn parse_non_latin_and_non_utf8() -> Result<()> {
         datastore_active: false,
     };
 
-    let batches = reader.read(&resource)?;
-    let total: usize = batches.iter().map(|batch| batch.num_rows()).sum();
-    assert_eq!(total, 2);
+    let result = reader.read(&resource)?;
+    assert_eq!(result.rows_processed, 2);
     // This file uses latin-1 encoding that only works after the PyArrow fallback
     // with semicolon delimiter
-    assert!(reader.last_encoding().is_some());
+    assert!(result.encoding.is_some());
     Ok(())
 }
 
@@ -84,10 +82,9 @@ fn csv_with_bom() -> Result<()> {
         format: "CSV".to_string(),
         datastore_active: false,
     };
-    let batches = reader.read(&resource)?;
-    let total: usize = batches.iter().map(|batch| batch.num_rows()).sum();
-    assert_eq!(total, 804);
-    assert!(reader.last_encoding().is_some());
+    let result = reader.read(&resource)?;
+    assert_eq!(result.rows_processed, 804);
+    assert_eq!(result.encoding.as_deref(), Some("utf-8"));
     Ok(())
 }
 
@@ -130,10 +127,6 @@ fn try_create_table_atomic_avoids_per_row_inserts() -> Result<()> {
         |row| row.get(0),
     )?;
     assert_eq!(count, 804, "Should have 804 rows from csv_with_bom.csv");
-
-    // Assert: encoding is tracked (same as old approach)
-    let encoding = reader.last_encoding();
-    assert_eq!(encoding.as_deref(), Some("utf-8"));
 
     // Assert: the old per-row INSERT path is NOT used — the table was created
     // in a single atomic statement. We verify by checking the table exists

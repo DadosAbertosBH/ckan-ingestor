@@ -23,7 +23,6 @@ use duckdb::arrow::{
     datatypes::{Field, Schema},
     record_batch::RecordBatch,
 };
-use futures::executor;
 use std::sync::Arc;
 pub struct DocumentReader<'a> {
     ingestor: &'a S3DocumentIngestor,
@@ -45,17 +44,15 @@ impl CkanReader for DocumentReader<'_> {
     }
 
     fn do_read(&self, resource: &CkanResource) -> ReadResult {
-        let download_url = executor::block_on(
-            self.ingestor.ingest(
-                [
-                    resource.id.as_str(),
-                    resource.format.to_lowercase().as_str(),
-                ]
-                .join(".")
-                .as_str(),
-                &resource.url,
-                &resource.format,
-            ),
+        let download_url = self.ingestor.ingest(
+            [
+                resource.id.as_str(),
+                resource.format.to_lowercase().as_str(),
+            ]
+            .join(".")
+            .as_str(),
+            &resource.url,
+            &resource.format,
         )?;
 
         // Criar o schema com uma coluna 'url'
@@ -72,5 +69,23 @@ impl CkanReader for DocumentReader<'_> {
         let batch = RecordBatch::try_new(schema, vec![Arc::new(url_array)])?;
 
         Ok(SuccessResult::new(vec![batch]))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        config::S3Settings, readers::ckan_reader::CkanReader,
+        s3_document_ingestor::S3DocumentIngestor,
+    };
+
+    use super::DocumentReader;
+
+    #[test]
+    fn supports_pdf_and_docx_resources() {
+        let ingestor = S3DocumentIngestor::new(S3Settings::default()).expect("valid S3 settings");
+        let reader = DocumentReader::new(&ingestor);
+
+        assert_eq!(reader.supported_formats(), &["DOCX", "PDF"]);
     }
 }

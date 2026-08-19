@@ -18,37 +18,37 @@ mod common;
 use anyhow::Result;
 use ckan_ingestor_lib::config::S3Settings;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
-use rstest::rstest;
+use httpmock::{Method::GET, MockServer};
 
 mod fixtures;
 use crate::common::fixture_path;
-use fixtures::ckan::ckan_mock::{ckan_mock, CkanMock};
 use fixtures::s3::s3_settings;
 
-#[rstest]
-#[tokio::test]
+#[test]
 #[ignore = "requires a Docker daemon to run MinIO via testcontainers"]
-async fn ingest_pdf(
-    #[future] s3_settings: S3Settings,
-    #[future] ckan_mock: CkanMock,
-) -> Result<()> {
-    let ckan_mock = ckan_mock.await;
-    let s3_settings = s3_settings.await;
+fn ingest_pdf() -> Result<()> {
+    let server = MockServer::start();
+    let body = std::fs::read(fixture_path("a_pdf_file.pdf"))?;
+    let _download = server.mock(|when, then| {
+        when.method(GET)
+            .path("/datastore/a_pdf_file")
+            .query_param("format", "PDF");
+        then.status(200)
+            .header("Content-Type", "application/pdf")
+            .body(body.clone());
+    });
+
+    let s3_settings: S3Settings = s3_settings();
 
     let ingestor = S3DocumentIngestor::new(s3_settings.clone())?;
-    let url = format!(
-        "http://{}/datastore/a_pdf_file?format=PDF",
-        ckan_mock.server.address()
-    );
-    let returned = ingestor.ingest("test.pdf", &url, "application/pdf").await?;
+    let url = format!("{}/datastore/a_pdf_file?format=PDF", server.base_url());
+    let returned = ingestor.ingest("test.pdf", &url, "application/pdf")?;
 
     // Verify the object was persisted by downloading it using the same
     // authenticated bucket (rust-s3 doesn't manage public bucket policies).
     let bucket = s3_settings.bucket()?;
-    let response_data = bucket.get_object("docs/test.pdf").await?;
+    let response_data = bucket.get_object("docs/test.pdf")?;
     let uploaded_content = response_data.bytes();
-    let file = fixture_path("a_pdf_file.pdf");
-    let body = std::fs::read(file)?;
     assert_eq!(uploaded_content.as_ref(), body.as_slice());
     assert!(returned.ends_with("/test.pdf"));
 

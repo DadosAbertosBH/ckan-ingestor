@@ -15,7 +15,13 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
-use ckan_ingestor_lib::ingestion_service::IngestionService;
+use ckan_ingestor_lib::ckan_resource::CkanResource;
+use ckan_ingestor_lib::duckdb_ckan_data_ingestor::DuckdbCkanDataIngestor;
+use ckan_ingestor_lib::readers::csv_reader::CsvReader;
+use ckan_ingestor_lib::readers::datastore_reader::DatastoreReader;
+use ckan_ingestor_lib::readers::document_reader::DocumentReader;
+use ckan_ingestor_lib::readers::json_reader::JsonReader;
+use ckan_ingestor_lib::readers::multiple_reader::MultipleReader;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
 use duckdb::Connection;
 use reqwest::blocking::Client;
@@ -86,37 +92,44 @@ impl JobProcessor for RealJobProcessor {
         let result = run_ingestion(&self.conn, &job, &datastore_url, datastore_active, &self.s3);
 
         match result {
-            Ok(outcome) => JobResultMessage {
-                job_id: job.job_id.clone(),
-                status: outcome.status.clone(),
-                rows_processed: Some(outcome.rows_processed),
-                expected_rows: outcome.expected_rows,
-                resource_size: outcome.resource_size,
-                encoding: outcome.encoding,
-                expected_columns: outcome.expected_columns,
-                datastore_active: outcome.datastore_active,
-                labels: outcome.labels,
-                error_message: None,
-                preview: Some(outcome.preview),
-            },
+            Ok(outcome) => job_result_from_outcome(job.job_id.clone(), outcome),
             Err(e) => {
                 let error_str = format!("{}", e);
                 let truncated = &error_str[..error_str.len().min(16_000)];
                 JobResultMessage {
                     job_id: job.job_id.clone(),
-                    status: "FAILED".to_string(),
+                    status: "failed".to_string(),
                     rows_processed: None,
                     expected_rows: None,
-                    resource_size: None,
                     encoding: None,
                     expected_columns: None,
                     datastore_active: false,
-                    labels: vec![],
                     error_message: Some(truncated.to_string()),
                     preview: None,
                 }
             }
         }
+    }
+}
+
+fn job_result_from_outcome(
+    job_id: String,
+    outcome: ckan_ingestor_lib::ingestor_outcome::IngestionOutcome,
+) -> JobResultMessage {
+    JobResultMessage {
+        job_id,
+        status: outcome.status,
+        rows_processed: i64::try_from(outcome.rows_processed).ok(),
+        expected_rows: outcome
+            .expected_rows
+            .and_then(|value| i64::try_from(value).ok()),
+        encoding: outcome.encoding,
+        expected_columns: outcome
+            .expected_columns
+            .and_then(|value| i64::try_from(value).ok()),
+        datastore_active: outcome.datastore_active,
+        error_message: None,
+        preview: Some(outcome.preview),
     }
 }
 
@@ -127,16 +140,21 @@ fn run_ingestion(
     datastore_active: bool,
     s3: &S3DocumentIngestor,
 ) -> Result<ckan_ingestor_lib::ingestor_outcome::IngestionOutcome, anyhow::Error> {
-    IngestionService::run(
-        conn,
-        &job.resource_id,
-        &job.resource_url,
-        &job.resource_format,
-        datastore_url,
+    let resource = CkanResource {
+        id: job.resource_id.clone(),
+        url: job.resource_url.clone(),
+        format: job.resource_format.clone(),
         datastore_active,
-        s3,
-    )
-    .map_err(|e| anyhow::anyhow!(e))
+    };
+    let reader = MultipleReader::new(vec![
+        Box::new(DatastoreReader::new(datastore_url.to_string())),
+        Box::new(CsvReader::new(conn)),
+        Box::new(JsonReader::new(conn)),
+        Box::new(DocumentReader::new(s3)),
+    ]);
+    let ingestor = DuckdbCkanDataIngestor::new(conn, &reader);
+
+    ingestor.ingest_ckan_data(&resource)
 }
 
 /// Query CKAN's `resource_show` action to learn whether the resource has an
@@ -180,4 +198,36 @@ fn fetch_datastore_active(job: &JobMessage) -> bool {
         .and_then(|r| r.get("datastore_active"))
         .and_then(Value::as_bool)
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use ckan_ingestor_lib::ingestor_outcome::IngestionOutcome;
+
+    use super::job_result_from_outcome;
+
+    #[test]
+    fn maps_the_reader_outcome_to_the_python_owned_result_contract() {
+        let result = job_result_from_outcome(
+            "job-1".to_string(),
+            IngestionOutcome {
+                rows_processed: 42,
+                preview: vec![serde_json::json!({"name": "Ana"})],
+                expected_rows: Some(50),
+                encoding: Some("latin-1".to_string()),
+                datastore_active: true,
+                expected_columns: Some(3),
+                status: "success".to_string(),
+            },
+        );
+
+        assert_eq!(result.status, "success");
+        assert_eq!(result.rows_processed, Some(42));
+        assert_eq!(result.expected_rows, Some(50));
+        assert_eq!(result.expected_columns, Some(3));
+        assert_eq!(
+            result.preview,
+            Some(vec![serde_json::json!({"name": "Ana"})])
+        );
+    }
 }

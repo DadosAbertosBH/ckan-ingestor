@@ -11,17 +11,15 @@ serde_json = "1.0"
 anyhow = "1.0"
 arrow = { version = "58.4.0", features = ["ipc"] }
 arrow-ipc = "58.4.0"
-duckdb = { version = "1.5.5", features = ["vtab-arrow"] }
+duckdb = "1.5.5"
 uuid = { version = "1.17.0", features = ["v4"] }
-futures = "0.3.31"
 bytes = "1.10"
 libduckdb-sys = "1.5.5"
-tokio = { version = "1.0", features = ["rt"] }
-rust-s3 = { version = "0.37", default-features = false, features = ["tokio-rustls-tls"] }
+rust-s3 = { version = "0.37", default-features = false, features = ["sync-rustls-tls"] }
 
 [dev-dependencies]
 httpmock = "0.7"
 tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "macros"] }
 rstest = "0.26.1"
 wiremock = "0.6.5"
-testcontainers = "0.28"
+testcontainers = { version = "0.28", features = ["blocking"] }

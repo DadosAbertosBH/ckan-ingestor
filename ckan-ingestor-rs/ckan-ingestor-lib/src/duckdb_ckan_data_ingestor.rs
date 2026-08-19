@@ -24,33 +24,16 @@ use anyhow::Result;
 use arrow_ipc::writer::FileWriter;
 use log::debug;
 
-/// Mirrors Python's `DuckdbCkanDataIngestor.ingest_ckan_data` exactly.
-///
-/// The ingestion follows a format-based fallback chain:
-///   1. DATA_STORE (if `datastore_active`)
-///   2. CSV
-///   3. JSON (via DuckDB `read_json`)
-///   4. PDF / DOCX (document ingestion — logs warning for now)
-///
-/// On failure, the next format is attempted recursively via `attempt_formats`.
 pub struct DuckdbCkanDataIngestor<'a> {
     conn: &'a duckdb::Connection,
-    reader: &'a MultipleReader,
+    reader: &'a MultipleReader<'a>,
 }
 
 impl<'a> DuckdbCkanDataIngestor<'a> {
-    pub fn new(conn: &'a duckdb::Connection, reader: &'a MultipleReader) -> Self {
+    pub fn new(conn: &'a duckdb::Connection, reader: &'a MultipleReader<'a>) -> Self {
         Self { conn, reader }
     }
 
-    /// Ingest CKAN resource data into DuckDB.
-    ///
-    /// Matches Python's `DuckdbCkanDataIngestor.ingest_ckan_data` exactly:
-    /// - Format-based fallback chain (DATA_STORE → CSV → JSON → PDF → DOCX)
-    /// - On failure, recurses with `attempt_formats` to try next format
-    /// - Creates `CREATE OR REPLACE TABLE "{resource_id}" AS {query}`
-    /// - Updates `ckan_resource_last_update`
-    /// - Returns `Ok(true)` on success, `Ok(false)` when all formats exhausted
     pub fn ingest_ckan_data(&self, resource: &CkanResource) -> Result<IngestionOutcome> {
         let resource_id = &resource.id;
 
@@ -85,15 +68,9 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
                 status: "failed".to_string(),
             },
         };
-        return Ok(outcome);
+        Ok(outcome)
     }
 
-    /// Create a DuckDB table from Arrow RecordBatches using atomic
-    /// `CREATE TABLE AS SELECT * FROM read_csv(...)`.
-    ///
-    /// Writes batches to a temporary CSV, then loads atomically to avoid
-    /// the per-row INSERT pattern that triggers DuckLake internal errors
-    /// ("Calling GetValueInternal on a value that is NULL").
     fn create_table_from_batches(
         &self,
         resource_id: &str,
@@ -103,31 +80,26 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
             anyhow::bail!("No data to create table from");
         }
 
-        // Write Arrow batches to a temporary CSV file
         let temp_path = std::env::temp_dir().join(format!("{}.arrow", uuid::Uuid::new_v4()));
-        let mut file = std::fs::File::create(temp_path.clone())?;
-        let mut writer = FileWriter::try_new(&mut file, &batches[0].schema()).unwrap();
-
-        for batch in batches {
-            writer.write(&batch).unwrap();
+        {
+            let mut file = std::fs::File::create(&temp_path)?;
+            let mut writer = FileWriter::try_new(&mut file, &batches[0].schema())?;
+            for batch in batches {
+                writer.write(batch)?;
+            }
+            writer.finish()?;
         }
-        writer.finish().unwrap();
 
-        // Atomic CTAS — single statement, no per-row INSERTs
         let result = self.conn.execute_batch(&format!(
             "CREATE OR REPLACE TABLE \"{}\" AS SELECT * FROM read_arrow('{}')",
             resource_id,
             temp_path.to_string_lossy()
         ));
-
-        // Cleanup temp file regardless of outcome
-        let _ = std::fs::remove_file(&temp_path);
-
+        std::fs::remove_file(&temp_path)?;
         result?;
         Ok(())
     }
 
-    /// Update the `ckan_resource_last_update` table.
     fn update_last_modified(&self, resource_id: &str) -> Result<()> {
         self.conn.execute(
             "DELETE FROM ckan_resource_last_update WHERE ckan_resource_id = ?",
@@ -138,5 +110,93 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
             duckdb::params![resource_id],
         )?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use duckdb::arrow::{
+        array::{ArrayRef, StringArray},
+        datatypes::{DataType, Field, Schema},
+        record_batch::RecordBatch,
+    };
+
+    use crate::{
+        ckan_resource::CkanResource,
+        readers::{
+            ckan_reader::{CkanReader, ReadResult, SuccessResult},
+            multiple_reader::MultipleReader,
+        },
+    };
+
+    use super::DuckdbCkanDataIngestor;
+
+    struct StaticReader {
+        formats: Vec<String>,
+    }
+
+    impl CkanReader for StaticReader {
+        fn supported_formats(&self) -> &[String] {
+            &self.formats
+        }
+
+        fn do_read(&self, _resource: &CkanResource) -> ReadResult {
+            let schema = Arc::new(Schema::new(vec![Field::new("name", DataType::Utf8, false)]));
+            let first = RecordBatch::try_new(
+                schema.clone(),
+                vec![Arc::new(StringArray::from(vec!["Ana"])) as ArrayRef],
+            )
+            .expect("valid batch");
+            let second = RecordBatch::try_new(
+                schema,
+                vec![Arc::new(StringArray::from(vec!["Bia"])) as ArrayRef],
+            )
+            .expect("valid batch");
+            Ok(SuccessResult::new(vec![first, second]))
+        }
+    }
+
+    #[test]
+    fn persists_batches_and_returns_a_success_outcome() {
+        let conn = duckdb::Connection::open_in_memory().expect("in-memory DuckDB");
+        conn.execute_batch("INSTALL arrow FROM community; LOAD arrow;")
+            .expect("DuckDB Arrow extension is available");
+        let ingestor = DuckdbCkanDataIngestor::new(conn);
+        ingestor
+            .connection()
+            .execute_batch("INSTALL arrow FROM community; LOAD arrow;")
+            .expect("DuckDB Arrow extension is available");
+        let reader = MultipleReader::new(vec![Box::new(StaticReader {
+            formats: vec!["CSV".to_string()],
+        })]);
+        let resource = CkanResource {
+            id: "resource_table".to_string(),
+            url: "https://example.test/resource.csv".to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+        };
+
+        let outcome = ingestor
+            .ingest_ckan_data(&resource, &reader)
+            .expect("ingestion succeeds");
+
+        assert_eq!(outcome.status, "success");
+        assert_eq!(outcome.rows_processed, 2);
+        let rows: i64 = ingestor
+            .connection()
+            .query_row("SELECT COUNT(*) FROM resource_table", [], |row| row.get(0))
+            .expect("table was created");
+        assert_eq!(rows, 2);
+
+        ingestor
+            .ingest_ckan_data(&resource, &reader)
+            .expect("reingestion succeeds");
+        let rows: i64 = ingestor
+            .connection()
+            .query_row("SELECT COUNT(*) FROM resource_table", [], |row| row.get(0))
+            .expect("table was replaced");
+        assert_eq!(rows, 2);
     }
 }

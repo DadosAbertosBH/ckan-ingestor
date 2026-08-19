@@ -156,6 +156,7 @@ impl DuckdbFactory {
     /// `Connection::try_clone`, so this must be re-applied on every clone.
     pub fn configure(&self, conn: &Connection) -> Result<()> {
         let c = &self.config;
+        conn.execute_batch("INSTALL arrow FROM community; LOAD arrow;")?;
         conn.execute_batch("SET pg_debug_show_queries=false;")?;
         conn.execute_batch(&format!(
             "ATTACH IF NOT EXISTS 'ducklake:{}' AS lake (DATA_PATH '{}://{}', DATA_INLINING_ROW_LIMIT 10000, AUTOMATIC_MIGRATION TRUE);",

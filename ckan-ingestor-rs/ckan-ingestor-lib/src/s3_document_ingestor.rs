@@ -16,7 +16,7 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 use crate::config::S3Settings;
 use anyhow::Result;
-use reqwest::Client as HttpClient;
+use reqwest::blocking::Client as HttpClient;
 use s3::bucket::Bucket;
 
 #[derive(Clone)]
@@ -33,37 +33,34 @@ impl S3DocumentIngestor {
         Ok(Self { public_url, bucket })
     }
 
-    pub async fn ingest(
-        &self,
-        filename: &str,
-        download_url: &str,
-        content_type: &str,
-    ) -> Result<String> {
+    pub fn ingest(&self, filename: &str, download_url: &str, content_type: &str) -> Result<String> {
         let client = HttpClient::new();
-        let resp = client.get(download_url).send().await?;
-        let bytes = resp.bytes().await?;
-        self.put_object(filename, &bytes, content_type).await
-    }
-
-    /// Synchronous version — for use inside spawn_blocking.
-    pub fn ingest_blocking(
-        &self,
-        filename: &str,
-        download_url: &str,
-        content_type: &str,
-    ) -> Result<String> {
-        let client = reqwest::blocking::Client::new();
         let resp = client.get(download_url).send()?;
         let bytes = resp.bytes()?;
-        let handle = tokio::runtime::Handle::current();
-        handle.block_on(self.put_object(filename, &bytes, content_type))
-    }
-
-    async fn put_object(&self, filename: &str, bytes: &[u8], content_type: &str) -> Result<String> {
         let object_url = format!("docs/{filename}");
         self.bucket
-            .put_object_with_content_type(object_url.clone(), bytes, content_type)
-            .await?;
+            .put_object_with_content_type(object_url.clone(), &bytes, content_type)?;
         Ok(format!("{}/{}", self.public_url, object_url))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::config::S3Settings;
+
+    use super::S3DocumentIngestor;
+
+    #[test]
+    fn new_builds_the_public_document_base_url() {
+        let settings = S3Settings {
+            endpoint: "minio.local:9000".to_string(),
+            bucket: "documents".to_string(),
+            use_ssl: false,
+            ..S3Settings::default()
+        };
+
+        let ingestor = S3DocumentIngestor::new(settings).expect("valid S3 settings");
+
+        assert_eq!(ingestor.public_url, "http://minio.local:9000/documents");
     }
 }
