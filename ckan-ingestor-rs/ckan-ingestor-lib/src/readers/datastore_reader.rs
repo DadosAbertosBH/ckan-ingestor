@@ -16,9 +16,11 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 use std::sync::Arc;
 
-use crate::ckan_reader::CkanReader;
-use crate::ckan_resource::CkanResource;
-use anyhow::{anyhow, Result};
+use crate::{
+    ckan_resource::CkanResource,
+    readers::ckan_reader::{CkanReader, FailedResult, ReadResult, SuccessResult},
+};
+use anyhow::Result;
 use duckdb::arrow::{
     array::{ArrayRef, StringArray},
     datatypes::{DataType, Field, Schema},
@@ -32,63 +34,59 @@ const MAX_RECORDS_FETCH: usize = 100_000;
 /// Mirrors Python's `DatastoreReader` exactly.
 pub struct DatastoreReader {
     datastore_url: String,
+    supported_formats: Vec<String>,
 }
 
 impl DatastoreReader {
     pub fn new(datastore_url: String) -> Self {
-        Self { datastore_url }
-    }
-
-    /// Fetch the total record count from CKAN Datastore API.
-    /// Mirrors Python's `DatastoreReader.get_total()`.
-    pub fn get_total(&self, resource_id: &str) -> Option<i64> {
-        let url = format!(
-            "{}/{}?format=json&offset=0&limit=0",
-            self.datastore_url, resource_id
-        );
-        let client = Client::builder()
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0")
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .ok()?;
-        let resp = client.get(&url).send().ok()?;
-        let json: Value = resp.json().ok()?;
-        json.get("total")?.as_i64()
-    }
-
-    /// Fetch the number of fields (columns) from CKAN Datastore API.
-    /// Mirrors Python's `DatastoreReader.get_field_count()`.
-    pub fn get_field_count(&self, resource_id: &str) -> Option<usize> {
-        let url = format!(
-            "{}/{}?format=json&offset=0&limit=0",
-            self.datastore_url, resource_id
-        );
-        let client = Client::builder()
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0")
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .ok()?;
-        let resp = client.get(&url).send().ok()?;
-        let json: Value = resp.json().ok()?;
-        let fields = json.get("fields")?.as_array()?;
-        if fields.is_empty() {
-            None
-        } else {
-            Some(fields.len())
+        Self {
+            datastore_url,
+            supported_formats: vec!["CSV".to_string(), "JSON".to_string()],
         }
+    }
+
+    pub fn get_row_and_column_count(&self, resource_id: &str) -> Result<(usize, usize)> {
+        let url = format!(
+            "{}/{}?format=json&offset=0&limit=0",
+            self.datastore_url, resource_id
+        );
+        let client = Client::builder()
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0")
+            .timeout(std::time::Duration::from_secs(10))
+            .build()?;
+
+        let resp = client.get(&url).send()?;
+        let json: Value = resp.json()?;
+
+        let total = json
+            .get("total")
+            .unwrap_or_default()
+            .as_u64()
+            .unwrap_or_default();
+        let rows = usize::try_from(total)?;
+
+        let fields = json
+            .get("fields")
+            .unwrap_or_default()
+            .as_array()
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
+        let columns = fields.len();
+        Ok((rows, columns))
     }
 
     /// Read datastore records and return Arrow batches.
     /// Returns empty vec for empty datastore (instead of Err).
     /// Mirrors Python's `DatastoreReader.read()`.
-    pub fn read_batches(&self, resource: &CkanResource) -> Result<Vec<RecordBatch>> {
+    pub fn read_batches(&self, resource: &CkanResource) -> ReadResult {
         let resource_id = &resource.id;
         let client = Client::builder()
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0")
             .build()?;
+
         let mut offset = 0;
         let mut batches = Vec::new();
-
+        let (rows, columns) = self.get_row_and_column_count(resource_id)?;
         loop {
             let url = format!(
                 "{}/{}?format=json&offset={}&limit={}",
@@ -99,13 +97,13 @@ impl DatastoreReader {
 
             let recs = json
                 .get("records")
-                .ok_or_else(|| anyhow!("records missing"))?;
+                .ok_or_else(|| FailedResult::from_string("records missing"))?;
             let fields = json
                 .get("fields")
-                .ok_or_else(|| anyhow!("fields missing"))?;
+                .ok_or_else(|| FailedResult::from_string("fields missing"))?;
             let recs = recs
                 .as_array()
-                .ok_or_else(|| anyhow!("records not array"))?;
+                .ok_or_else(|| FailedResult::from_string("records not array"))?;
 
             if recs.is_empty() {
                 break;
@@ -113,14 +111,16 @@ impl DatastoreReader {
 
             let column_names: Vec<String> = fields
                 .as_array()
-                .ok_or_else(|| anyhow!("fields not array"))?
+                .ok_or_else(|| FailedResult::from_string("fields not array"))?
                 .iter()
                 .filter_map(|f| f.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
                 .collect();
 
             let mut columns: Vec<Vec<String>> = vec![Vec::new(); column_names.len()];
             for rec in recs {
-                let arr = rec.as_array().ok_or_else(|| anyhow!("record not array"))?;
+                let arr = rec
+                    .as_array()
+                    .ok_or_else(|| FailedResult::from_string("record not array"))?;
                 for (i, _name) in column_names.iter().enumerate() {
                     let val = arr
                         .get(i)
@@ -150,21 +150,28 @@ impl DatastoreReader {
             offset += MAX_RECORDS_FETCH;
         }
 
-        // Return empty vec for empty datastore (Python returns None)
-        Ok(batches)
+        Ok(SuccessResult {
+            data: batches,
+            encoding: None,
+            expected_rows: Some(rows),
+            expected_columns: Some(columns),
+        })
     }
 }
 
 impl CkanReader for DatastoreReader {
-    fn supported_formats(&self) -> Vec<String> {
-        vec![]
+    fn supported_formats(&self) -> &[String] {
+        &self.supported_formats
     }
 
-    fn do_read(&self, resource: &CkanResource) -> Result<Vec<RecordBatch>> {
+    fn do_read(&self, resource: &CkanResource) -> ReadResult {
         self.read_batches(resource)
     }
 
     fn can_read(&self, resource: &CkanResource) -> bool {
-        resource.datastore_active
+        self.supported_formats()
+            .iter()
+            .any(|format| resource.format.contains(format))
+            && resource.datastore_active
     }
 }

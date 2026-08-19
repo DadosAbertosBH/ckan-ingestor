@@ -14,10 +14,10 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
-use crate::ckan_reader::CkanReader;
-use crate::ckan_resource::CkanResource;
+use crate::readers::ckan_reader::{CkanReader, SuccessResult};
 use crate::s3_document_ingestor::S3DocumentIngestor;
-use anyhow::Result;
+use crate::{ckan_resource::CkanResource, readers::ckan_reader::ReadResult};
+
 use duckdb::arrow::{
     array::StringArray,
     datatypes::{Field, Schema},
@@ -27,14 +27,24 @@ use futures::executor;
 use std::sync::Arc;
 pub struct DocumentReader<'a> {
     ingestor: &'a S3DocumentIngestor,
+    supported_formats: Vec<String>,
+}
+
+impl<'a> DocumentReader<'a> {
+    pub fn new(ingestor: &'a S3DocumentIngestor) -> Self {
+        Self {
+            ingestor,
+            supported_formats: vec!["DOCX".to_string(), "PDF".to_string()],
+        }
+    }
 }
 
 impl CkanReader for DocumentReader<'_> {
-    fn supported_formats(&self) -> Vec<String> {
-        vec!["CSV".to_string()]
+    fn supported_formats(&self) -> &[String] {
+        return &self.supported_formats;
     }
 
-    fn do_read(&self, resource: &CkanResource) -> Result<Vec<RecordBatch>> {
+    fn do_read(&self, resource: &CkanResource) -> ReadResult {
         let download_url = executor::block_on(
             self.ingestor.ingest(
                 [
@@ -61,6 +71,6 @@ impl CkanReader for DocumentReader<'_> {
         // Criar o RecordBatch
         let batch = RecordBatch::try_new(schema, vec![Arc::new(url_array)])?;
 
-        Ok(vec![batch])
+        Ok(SuccessResult::success(vec![batch]))
     }
 }

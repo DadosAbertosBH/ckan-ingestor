@@ -14,36 +14,23 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
-use crate::ckan_reader::CkanReader;
 use crate::ckan_resource::CkanResource;
+use crate::readers::ckan_reader::{CkanReader, FailedResult, ReadResult, SuccessResult};
 use anyhow::Result;
 use duckdb::arrow::array::RecordBatch;
 use duckdb::Connection;
-use std::cell::RefCell;
 
-/// Mirrors Swift's `CsvReader` — simplified encoding fallback using only
-/// DuckDB `read_csv`. Downloads the file first (like Swift), then tries
-/// encodings: utf-8 → latin-1 → utf-16.
-///
-/// DuckDB's `read_csv` auto-detects delimiters, so no explicit delimiter
-/// loop is needed.
 pub struct CsvReader<'a> {
     conn: &'a Connection,
-    /// The last encoding that successfully parsed a CSV.
-    last_encoding: RefCell<Option<String>>,
+    supported_formats: Vec<String>,
 }
 
 impl<'a> CsvReader<'a> {
     pub fn new(conn: &'a Connection) -> Self {
         Self {
             conn,
-            last_encoding: RefCell::new(None),
+            supported_formats: vec!["CSV".to_string()],
         }
-    }
-
-    /// Returns the last encoding that successfully parsed a CSV.
-    pub fn last_encoding(&self) -> Option<String> {
-        self.last_encoding.borrow().clone()
     }
 
     /// Read CSV batches matching Swift's encoding fallback chain.
@@ -54,7 +41,7 @@ impl<'a> CsvReader<'a> {
     ///   3. utf-16 via DuckDB `read_csv`
     ///
     /// Downloads the file first (if remote), matching Swift's approach.
-    pub fn read_batches(&self, resource: &CkanResource) -> Result<Vec<RecordBatch>> {
+    pub fn read_batches(&self, resource: &CkanResource) -> ReadResult {
         let is_remote = resource.url.starts_with("http://") || resource.url.starts_with("https://");
         let csv_path = if is_remote {
             self.download_to_temp(&resource.url)?
@@ -77,19 +64,17 @@ impl<'a> CsvReader<'a> {
             None
         });
 
-        let encodings = ["utf-8", "latin-1", "CP1252", "utf-16"];
+        let encodings = ["utf-8", "latin-1", "CP1252"];
 
-        for encoding in &encodings {
+        for encoding in encodings {
             match self.try_read_csv(&csv_path, encoding) {
-                Ok(batches) => {
-                    *self.last_encoding.borrow_mut() = Some(encoding.to_string());
-                    return Ok(batches);
-                }
+                Ok(batches) => return Ok(SuccessResult::from_csv(batches, encoding.to_string())),
                 Err(_) => continue,
             }
         }
 
-        anyhow::bail!("Failed to parse CSV file from {}", resource.url)
+        let error = format!("Failed to parse CSV file from {}", resource.url);
+        Err(FailedResult::from_string(&error))
     }
 
     /// Download a remote file to a temporary location.
@@ -149,12 +134,11 @@ impl<'a> CsvReader<'a> {
             None
         });
 
-        let encodings = ["utf-8", "latin-1", "utf-16"];
+        let encodings = ["utf-8", "latin-1", "CP1252"];
 
         for encoding in &encodings {
             match self.try_create_table_with_encoding(resource_id, &csv_path, encoding) {
                 Ok(()) => {
-                    *self.last_encoding.borrow_mut() = Some(encoding.to_string());
                     return Ok(true);
                 }
                 Err(_) => continue,
@@ -181,11 +165,11 @@ impl<'a> CsvReader<'a> {
 }
 
 impl CkanReader for CsvReader<'_> {
-    fn supported_formats(&self) -> Vec<String> {
-        vec!["CSV".to_string()]
+    fn supported_formats(&self) -> &[String] {
+        return &self.supported_formats;
     }
 
-    fn do_read(&self, resource: &CkanResource) -> Result<Vec<RecordBatch>> {
+    fn do_read(&self, resource: &CkanResource) -> ReadResult {
         self.read_batches(resource)
     }
 }
@@ -218,8 +202,8 @@ mod tests {
             datastore_active: false,
         };
 
-        let batches = reader.do_read(&resource)?;
-        let total: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+        let result = reader.do_read(&resource)?;
+        let total: usize = result.data.iter().map(|batch| batch.num_rows()).sum();
         assert_eq!(total, 31, "should read all 31 data records");
 
         Ok(())

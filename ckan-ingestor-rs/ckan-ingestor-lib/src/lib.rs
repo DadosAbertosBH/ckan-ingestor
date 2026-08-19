@@ -15,14 +15,12 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 pub mod ckan_dataset_fetcher;
-pub mod ckan_reader;
 pub mod ckan_resource;
 pub mod config;
-pub mod csv_reader;
 pub mod dataset_fetcher;
-pub mod datastore_reader;
 pub mod document_reader;
 pub mod duckdb_ckan_data_ingestor;
-pub mod ingestion_orchestrator;
 pub mod ingestion_service;
+pub mod ingestor_outcome;
+pub mod readers;
 pub mod s3_document_ingestor;

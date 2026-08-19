@@ -33,52 +33,20 @@ const ONE_GB: i64 = 1_000_000_000;
 
 /// The result of an ingestion, published to `ckan.ingest.jobs_result`.
 ///
-/// Mirrors the data that Python's `process_job` produces:
-/// `CkanDataJobResult` fields + computed labels.
 #[derive(Debug, Serialize)]
 pub struct IngestionOutcome {
-    pub rows_processed: i64,
+    pub rows_processed: usize,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub preview: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub expected_rows: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub resource_size: Option<i64>,
+    pub expected_rows: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding: Option<String>,
     pub datastore_active: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub expected_columns: Option<i64>,
-    pub labels: Vec<String>,
+    pub expected_columns: Option<usize>,
     /// Derived status: "success" or "failed" (emptiness is a label)
     pub status: String,
-}
-
-impl IngestionOutcome {
-    /// Create a new outcome with derived status.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        rows_processed: i64,
-        preview: Vec<serde_json::Value>,
-        expected_rows: Option<i64>,
-        resource_size: Option<i64>,
-        encoding: Option<String>,
-        datastore_active: bool,
-        expected_columns: Option<i64>,
-        labels: Vec<String>,
-    ) -> Self {
-        Self {
-            rows_processed,
-            preview,
-            expected_rows,
-            resource_size,
-            encoding,
-            datastore_active,
-            expected_columns,
-            labels,
-            status: "success".to_string(),
-        }
-    }
 }
 
 /// Compute labels exactly as Python's `_apply_ingestion_labels`.

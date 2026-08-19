@@ -20,7 +20,7 @@ use ckan_ingestor_lib::ckan_resource::CkanResource;
 use ckan_ingestor_lib::csv_reader::CsvReader;
 use ckan_ingestor_lib::datastore_reader::DatastoreReader;
 use ckan_ingestor_lib::duckdb_ckan_data_ingestor::DuckdbCkanDataIngestor;
-use ckan_ingestor_lib::ingestion_orchestrator::{
+use ckan_ingestor_lib::ingestor_outcome::{
     compute_column_labels, compute_labels, IngestionOutcome, LABEL_DATASTORE, LABEL_EMPTY,
 };
 use common::dummy_s3_ingestor;
