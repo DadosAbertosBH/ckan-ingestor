@@ -150,12 +150,7 @@ impl DatastoreReader {
             offset += MAX_RECORDS_FETCH;
         }
 
-        Ok(SuccessResult {
-            data: batches,
-            encoding: None,
-            expected_rows: Some(rows),
-            expected_columns: Some(columns),
-        })
+        Ok(SuccessResult::from_datastore(batches, rows, columns))
     }
 }
 

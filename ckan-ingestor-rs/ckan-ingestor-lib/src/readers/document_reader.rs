@@ -71,6 +71,6 @@ impl CkanReader for DocumentReader<'_> {
         // Criar o RecordBatch
         let batch = RecordBatch::try_new(schema, vec![Arc::new(url_array)])?;
 
-        Ok(SuccessResult::success(vec![batch]))
+        Ok(SuccessResult::new(vec![batch]))
     }
 }

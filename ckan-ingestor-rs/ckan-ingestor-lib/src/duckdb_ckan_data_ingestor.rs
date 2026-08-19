@@ -16,7 +16,6 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::ingestor_outcome::IngestionOutcome;
-use crate::s3_document_ingestor::S3DocumentIngestor;
 use crate::{
     ckan_resource::CkanResource, readers::ckan_reader::CkanReader,
     readers::multiple_reader::MultipleReader,
@@ -36,17 +35,12 @@ use log::debug;
 /// On failure, the next format is attempted recursively via `attempt_formats`.
 pub struct DuckdbCkanDataIngestor<'a> {
     conn: &'a duckdb::Connection,
-    s3: &'a S3DocumentIngestor,
     reader: &'a MultipleReader,
 }
 
 impl<'a> DuckdbCkanDataIngestor<'a> {
-    pub fn new(
-        conn: &'a duckdb::Connection,
-        s3: &'a S3DocumentIngestor,
-        reader: &'a MultipleReader,
-    ) -> Self {
-        Self { conn, s3, reader }
+    pub fn new(conn: &'a duckdb::Connection, reader: &'a MultipleReader) -> Self {
+        Self { conn, reader }
     }
 
     /// Ingest CKAN resource data into DuckDB.
@@ -64,6 +58,10 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
 
         let outcome = match self.reader.read(resource) {
             Ok(result) => {
+                self.conn.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS ckan_resource_last_update \
+                      (ckan_resource_id VARCHAR, last_modified TIMESTAMP)",
+                )?;
                 self.create_table_from_batches(resource_id, &result.data)?;
                 self.update_last_modified(resource_id)?;
 

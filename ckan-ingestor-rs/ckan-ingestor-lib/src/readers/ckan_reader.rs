@@ -39,7 +39,7 @@ pub struct FailedResult {
 }
 
 impl SuccessResult {
-    fn new(data: Vec<RecordBatch>, encoding: Option<String>) -> Self {
+    pub fn new(data: Vec<RecordBatch>) -> Self {
         let rows_processed = data.iter().map(|batch| batch.num_rows()).sum();
         let number_of_columns = data
             .first()
@@ -52,18 +52,29 @@ impl SuccessResult {
             preview,
             rows_processed,
             number_of_columns,
-            encoding,
+            encoding: None,
             expected_rows: None,
             expected_columns: None,
         }
     }
 
-    pub fn success(data: Vec<RecordBatch>) -> Self {
-        Self::new(data, None)
+    pub fn from_csv(data: Vec<RecordBatch>, encoding: String) -> Self {
+        Self {
+            encoding: Some(encoding),
+            ..Self::new(data)
+        }
     }
 
-    pub fn from_csv(data: Vec<RecordBatch>, encoding: String) -> Self {
-        Self::new(data, Some(encoding))
+    pub fn from_datastore(
+        data: Vec<RecordBatch>,
+        expected_rows: usize,
+        expected_columns: usize,
+    ) -> Self {
+        Self {
+            expected_rows: Some(expected_rows),
+            expected_columns: Some(expected_columns),
+            ..Self::new(data)
+        }
     }
 
     fn truncate_preview_value(value: serde_json::Value) -> serde_json::Value {
@@ -102,6 +113,96 @@ impl SuccessResult {
         }
 
         return Some(rows);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use duckdb::arrow::{
+        array::{ArrayRef, RecordBatch, StringArray},
+        datatypes::{DataType, Field, Schema},
+    };
+
+    use super::{SuccessResult, PREVIEW_MAX_VALUE_LEN};
+
+    fn string_batch(names: Vec<&str>, ages: Vec<&str>) -> RecordBatch {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("name", DataType::Utf8, true),
+            Field::new("age", DataType::Utf8, true),
+        ]));
+        let arrays: Vec<ArrayRef> = vec![
+            Arc::new(StringArray::from(names)),
+            Arc::new(StringArray::from(ages)),
+        ];
+
+        RecordBatch::try_new(schema, arrays).expect("valid string batch")
+    }
+
+    #[test]
+    fn from_datastore_keeps_expected_metadata() {
+        let result = SuccessResult::from_datastore(Vec::new(), 42, 3);
+
+        assert_eq!(result.expected_rows, Some(42));
+        assert_eq!(result.expected_columns, Some(3));
+        assert_eq!(result.encoding, None);
+    }
+
+    #[test]
+    fn new_has_no_reader_specific_metadata() {
+        let result = SuccessResult::new(Vec::new());
+
+        assert_eq!(result.encoding, None);
+        assert_eq!(result.expected_rows, None);
+        assert_eq!(result.expected_columns, None);
+    }
+
+    #[test]
+    fn new_calculates_rows_columns_and_preview() {
+        let batch = string_batch(vec!["Ana", "Bruno"], vec!["30", "40"]);
+
+        let result = SuccessResult::new(vec![batch]);
+
+        assert_eq!(result.rows_processed, 2);
+        assert_eq!(result.number_of_columns, 2);
+        assert_eq!(
+            result.preview,
+            vec![
+                serde_json::json!({"name": "Ana", "age": "30"}),
+                serde_json::json!({"name": "Bruno", "age": "40"}),
+            ]
+        );
+    }
+
+    #[test]
+    fn new_returns_empty_preview_for_an_empty_batch() {
+        let batch = string_batch(vec![], vec![]);
+
+        let result = SuccessResult::new(vec![batch]);
+
+        assert_eq!(result.rows_processed, 0);
+        assert_eq!(result.number_of_columns, 2);
+        assert!(result.preview.is_empty());
+    }
+
+    #[test]
+    fn new_truncates_long_preview_values() {
+        let long_value = "a".repeat(PREVIEW_MAX_VALUE_LEN + 1);
+        let batch = string_batch(vec![long_value.as_str()], vec!["30"]);
+
+        let result = SuccessResult::new(vec![batch]);
+
+        assert_eq!(
+            result.preview,
+            vec![serde_json::json!({
+                "name": format!(
+                    "[TRUNCATED: value too large for preview ({} bytes)]",
+                    PREVIEW_MAX_VALUE_LEN + 1
+                ),
+                "age": "30",
+            })]
+        );
     }
 }
 
