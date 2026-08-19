@@ -128,3 +128,31 @@ pub fn compute_column_labels(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::IngestionOutcome;
+
+    #[test]
+    fn serializes_the_current_ingestion_contract() {
+        let outcome = IngestionOutcome {
+            rows_processed: 42,
+            preview: vec![serde_json::json!({"name": "Ana"})],
+            expected_rows: Some(50),
+            encoding: Some("latin-1".to_string()),
+            datastore_active: true,
+            expected_columns: Some(3),
+            status: "success".to_string(),
+        };
+
+        let json = serde_json::to_value(outcome).expect("outcome serializes");
+
+        assert_eq!(json["rows_processed"], 42);
+        assert_eq!(json["preview"], serde_json::json!([{"name": "Ana"}]));
+        assert_eq!(json["expected_rows"], 50);
+        assert_eq!(json["encoding"], "latin-1");
+        assert_eq!(json["datastore_active"], true);
+        assert_eq!(json["expected_columns"], 3);
+        assert_eq!(json["status"], "success");
+    }
+}
