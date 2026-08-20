@@ -17,6 +17,7 @@
 
 use rdkafka::client::ClientContext;
 use rdkafka::consumer::{ConsumerContext, Rebalance};
+use std::sync::mpsc::{SyncSender, sync_channel};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::worker_coordinator::Command;
@@ -39,20 +40,23 @@ impl ConsumerContext for CoordinatorConsumerContext {
         _base_consumer: &rdkafka::consumer::BaseConsumer<Self>,
         rebalance: &Rebalance<'_>,
     ) {
-        if let Rebalance::Revoke(tpl) = rebalance {
-            let revoked = Self::extract_partitions(tpl);
-            let _ = self.cmd_tx.send(Command::Revoke(revoked));
-        }
-    }
-
-    fn post_rebalance(
-        &self,
-        _base_consumer: &rdkafka::consumer::BaseConsumer<Self>,
-        rebalance: &Rebalance<'_>,
-    ) {
-        if let Rebalance::Assign(tpl) = rebalance {
-            let assigned = Self::extract_partitions(tpl);
-            let _ = self.cmd_tx.send(Command::Assign(assigned));
+        match rebalance {
+            Rebalance::Assign(tpl) => {
+                // rust-rdkafka can emit an empty cooperative assignment.
+                // There is no partition queue to create for that callback.
+                if tpl.capacity() == 0 {
+                    return;
+                }
+                let assigned = Self::extract_partitions(tpl);
+                log::info!("Rebalance assigning {} partitions", assigned.len());
+                self.send_and_wait(|done| Command::Assign(assigned, done));
+            }
+            Rebalance::Revoke(tpl) => {
+                let revoked = Self::extract_partitions(tpl);
+                log::info!("Rebalance revoking {} partitions", revoked.len());
+                self.send_and_wait(|done| Command::Revoke(revoked, done));
+            }
+            Rebalance::Error(_) => {}
         }
     }
 
@@ -69,6 +73,13 @@ impl ConsumerContext for CoordinatorConsumerContext {
 }
 
 impl CoordinatorConsumerContext {
+    fn send_and_wait(&self, command: impl FnOnce(SyncSender<()>) -> Command) {
+        let (done, rendezvous) = sync_channel(0);
+        if self.cmd_tx.send(command(done)).is_ok() {
+            let _ = rendezvous.recv();
+        }
+    }
+
     fn extract_partitions(tpl: &rdkafka::TopicPartitionList) -> Vec<(String, i32)> {
         tpl.elements()
             .iter()

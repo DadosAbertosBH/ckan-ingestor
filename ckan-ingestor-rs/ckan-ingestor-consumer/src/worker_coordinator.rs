@@ -17,8 +17,10 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::mpsc::SyncSender;
 
 use rdkafka::consumer::{ConsumerContext, StreamConsumer};
+use rdkafka::message::Message;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::job_processor::JobProcessor;
@@ -29,8 +31,8 @@ use crate::worker_thread::WorkerThread;
 type PartitionKey = (String, i32);
 
 pub enum Command {
-    Assign(Vec<PartitionKey>),
-    Revoke(Vec<PartitionKey>),
+    Assign(Vec<PartitionKey>, SyncSender<()>),
+    Revoke(Vec<PartitionKey>, SyncSender<()>),
 }
 
 pub struct WorkerCoordinator<
@@ -69,6 +71,10 @@ where
 
     pub async fn assign(&mut self, keys: Vec<PartitionKey>, publisher: P) {
         for key in keys {
+            if self.workers.contains_key(&key) {
+                continue;
+            }
+
             let queue = self
                 .consumer
                 .split_partition_queue(&key.0, key.1)
@@ -102,37 +108,65 @@ where
     }
 
     pub async fn run(&mut self, publisher: P, shutdown: Arc<tokio::sync::Notify>) {
-        // Start the main consumer poll loop immediately — it drives the
-        // rebalance callback, which in turn triggers split_partition_queue.
-        let mc = Arc::clone(&self.consumer);
-        let main_recv = tokio::spawn(async move {
-            loop {
-                let _ = mc.recv().await;
-                log::warn!("Main consumer received unexpected message");
-            }
+        // The rebalance callback blocks on a rendezvous until this coordinator
+        // has created or stopped the corresponding partition workers.
+        let consumer = Arc::clone(&self.consumer);
+        let poll_shutdown = Arc::new(tokio::sync::Notify::new());
+        let poll_shutdown_signal = Arc::clone(&poll_shutdown);
+        let runtime = tokio::runtime::Handle::current();
+        let main_recv = tokio::task::spawn_blocking(move || {
+            runtime.block_on(async move {
+                loop {
+                    tokio::select! {
+                        _ = poll_shutdown_signal.notified() => break,
+                        result = consumer.recv() => match result {
+                            Ok(message) => log::warn!(
+                                "Main consumer received unexpected message from {}/{} at offset {}",
+                                message.topic(),
+                                message.partition(),
+                                message.offset()
+                            ),
+                            Err(error) => log::warn!("Main consumer error: {error}"),
+                        },
+                    }
+                }
+            });
         });
 
         loop {
             tokio::select! {
-                _ = shutdown.notified() => break,
+                biased;
                 cmd = self.rx.recv() => {
                     match cmd {
-                        Some(Command::Assign(keys)) => {
-                            self.revoke_all().await;
+                        Some(Command::Assign(keys, done)) => {
                             self.assign(keys, publisher.clone()).await;
+                            drop(done);
                         }
-                        Some(Command::Revoke(keys)) => self.revoke(keys).await,
+                        Some(Command::Revoke(keys, done)) => {
+                            self.revoke(keys).await;
+                            drop(done);
+                        }
                         None => break,
                     }
                 }
+                _ = shutdown.notified() => break,
             }
         }
 
+        // Release a callback that raced with shutdown before stopping its poll
+        // task. Closing the receiver also makes subsequent callback sends fail.
+        self.rx.close();
+        while let Ok(command) = self.rx.try_recv() {
+            match command {
+                Command::Assign(_, done) | Command::Revoke(_, done) => drop(done),
+            }
+        }
+
+        poll_shutdown.notify_one();
+        main_recv.await.expect("main consumer poll task panicked");
+
         // Gracefully stop all remaining workers.
         self.revoke_all().await;
-
-        main_recv.abort();
-        let _ = main_recv.await;
     }
 }
 
@@ -193,10 +227,16 @@ mod tests {
             coordinator.run(publisher, shutdown).await;
         });
 
-        cmd_tx.send(Command::Assign(vec![key.clone()])).unwrap();
+        let (assign_done, _assign_wait) = std::sync::mpsc::sync_channel(0);
+        cmd_tx
+            .send(Command::Assign(vec![key.clone()], assign_done))
+            .unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
-        cmd_tx.send(Command::Revoke(vec![key])).unwrap();
+        let (revoke_done, _revoke_wait) = std::sync::mpsc::sync_channel(0);
+        cmd_tx
+            .send(Command::Revoke(vec![key], revoke_done))
+            .unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
         drop(cmd_tx);
