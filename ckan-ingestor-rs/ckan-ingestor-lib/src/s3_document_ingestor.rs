@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 use crate::config::S3Settings;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use reqwest::blocking::Client as HttpClient;
 use s3::bucket::Bucket;
 
@@ -39,7 +39,13 @@ impl S3DocumentIngestor {
         let bytes = resp.bytes()?;
         let object_url = format!("docs/{filename}");
         self.bucket
-            .put_object_with_content_type(object_url.clone(), &bytes, content_type)?;
+            .put_object_with_content_type(object_url.clone(), &bytes, content_type)
+            .with_context(|| {
+                format!(
+                    "error uploading document to S3 endpoint {}",
+                    self.bucket.region().endpoint()
+                )
+            })?;
         Ok(format!("{}/{}", self.public_url, object_url))
     }
 }
@@ -63,4 +69,5 @@ mod tests {
 
         assert_eq!(ingestor.public_url, "http://minio.local:9000/documents");
     }
+
 }

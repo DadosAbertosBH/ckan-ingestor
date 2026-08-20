@@ -54,3 +54,40 @@ fn ingest_pdf() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn ingest_includes_s3_url_when_put_object_fails() -> Result<()> {
+    let server = MockServer::start();
+    let _download = server.mock(|when, then| {
+        when.method(GET).path("/document.pdf");
+        then.status(200)
+            .header("Content-Type", "application/pdf")
+            .body("pdf content");
+    });
+
+    let s3_endpoint = "s3-upload-host-that-does-not-exist.invalid:9000";
+    let settings = S3Settings {
+        endpoint: s3_endpoint.to_string(),
+        bucket: "documents".to_string(),
+        use_ssl: false,
+        url_style: "path".to_string(),
+        ..S3Settings::default()
+    };
+    let ingestor = S3DocumentIngestor::new(settings)?;
+    let download_url = format!("{}/document.pdf", server.base_url());
+
+    let error = ingestor
+        .ingest("test.pdf", &download_url, "application/pdf")
+        .expect_err("put_object should fail when the S3 host is unavailable");
+    let message = error.to_string();
+    let debug_message = format!("{error:?}");
+    assert!(
+        message.contains(&format!("http://{s3_endpoint}")),
+        "unexpected error: {error:?}"
+    );
+    assert!(
+        debug_message.contains("Name or service not known") || debug_message.contains("failed to lookup"),
+        "unexpected error: {error:?}"
+    );
+    Ok(())
+}
