@@ -26,6 +26,7 @@ use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
 use duckdb::Connection;
 use reqwest::blocking::Client;
 use serde_json::Value;
+use std::time::Duration;
 
 use crate::duckdb_factory::DuckdbFactory;
 use crate::messages::{JobMessage, JobResultMessage, JobStatus};
@@ -151,9 +152,13 @@ fn run_ingestion(
         format: job.resource_format.clone(),
         datastore_active,
     };
+    let http_client = Client::builder()
+        .timeout(Duration::from_secs(1200))
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0")
+        .build()?;
     let reader = MultipleReader::new(vec![
         Box::new(DatastoreReader::new(datastore_url.to_string())),
-        Box::new(CsvReader::new(conn)),
+        Box::new(CsvReader::new(conn, http_client)),
         Box::new(JsonReader::new(conn)),
         Box::new(DocumentReader::new(s3)),
     ]);

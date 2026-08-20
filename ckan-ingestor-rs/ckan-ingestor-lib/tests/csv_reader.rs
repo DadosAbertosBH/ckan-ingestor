@@ -22,12 +22,22 @@ use ckan_ingestor_lib::readers::csv_reader::CsvReader;
 use common::fixture_path;
 use flate2::{write::GzEncoder, Compression};
 use httpmock::{Method::GET, MockServer};
+use std::fs;
 use std::io::Write;
+use std::time::Duration;
+
+fn test_client() -> reqwest::blocking::Client {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(600))
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0")
+        .build()
+        .unwrap()
+}
 
 #[test]
 fn parse_latin_encoded_csv() -> Result<()> {
     let conn = duckdb::Connection::open_in_memory()?;
-    let reader = CsvReader::new(&conn);
+    let reader = CsvReader::new(&conn, test_client());
 
     let resource = CkanResource {
         id: "00000000-0000-0000-0000-ffff00000000".to_string(),
@@ -51,7 +61,7 @@ fn parse_latin_encoded_csv() -> Result<()> {
 #[test]
 fn parse_non_latin_and_non_utf8() -> Result<()> {
     let conn = duckdb::Connection::open_in_memory()?;
-    let reader = CsvReader::new(&conn);
+    let reader = CsvReader::new(&conn, test_client());
 
     let resource = CkanResource {
         id: "00000000-0000-0000-0000-ffff00000000".to_string(),
@@ -74,7 +84,7 @@ fn parse_non_latin_and_non_utf8() -> Result<()> {
 #[test]
 fn csv_with_bom() -> Result<()> {
     let conn = duckdb::Connection::open_in_memory()?;
-    let reader = CsvReader::new(&conn);
+    let reader = CsvReader::new(&conn, test_client());
 
     let resource = CkanResource {
         id: "00000000-0000-0000-0000-ffff00000000".to_string(),
@@ -106,7 +116,7 @@ fn try_create_table_atomic_avoids_per_row_inserts() -> Result<()> {
     // matching the proven Python implementation. This test validates the new
     // atomic approach produces identical results to the old per-row approach.
     let conn = duckdb::Connection::open_in_memory()?;
-    let reader = CsvReader::new(&conn);
+    let reader = CsvReader::new(&conn, test_client());
 
     let csv_path = fixture_path("csv_with_bom.csv")
         .to_str()
@@ -158,7 +168,7 @@ fn parse_remote_gzip_csv() -> Result<()> {
     });
 
     let conn = duckdb::Connection::open_in_memory()?;
-    let reader = CsvReader::new(&conn);
+    let reader = CsvReader::new(&conn, test_client());
     let resource = CkanResource {
         id: "cfba57bb-358b-4b43-96e6-477920e39f19".to_string(),
         url: format!("{}/ft_diarias_2014.csv.gz", server.url("")),

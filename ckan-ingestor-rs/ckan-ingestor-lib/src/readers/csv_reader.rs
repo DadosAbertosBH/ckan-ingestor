@@ -22,13 +22,15 @@ use duckdb::Connection;
 
 pub struct CsvReader<'a> {
     conn: &'a Connection,
+    client: reqwest::blocking::Client,
     supported_formats: Vec<String>,
 }
 
 impl<'a> CsvReader<'a> {
-    pub fn new(conn: &'a Connection) -> Self {
+    pub fn new(conn: &'a Connection, client: reqwest::blocking::Client) -> Self {
         Self {
             conn,
+            client,
             supported_formats: vec!["CSV".to_string()],
         }
     }
@@ -79,12 +81,7 @@ impl<'a> CsvReader<'a> {
 
     /// Download a remote file to a temporary location.
     fn download_to_temp(&self, url: &str) -> Result<String> {
-        let client = reqwest::blocking::Client::builder()
-            .user_agent(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0",
-            )
-            .build()?;
-        let response = client.get(url).send()?;
+        let response = self.client.get(url).send()?;
         let bytes = response.bytes()?;
         let temp_path = std::env::temp_dir().join(format!(
             "{}{}",
@@ -191,6 +188,7 @@ impl CkanReader for CsvReader<'_> {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    use std::time::Duration;
 
     fn fixture_path(file: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -200,12 +198,19 @@ mod tests {
             .join(file)
     }
 
+    fn test_client() -> reqwest::blocking::Client {
+        reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(300))
+            .build()
+            .unwrap()
+    }
+
     /// A semicolon-delimited CSV containing quoted fields with embedded
     /// semicolons must still be parsed into a table with all records.
     #[test]
     fn do_read_parses_windows1152_enconde_semicolon_delimited_csv() -> Result<()> {
         let conn = Connection::open_in_memory()?;
-        let reader = CsvReader::new(&conn);
+        let reader = CsvReader::new(&conn, test_client());
 
         let csv_path = fixture_path("renuncia-fiscal-informacoes-conceituais-2024.csv");
         let resource = CkanResource {

@@ -271,6 +271,9 @@ pub trait CkanReader {
     /// A short human-readable name for this reader, used in log messages.
     fn reader_name(&self) -> &'static str {
         any::type_name::<Self>()
+            .rsplit("::")
+            .next()
+            .unwrap_or_else(|| any::type_name::<Self>())
     }
 
     fn read(&self, resource: &CkanResource) -> ReadResult {
