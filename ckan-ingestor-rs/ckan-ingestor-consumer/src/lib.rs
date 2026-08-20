@@ -156,13 +156,6 @@ pub async fn ensure_topics(bootstrap: &str, topic: &str, retry_topic: &str) {
 }
 
 async fn create_s3_ingestor() -> Result<S3DocumentIngestor> {
-    let settings = S3Settings {
-        endpoint: env::var("S3_ENDPOINT").unwrap_or_else(|_| "minio:9000".into()),
-        bucket: env::var("S3_BUCKET").unwrap_or_else(|_| "warehouse".into()),
-        access_key_id: env::var("S3_ACCESS_KEY_ID").unwrap_or_else(|_| "admin".into()),
-        secret_access_key: env::var("S3_SECRET_ACCESS_KEY").unwrap_or_else(|_| "password".into()),
-        use_ssl: env::var("S3_USE_SSL").map(|v| v == "true").unwrap_or(false),
-        ..S3Settings::default()
-    };
+    let settings = S3Settings::from_env();
     S3DocumentIngestor::new(settings)
 }

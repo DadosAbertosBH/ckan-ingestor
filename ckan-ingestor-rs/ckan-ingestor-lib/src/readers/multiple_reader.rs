@@ -59,7 +59,7 @@ impl CkanReader for MultipleReader<'_> {
                         "reader {} failed to read CKAN resource {}: {}",
                         reader.reader_name(),
                         resource.id,
-                        error
+                        format!("{:#}", error.error)
                     );
                 }
             };

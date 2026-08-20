@@ -15,6 +15,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 use serde::Deserialize;
+use std::env;
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(default)]
@@ -47,6 +48,27 @@ impl Default for S3Settings {
 }
 
 impl S3Settings {
+    pub fn from_env() -> Self {
+        Self::from_getter(|key| env::var(key).ok())
+    }
+
+    fn from_getter<F>(get: F) -> Self
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        Self {
+            protocol: get("S3_PROTOCOL").unwrap_or_else(|| "s3".into()),
+            endpoint: get("S3_ENDPOINT").unwrap_or_else(|| "minio:9000".into()),
+            bucket: get("S3_BUCKET").unwrap_or_else(|| "warehouse".into()),
+            access_key_id: get("S3_ACCESS_KEY_ID").unwrap_or_else(|| "admin".into()),
+            secret_access_key: get("S3_SECRET_ACCESS_KEY").unwrap_or_else(|| "password".into()),
+            region: get("S3_REGION").unwrap_or_else(|| "us-east-1".into()),
+            url_style: get("S3_URL_STYLE").unwrap_or_else(|| "vhost".into()),
+            use_ssl: get("S3_USE_SSL").map(|v| v == "true").unwrap_or(false),
+            ..Self::default()
+        }
+    }
+
     pub fn endpoint_url(&self) -> String {
         let scheme = if self.use_ssl { "https" } else { "http" };
         format!("{}://{}", scheme, self.endpoint)
@@ -74,5 +96,19 @@ impl S3Settings {
             bucket
         };
         Ok(bucket)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::S3Settings;
+    use std::collections::HashMap;
+
+    #[test]
+    fn from_getter_reads_path_style_configuration() {
+        let values = HashMap::from([(String::from("S3_URL_STYLE"), String::from("path"))]);
+        let settings = S3Settings::from_getter(|key| values.get(key).cloned());
+
+        assert_eq!(settings.url_style, "path");
     }
 }

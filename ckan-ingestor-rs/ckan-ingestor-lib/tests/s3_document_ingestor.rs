@@ -79,7 +79,7 @@ fn ingest_includes_s3_url_when_put_object_fails() -> Result<()> {
     let error = ingestor
         .ingest("test.pdf", &download_url, "application/pdf")
         .expect_err("put_object should fail when the S3 host is unavailable");
-    let message = error.to_string();
+    let message = format!("{:#}", error);
     let debug_message = format!("{error:?}");
     assert!(
         message.contains(&format!("http://{s3_endpoint}")),
@@ -88,6 +88,10 @@ fn ingest_includes_s3_url_when_put_object_fails() -> Result<()> {
     assert!(
         debug_message.contains("Name or service not known") || debug_message.contains("failed to lookup"),
         "unexpected error: {error:?}"
+    );
+    assert!(
+        message.contains("failed to lookup") || message.contains("Name or service not known"),
+        "the logged error should include its cause: {message}"
     );
     Ok(())
 }
