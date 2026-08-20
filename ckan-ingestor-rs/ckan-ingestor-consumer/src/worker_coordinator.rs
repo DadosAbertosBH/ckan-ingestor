@@ -144,7 +144,7 @@ where
 mod tests {
     use super::*;
     use crate::job_processor::JobProcessor;
-    use crate::messages::{JobMessage, JobResultMessage};
+    use crate::messages::{JobMessage, JobResultMessage, JobStatus};
     use crate::result_publisher::tests::MockPublisher;
     use tokio::sync::mpsc;
 
@@ -155,7 +155,7 @@ mod tests {
         fn process(&self, _job: JobMessage) -> JobResultMessage {
             JobResultMessage {
                 job_id: "stub".into(),
-                status: "done".into(),
+                status: JobStatus::Success,
                 rows_processed: Some(1),
                 expected_rows: None,
                 encoding: None,

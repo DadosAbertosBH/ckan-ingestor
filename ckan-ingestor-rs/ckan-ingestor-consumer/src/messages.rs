@@ -17,6 +17,25 @@
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum JobStatus {
+    Processing,
+    Success,
+    Failed,
+}
+
+impl std::fmt::Display for JobStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::Processing => "PROCESSING",
+            Self::Success => "SUCCESS",
+            Self::Failed => "FAILED",
+        };
+        f.write_str(value)
+    }
+}
+
 /// Message consumed from `ckan.ingest.jobs` / `ckan.ingest.jobs.retry`.
 ///
 /// All fields are guaranteed present by the producer.
@@ -35,7 +54,7 @@ pub struct JobMessage {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JobResultMessage {
     pub job_id: String,
-    pub status: String,
+    pub status: JobStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rows_processed: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]

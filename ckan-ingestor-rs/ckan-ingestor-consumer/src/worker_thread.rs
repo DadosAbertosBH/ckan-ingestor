@@ -23,7 +23,7 @@ use tokio::sync::Notify;
 
 use crate::job_processor::JobProcessor;
 use crate::message_source::MessageSource;
-use crate::messages::{JobMessage, JobResultMessage};
+use crate::messages::{JobMessage, JobResultMessage, JobStatus};
 use crate::result_publisher::ResultPublisher;
 
 pub struct WorkerThread<M: MessageSource, P: ResultPublisher, Proc: JobProcessor> {
@@ -108,7 +108,7 @@ where
 
                     let processing = JobResultMessage {
                         job_id: job.job_id.clone(),
-                        status: "PROCESSING".to_string(),
+                        status: JobStatus::Processing,
                         rows_processed: None,
                         expected_rows: None,
                         encoding: None,
@@ -163,7 +163,7 @@ mod tests {
         fn process(&self, _job: JobMessage) -> JobResultMessage {
             JobResultMessage {
                 job_id: "stub".into(),
-                status: "done".into(),
+                status: JobStatus::Success,
                 rows_processed: Some(1),
                 expected_rows: None,
                 encoding: None,
@@ -192,7 +192,7 @@ mod tests {
         fn process(&self, job: JobMessage) -> JobResultMessage {
             JobResultMessage {
                 job_id: job.job_id,
-                status: "done".into(),
+                status: JobStatus::Success,
                 rows_processed: None,
                 expected_rows: None,
                 encoding: None,
@@ -212,7 +212,7 @@ mod tests {
             assert!(tokio::runtime::Handle::try_current().is_err());
             JobResultMessage {
                 job_id: job.job_id,
-                status: "done".into(),
+                status: JobStatus::Success,
                 rows_processed: None,
                 expected_rows: None,
                 encoding: None,
@@ -283,8 +283,8 @@ mod tests {
 
         let results = published.lock().unwrap();
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0].status, "PROCESSING");
-        assert_eq!(results[1].status, "done");
+        assert_eq!(results[0].status, JobStatus::Processing);
+        assert_eq!(results[1].status, JobStatus::Success);
     }
 
     #[tokio::test]
@@ -342,7 +342,10 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         worker.shutdown();
 
-        assert_eq!(published.lock().unwrap().last().unwrap().status, "done");
+        assert_eq!(
+            published.lock().unwrap().last().unwrap().status,
+            JobStatus::Success
+        );
     }
 
     #[tokio::test]

@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use ckan_ingestor_consumer::coordinator_consumer_context::CoordinatorConsumerContext;
 use ckan_ingestor_consumer::job_processor::JobProcessor;
-use ckan_ingestor_consumer::messages::{JobMessage, JobResultMessage};
+use ckan_ingestor_consumer::messages::{JobMessage, JobResultMessage, JobStatus};
 use ckan_ingestor_consumer::worker_coordinator::WorkerCoordinator;
 use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::producer::{FutureProducer, FutureRecord};
@@ -38,7 +38,7 @@ impl JobProcessor for StubProcessor {
     fn process(&self, job: JobMessage) -> JobResultMessage {
         JobResultMessage {
             job_id: job.job_id,
-            status: "done".to_string(),
+            status: JobStatus::Success,
             rows_processed: Some(1),
             expected_rows: None,
             encoding: None,
@@ -150,7 +150,7 @@ async fn end_to_end_message_flow() -> anyhow::Result<()> {
         .map_err(|_| anyhow::anyhow!("timed out waiting for first result"))??
         .detach();
     let first: JobResultMessage = serde_json::from_slice(first.payload().unwrap_or(&[]))?;
-    assert_eq!(first.status, "PROCESSING");
+    assert_eq!(first.status, JobStatus::Processing);
 
     let second = tokio::time::timeout(Duration::from_secs(20), result_consumer.recv())
         .await
@@ -158,7 +158,7 @@ async fn end_to_end_message_flow() -> anyhow::Result<()> {
         .detach();
     let second: JobResultMessage = serde_json::from_slice(second.payload().unwrap_or(&[]))?;
     assert_eq!(second.job_id, "job-1");
-    assert_eq!(second.status, "done");
+    assert_eq!(second.status, JobStatus::Success);
 
     // 7. Shutdown the coordinator.
     shutdown.notify_waiters();

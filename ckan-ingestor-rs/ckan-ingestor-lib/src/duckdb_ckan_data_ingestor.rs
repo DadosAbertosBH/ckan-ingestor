@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::ingestor_outcome::IngestionOutcome;
+use crate::ingestor_outcome::{IngestionOutcome, IngestionStatus};
 use crate::{
     ckan_resource::CkanResource, readers::ckan_reader::CkanReader,
     readers::multiple_reader::MultipleReader,
@@ -55,7 +55,7 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
                     encoding: result.encoding,
                     datastore_active: resource.datastore_active,
                     expected_columns: result.expected_columns,
-                    status: "success".to_string(),
+                    status: IngestionStatus::Success,
                 }
             }
             Err(failed) => IngestionOutcome {
@@ -65,7 +65,7 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
                 encoding: None,
                 datastore_active: resource.datastore_active,
                 expected_columns: failed.expected_columns,
-                status: "failed".to_string(),
+                status: IngestionStatus::Failed,
             },
         };
         Ok(outcome)
@@ -125,6 +125,7 @@ mod tests {
 
     use crate::{
         ckan_resource::CkanResource,
+        ingestor_outcome::IngestionStatus,
         readers::{
             ckan_reader::{CkanReader, ReadResult, SuccessResult},
             multiple_reader::MultipleReader,
@@ -178,7 +179,7 @@ mod tests {
             .ingest_ckan_data(&resource)
             .expect("ingestion succeeds");
 
-        assert_eq!(outcome.status, "success");
+        assert_eq!(outcome.status, IngestionStatus::Success);
         assert_eq!(outcome.rows_processed, 2);
         let rows: i64 = conn
             .query_row("SELECT COUNT(*) FROM resource_table", [], |row| row.get(0))

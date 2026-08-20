@@ -28,7 +28,7 @@ use reqwest::blocking::Client;
 use serde_json::Value;
 
 use crate::duckdb_factory::DuckdbFactory;
-use crate::messages::{JobMessage, JobResultMessage};
+use crate::messages::{JobMessage, JobResultMessage, JobStatus};
 
 // ---------------------------------------------------------------------------
 // JobProcessor trait
@@ -98,7 +98,7 @@ impl JobProcessor for RealJobProcessor {
                 let truncated = &error_str[..error_str.len().min(16_000)];
                 JobResultMessage {
                     job_id: job.job_id.clone(),
-                    status: "failed".to_string(),
+                    status: JobStatus::Failed,
                     rows_processed: None,
                     expected_rows: None,
                     encoding: None,
@@ -118,7 +118,10 @@ fn job_result_from_outcome(
 ) -> JobResultMessage {
     JobResultMessage {
         job_id,
-        status: outcome.status,
+        status: match outcome.status {
+            ckan_ingestor_lib::ingestor_outcome::IngestionStatus::Success => JobStatus::Success,
+            ckan_ingestor_lib::ingestor_outcome::IngestionStatus::Failed => JobStatus::Failed,
+        },
         rows_processed: i64::try_from(outcome.rows_processed).ok(),
         expected_rows: outcome
             .expected_rows
@@ -202,9 +205,10 @@ fn fetch_datastore_active(job: &JobMessage) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use ckan_ingestor_lib::ingestor_outcome::IngestionOutcome;
+    use ckan_ingestor_lib::ingestor_outcome::{IngestionOutcome, IngestionStatus};
 
     use super::job_result_from_outcome;
+    use crate::messages::JobStatus;
 
     #[test]
     fn maps_the_reader_outcome_to_the_python_owned_result_contract() {
@@ -217,11 +221,11 @@ mod tests {
                 encoding: Some("latin-1".to_string()),
                 datastore_active: true,
                 expected_columns: Some(3),
-                status: "success".to_string(),
+                status: IngestionStatus::Success,
             },
         );
 
-        assert_eq!(result.status, "success");
+        assert_eq!(result.status, JobStatus::Success);
         assert_eq!(result.rows_processed, Some(42));
         assert_eq!(result.expected_rows, Some(50));
         assert_eq!(result.expected_columns, Some(3));
@@ -229,5 +233,24 @@ mod tests {
             result.preview,
             Some(vec![serde_json::json!({"name": "Ana"})])
         );
+    }
+
+    #[test]
+    fn maps_failed_outcomes_to_the_protocol_failed_status() {
+        let result = job_result_from_outcome(
+            "job-1".to_string(),
+            IngestionOutcome {
+                rows_processed: 0,
+                preview: vec![],
+                expected_rows: None,
+                encoding: None,
+                datastore_active: false,
+                expected_columns: None,
+                status: IngestionStatus::Failed,
+            },
+        );
+
+        assert_eq!(result.status, JobStatus::Failed);
+        assert_eq!(serde_json::to_value(&result).unwrap()["status"], "FAILED");
     }
 }

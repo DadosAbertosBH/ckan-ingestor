@@ -17,6 +17,13 @@
 
 use serde::Serialize;
 
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum IngestionStatus {
+    Success,
+    Failed,
+}
+
 /// The result of an ingestion, published to `ckan.ingest.jobs_result`.
 ///
 #[derive(Debug, Serialize)]
@@ -31,13 +38,12 @@ pub struct IngestionOutcome {
     pub datastore_active: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expected_columns: Option<usize>,
-    /// Derived status: "success" or "failed" (emptiness is a label)
-    pub status: String,
+    pub status: IngestionStatus,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::IngestionOutcome;
+    use super::{IngestionOutcome, IngestionStatus};
 
     #[test]
     fn serializes_the_current_ingestion_contract() {
@@ -48,7 +54,7 @@ mod tests {
             encoding: Some("latin-1".to_string()),
             datastore_active: true,
             expected_columns: Some(3),
-            status: "success".to_string(),
+            status: IngestionStatus::Success,
         };
 
         let json = serde_json::to_value(outcome).expect("outcome serializes");
@@ -59,6 +65,6 @@ mod tests {
         assert_eq!(json["encoding"], "latin-1");
         assert_eq!(json["datastore_active"], true);
         assert_eq!(json["expected_columns"], 3);
-        assert_eq!(json["status"], "success");
+        assert_eq!(json["status"], "SUCCESS");
     }
 }
