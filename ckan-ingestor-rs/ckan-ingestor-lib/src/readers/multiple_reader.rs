@@ -51,14 +51,7 @@ impl CkanReader for MultipleReader<'_> {
                 Ok(result) => {
                     return Ok(result);
                 }
-                Err(e) => {
-                    info!(
-                        "reader {} failed to read CKAN resource {}: {}",
-                        reader.reader_name(),
-                        resource.id,
-                        e
-                    );
-                }
+                Err(_) => {}
             };
         }
         let error = format!(
