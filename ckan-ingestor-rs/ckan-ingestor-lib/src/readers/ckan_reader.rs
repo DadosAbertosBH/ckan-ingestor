@@ -20,6 +20,7 @@ use crate::ckan_resource::CkanResource;
 use duckdb::arrow::array::RecordBatch;
 
 const PREVIEW_MAX_VALUE_LEN: usize = 1000;
+const PREVIEW_MAX_ROWS: usize = 5;
 
 pub struct SuccessResult {
     pub data: Vec<RecordBatch>,
@@ -96,7 +97,7 @@ impl SuccessResult {
     fn generate_preview(data: &Vec<RecordBatch>) -> Option<Vec<serde_json::Value>> {
         let batch = data.first()?;
         let mut rows = Vec::new();
-        for row_idx in 0..batch.num_rows() {
+        for row_idx in 0..batch.num_rows().min(PREVIEW_MAX_ROWS) {
             let mut row_map = serde_json::Map::new();
             let schema = batch.schema();
             for col_idx in 0..batch.num_columns() {
@@ -188,6 +189,19 @@ mod tests {
         assert_eq!(result.rows_processed, 0);
         assert_eq!(result.number_of_columns, 2);
         assert!(result.preview.is_empty());
+    }
+
+    #[test]
+    fn new_limits_preview_to_five_rows() {
+        let batch = string_batch(
+            vec!["1", "2", "3", "4", "5", "6"],
+            vec!["a", "b", "c", "d", "e", "f"],
+        );
+
+        let result = SuccessResult::new(vec![batch], "test".to_string());
+
+        assert_eq!(result.preview.len(), 5);
+        assert_eq!(result.preview[4], serde_json::json!({"name": "5", "age": "e"}));
     }
 
     #[test]
