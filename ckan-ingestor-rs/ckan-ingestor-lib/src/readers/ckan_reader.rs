@@ -26,6 +26,7 @@ pub struct SuccessResult {
     pub preview: Vec<serde_json::Value>,
     pub rows_processed: usize,
     pub number_of_columns: usize,
+    pub reader: String,
     pub encoding: Option<String>,
     pub expected_rows: Option<usize>,
     pub expected_columns: Option<usize>,
@@ -34,12 +35,13 @@ pub struct SuccessResult {
 #[derive(Debug)]
 pub struct FailedResult {
     pub error: anyhow::Error,
+    pub reader: String,
     pub expected_rows: Option<usize>,
     pub expected_columns: Option<usize>,
 }
 
 impl SuccessResult {
-    pub fn new(data: Vec<RecordBatch>) -> Self {
+    pub fn new(data: Vec<RecordBatch>, reader: String) -> Self {
         let rows_processed = data.iter().map(|batch| batch.num_rows()).sum();
         let number_of_columns = data
             .first()
@@ -52,16 +54,17 @@ impl SuccessResult {
             preview,
             rows_processed,
             number_of_columns,
+            reader,
             encoding: None,
             expected_rows: None,
             expected_columns: None,
         }
     }
 
-    pub fn from_csv(data: Vec<RecordBatch>, encoding: String) -> Self {
+    pub fn from_csv(data: Vec<RecordBatch>, encoding: String, reader: String) -> Self {
         Self {
             encoding: Some(encoding),
-            ..Self::new(data)
+            ..Self::new(data, reader)
         }
     }
 
@@ -69,11 +72,12 @@ impl SuccessResult {
         data: Vec<RecordBatch>,
         expected_rows: usize,
         expected_columns: usize,
+        reader: String,
     ) -> Self {
         Self {
             expected_rows: Some(expected_rows),
             expected_columns: Some(expected_columns),
-            ..Self::new(data)
+            ..Self::new(data, reader)
         }
     }
 
@@ -142,7 +146,7 @@ mod tests {
 
     #[test]
     fn from_datastore_keeps_expected_metadata() {
-        let result = SuccessResult::from_datastore(Vec::new(), 42, 3);
+        let result = SuccessResult::from_datastore(Vec::new(), 42, 3, "test".to_string());
 
         assert_eq!(result.expected_rows, Some(42));
         assert_eq!(result.expected_columns, Some(3));
@@ -151,7 +155,7 @@ mod tests {
 
     #[test]
     fn new_has_no_reader_specific_metadata() {
-        let result = SuccessResult::new(Vec::new());
+        let result = SuccessResult::new(Vec::new(), "test".to_string());
 
         assert_eq!(result.encoding, None);
         assert_eq!(result.expected_rows, None);
@@ -162,7 +166,7 @@ mod tests {
     fn new_calculates_rows_columns_and_preview() {
         let batch = string_batch(vec!["Ana", "Bruno"], vec!["30", "40"]);
 
-        let result = SuccessResult::new(vec![batch]);
+        let result = SuccessResult::new(vec![batch], "test".to_string());
 
         assert_eq!(result.rows_processed, 2);
         assert_eq!(result.number_of_columns, 2);
@@ -179,7 +183,7 @@ mod tests {
     fn new_returns_empty_preview_for_an_empty_batch() {
         let batch = string_batch(vec![], vec![]);
 
-        let result = SuccessResult::new(vec![batch]);
+        let result = SuccessResult::new(vec![batch], "test".to_string());
 
         assert_eq!(result.rows_processed, 0);
         assert_eq!(result.number_of_columns, 2);
@@ -191,7 +195,7 @@ mod tests {
         let long_value = "a".repeat(PREVIEW_MAX_VALUE_LEN + 1);
         let batch = string_batch(vec![long_value.as_str()], vec!["30"]);
 
-        let result = SuccessResult::new(vec![batch]);
+        let result = SuccessResult::new(vec![batch], "test".to_string());
 
         assert_eq!(
             result.preview,
@@ -207,9 +211,10 @@ mod tests {
 }
 
 impl FailedResult {
-    pub fn from_string(error: &str) -> Self {
+    pub fn from_string(error: &str, reader: String) -> Self {
         Self {
             error: anyhow::anyhow!(error.to_string()),
+            reader,
             expected_rows: Option::None,
             expected_columns: Option::None,
         }
@@ -224,6 +229,7 @@ where
     fn from(error: E) -> Self {
         Self {
             error: error.into(),
+            reader: String::new(),
             expected_rows: None,
             expected_columns: None,
         }
@@ -259,6 +265,7 @@ pub trait CkanReader {
                 error: anyhow::anyhow!("Unsupported format"),
                 expected_columns: Option::None,
                 expected_rows: Option::None,
+                reader: self.reader_name().to_string()
             });
         }
         self.do_read(resource)

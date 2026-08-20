@@ -68,13 +68,13 @@ impl<'a> CsvReader<'a> {
 
         for encoding in encodings {
             match self.try_read_csv(&csv_path, encoding) {
-                Ok(batches) => return Ok(SuccessResult::from_csv(batches, encoding.to_string())),
+                Ok(batches) => return Ok(SuccessResult::from_csv(batches, encoding.to_string(), self.reader_name().to_string())),
                 Err(_) => continue,
             }
         }
 
         let error = format!("Failed to parse CSV file from {}", resource.url);
-        Err(FailedResult::from_string(&error))
+        Err(FailedResult::from_string(&error, self.reader_name().to_string()))
     }
 
     /// Download a remote file to a temporary location.

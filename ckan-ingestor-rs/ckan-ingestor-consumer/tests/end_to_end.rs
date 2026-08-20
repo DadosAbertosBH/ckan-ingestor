@@ -37,6 +37,7 @@ struct StubProcessor;
 impl JobProcessor for StubProcessor {
     fn process(&self, job: JobMessage) -> JobResultMessage {
         JobResultMessage {
+            reader: String::new(),
             job_id: job.job_id,
             status: JobStatus::Success,
             rows_processed: Some(1),

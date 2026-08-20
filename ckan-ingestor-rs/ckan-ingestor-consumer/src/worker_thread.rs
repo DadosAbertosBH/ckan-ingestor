@@ -107,6 +107,7 @@ where
                         serde_json::from_slice(payload).expect("failed to deserialize job message");
 
                     let processing = JobResultMessage {
+                        reader: String::new(),
                         job_id: job.job_id.clone(),
                         status: JobStatus::Processing,
                         rows_processed: None,
@@ -162,6 +163,7 @@ mod tests {
     impl JobProcessor for StubProcessor {
         fn process(&self, _job: JobMessage) -> JobResultMessage {
             JobResultMessage {
+                reader: String::new(),
                 job_id: "stub".into(),
                 status: JobStatus::Success,
                 rows_processed: Some(1),
@@ -191,6 +193,7 @@ mod tests {
     impl JobProcessor for CloneCountingProcessor {
         fn process(&self, job: JobMessage) -> JobResultMessage {
             JobResultMessage {
+                reader: String::new(),
                 job_id: job.job_id,
                 status: JobStatus::Success,
                 rows_processed: None,
@@ -211,6 +214,7 @@ mod tests {
         fn process(&self, job: JobMessage) -> JobResultMessage {
             assert!(tokio::runtime::Handle::try_current().is_err());
             JobResultMessage {
+                reader: String::new(),
                 job_id: job.job_id,
                 status: JobStatus::Success,
                 rows_processed: None,

@@ -192,6 +192,25 @@ class TestApplyIngestionLabelsRemovesEmpty:
 
 
 class TestApplyIngestionLabelsSingleColumn:
+    async def test_reader_label_applied(self, db_session):
+        service = JobService(db_session)
+
+        await service._apply_ingestion_labels(
+            resource_id="r-reader",
+            rows_processed=5,
+            reader="CsvReader",
+        )
+
+        rows = (
+            await db_session.execute(
+                select(ResourceMetadataLabel).where(
+                    ResourceMetadataLabel.resource_id == "r-reader",
+                    ResourceMetadataLabel.label == "reader:CsvReader",
+                )
+            )
+        ).scalars().all()
+        assert len(rows) == 1
+
     async def test_single_column_label_applied(self, db_session):
         """_apply_ingestion_labels creates 'single-column' when column_count=1."""
         service = JobService(db_session)

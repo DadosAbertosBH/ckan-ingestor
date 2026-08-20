@@ -39,9 +39,9 @@ impl<'a> JsonReader<'a> {
     fn read_batches(&self, resource: &CkanResource) -> ReadResult {
         let batches = self.try_read_json(&resource.url)?;
         if batches.is_empty() || batches.iter().all(|batch| batch.num_rows() == 0) {
-            return Err(FailedResult::from_string("No data"));
+            return Err(FailedResult::from_string("No data", self.reader_name().to_string()));
         }
-        Ok(SuccessResult::new(batches))
+        Ok(SuccessResult::new(batches, self.reader_name().to_string()))
     }
 
     fn try_read_json(&self, path: &str) -> Result<Vec<RecordBatch>> {

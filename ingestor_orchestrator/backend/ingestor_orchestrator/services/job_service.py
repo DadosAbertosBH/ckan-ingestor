@@ -184,9 +184,9 @@ class JobService:
         expected_rows = result_data.get("expected_rows")
         resource_size = result_data.get("resource_size")
         encoding = result_data.get("encoding")
-        _datastore_active = result_data.get("datastore_active", False)
-        _expected_columns = result_data.get("expected_columns")
-        labels = result_data.get("labels", [])
+        reader = result_data.get("reader")
+        datastore_active = result_data.get("datastore_active", False)
+        expected_columns = result_data.get("expected_columns")
 
         dataset_preview = sanitize_json_preview(result_data.get("preview"))
 
@@ -204,9 +204,21 @@ class JobService:
         job.completed_at = datetime.now(timezone.utc)
         logger.info(f"Job {job.id} completed ({rows_processed} rows)")
 
-        # Apply labels from the worker
-        for label in labels:
-            await self._label_resource(job.resource_id, label)
+        if rows_processed == 0:
+            await self._label_resource(job.resource_id, "empty")
+        else:
+            column_count = len(dataset_preview[0]) if dataset_preview else 0
+            await self._apply_ingestion_labels(
+                resource_id=job.resource_id,
+                rows_processed=rows_processed,
+                expected_rows=expected_rows,
+                resource_size=resource_size,
+                encoding=encoding,
+                reader=reader,
+                datastore_active=datastore_active,
+                column_count=column_count,
+                expected_columns=expected_columns,
+            )
 
         job.updated_at = datetime.now(timezone.utc)
         await self._update_latest_resource_status(job)
@@ -285,6 +297,7 @@ class JobService:
         expected_rows: int | None = None,
         resource_size: int | None = None,
         encoding: str | None = None,
+        reader: str | None = None,
         datastore_active: bool = False,
         column_count: int = 0,
         expected_columns: int | None = None,
@@ -330,6 +343,9 @@ class JobService:
         # encoding (skip utf-8, the default)
         if encoding and encoding != "utf-8":
             await self._label_resource(resource_id, f"encoding:{encoding}")
+
+        if reader:
+            await self._label_resource(resource_id, f"reader:{reader}")
 
         # datastore
         if datastore_active:

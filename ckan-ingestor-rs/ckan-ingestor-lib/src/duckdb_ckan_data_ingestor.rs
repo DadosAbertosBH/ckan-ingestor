@@ -49,6 +49,7 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
                 self.update_last_modified(resource_id)?;
 
                 IngestionOutcome {
+                    reader: result.reader,
                     rows_processed: result.rows_processed,
                     preview: result.preview,
                     expected_rows: result.expected_rows,
@@ -59,6 +60,7 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
                 }
             }
             Err(failed) => IngestionOutcome {
+                reader: failed.reader,
                 rows_processed: 0,
                 preview: vec![],
                 expected_rows: failed.expected_rows,
@@ -155,7 +157,7 @@ mod tests {
                 vec![Arc::new(StringArray::from(vec!["Bia"])) as ArrayRef],
             )
             .expect("valid batch");
-            Ok(SuccessResult::new(vec![first, second]))
+            Ok(SuccessResult::new(vec![first, second], self.reader_name().to_string()))
         }
     }
 

@@ -54,6 +54,7 @@ pub struct JobMessage {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JobResultMessage {
     pub job_id: String,
+    pub reader: String,
     pub status: JobStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rows_processed: Option<i64>,

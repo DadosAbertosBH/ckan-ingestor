@@ -28,6 +28,7 @@ pub enum IngestionStatus {
 ///
 #[derive(Debug, Serialize)]
 pub struct IngestionOutcome {
+    pub reader: String,
     pub rows_processed: usize,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub preview: Vec<serde_json::Value>,
@@ -48,6 +49,7 @@ mod tests {
     #[test]
     fn serializes_the_current_ingestion_contract() {
         let outcome = IngestionOutcome {
+            reader: "test-reader".to_string(),
             rows_processed: 42,
             preview: vec![serde_json::json!({"name": "Ana"})],
             expected_rows: Some(50),

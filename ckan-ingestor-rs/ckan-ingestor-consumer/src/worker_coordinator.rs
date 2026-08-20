@@ -154,6 +154,7 @@ mod tests {
     impl JobProcessor for StubProcessor {
         fn process(&self, _job: JobMessage) -> JobResultMessage {
             JobResultMessage {
+                reader: String::new(),
                 job_id: "stub".into(),
                 status: JobStatus::Success,
                 rows_processed: Some(1),

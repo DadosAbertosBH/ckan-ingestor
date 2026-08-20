@@ -97,6 +97,7 @@ impl JobProcessor for RealJobProcessor {
                 let error_str = format!("{}", e);
                 let truncated = &error_str[..error_str.len().min(16_000)];
                 JobResultMessage {
+                    reader: String::new(),
                     job_id: job.job_id.clone(),
                     status: JobStatus::Failed,
                     rows_processed: None,
@@ -118,6 +119,7 @@ fn job_result_from_outcome(
 ) -> JobResultMessage {
     JobResultMessage {
         job_id,
+        reader: outcome.reader,
         status: match outcome.status {
             ckan_ingestor_lib::ingestor_outcome::IngestionStatus::Success => JobStatus::Success,
             ckan_ingestor_lib::ingestor_outcome::IngestionStatus::Failed => JobStatus::Failed,
@@ -215,6 +217,7 @@ mod tests {
         let result = job_result_from_outcome(
             "job-1".to_string(),
             IngestionOutcome {
+                reader: "test-reader".to_string(),
                 rows_processed: 42,
                 preview: vec![serde_json::json!({"name": "Ana"})],
                 expected_rows: Some(50),
@@ -240,6 +243,7 @@ mod tests {
         let result = job_result_from_outcome(
             "job-1".to_string(),
             IngestionOutcome {
+                reader: "test-reader".to_string(),
                 rows_processed: 0,
                 preview: vec![],
                 expected_rows: None,

@@ -65,7 +65,7 @@ impl CkanReader for MultipleReader<'_> {
             "no reader could read CKAN resource {} (unsupported format)",
             resource.id
         );
-        Err(FailedResult::from_string(&error))
+        Err(FailedResult::from_string(&error, self.reader_name().to_string()))
     }
 }
 
@@ -94,9 +94,9 @@ mod tests {
 
         fn do_read(&self, _resource: &CkanResource) -> ReadResult {
             if self.fails {
-                Err(FailedResult::from_string("test reader failed"))
+                Err(FailedResult::from_string("test reader failed", self.reader_name().to_string()))
             } else {
-                Ok(crate::readers::ckan_reader::SuccessResult::new(Vec::new()))
+                Ok(crate::readers::ckan_reader::SuccessResult::new(Vec::new(), self.reader_name().to_string()))
             }
         }
     }
