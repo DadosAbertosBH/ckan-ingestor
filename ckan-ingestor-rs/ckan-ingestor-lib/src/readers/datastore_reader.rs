@@ -47,15 +47,17 @@ fn decode_json_response(resp: reqwest::blocking::Response, url: &str) -> Result<
 pub struct DatastoreReader {
     datastore_url: String,
     datastore_metadata_url: String,
+    client: Client,
     supported_formats: Vec<String>,
 }
 
 impl DatastoreReader {
-    pub fn new(ckan_base_url: String) -> Self {
+    pub fn new(ckan_base_url: String, client: Client) -> Self {
         let ckan_base_url = ckan_base_url.trim_end_matches('/');
         Self {
-            datastore_url: format!("{ckan_base_url}/api/3/action/datastore_search"),
+            datastore_url: format!("{ckan_base_url}/datastore/dump"),
             datastore_metadata_url: format!("{ckan_base_url}/api/3/action/datastore_search"),
+            client,
             supported_formats: vec!["CSV".to_string(), "JSON".to_string()],
         }
     }
@@ -65,12 +67,7 @@ impl DatastoreReader {
             "{}?resource_id={}&limit=0",
             self.datastore_metadata_url, resource_id
         );
-        let client = Client::builder()
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0")
-            .timeout(std::time::Duration::from_secs(10))
-            .build()?;
-
-        let resp = client.get(&url).send()?;
+        let resp = self.client.get(&url).send()?;
         let json = decode_json_response(resp, &url)?;
         let json = json.get("result").unwrap_or(&json);
 
@@ -96,19 +93,15 @@ impl DatastoreReader {
     /// Mirrors Python's `DatastoreReader.read()`.
     pub fn read_batches(&self, resource: &CkanResource) -> ReadResult {
         let resource_id = &resource.id;
-        let client = Client::builder()
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0")
-            .build()?;
-
         let mut offset = 0;
         let mut batches = Vec::new();
         let (rows, columns) = self.get_row_and_column_count(resource_id)?;
         loop {
             let url = format!(
-                "{}?resource_id={}&format=json&offset={}&limit={}",
+                "{}/{}?format=json&offset={}&limit={}",
                 self.datastore_url, resource_id, offset, MAX_RECORDS_FETCH
             );
-            let resp = client.get(&url).send()?;
+            let resp = self.client.get(&url).send()?;
             let json = decode_json_response(resp, &url)?;
             let json = json.get("result").unwrap_or(&json);
 
@@ -205,14 +198,20 @@ mod tests {
 
     #[test]
     fn cannot_read_gzip_resources_even_when_datastore_is_active() {
-        let reader = DatastoreReader::new("https://ckan.example.test/api".to_string());
+        let reader = DatastoreReader::new(
+            "https://ckan.example.test/api".to_string(),
+            Client::new(),
+        );
 
         assert!(!reader.can_read(&resource("https://example.test/data.csv.gz", true)));
     }
 
     #[test]
     fn can_read_non_gzip_csv_resources_when_datastore_is_active() {
-        let reader = DatastoreReader::new("https://ckan.example.test/api".to_string());
+        let reader = DatastoreReader::new(
+            "https://ckan.example.test/api".to_string(),
+            Client::new(),
+        );
 
         assert!(reader.can_read(&resource("https://example.test/data.csv", true)));
     }

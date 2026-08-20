@@ -154,7 +154,7 @@ fn run_ingestion(
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0")
         .build()?;
     let reader = MultipleReader::new(vec![
-        Box::new(DatastoreReader::new(job.ckan_url.clone())),
+        Box::new(DatastoreReader::new(job.ckan_url.clone(), http_client.clone())),
         Box::new(CsvReader::new(conn, http_client)),
         Box::new(JsonReader::new(conn)),
         Box::new(DocumentReader::new(s3)),

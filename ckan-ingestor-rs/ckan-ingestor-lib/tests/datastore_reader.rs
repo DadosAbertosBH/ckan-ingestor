@@ -37,8 +37,7 @@ fn read_datastore() -> Result<()> {
     });
     server.mock(|when, then| {
         when.method(GET)
-            .path("/api/3/action/datastore_search")
-            .query_param("resource_id", id)
+            .path(format!("/datastore/dump/{id}"))
             .query_param("format", "json")
             .query_param("offset", "0")
             .query_param("limit", "100000");
@@ -48,8 +47,7 @@ fn read_datastore() -> Result<()> {
     });
     server.mock(|when, then| {
         when.method(GET)
-            .path("/api/3/action/datastore_search")
-            .query_param("resource_id", id)
+            .path(format!("/datastore/dump/{id}"))
             .query_param("format", "json")
             .query_param("offset", "100000")
             .query_param("limit", "100000");
@@ -58,7 +56,10 @@ fn read_datastore() -> Result<()> {
             .body("{\"fields\":[{\"id\":\"_id\"}],\"records\":[],\"total\":1}");
     });
 
-    let reader = DatastoreReader::new(format!("http://{}", server.address()));
+    let reader = DatastoreReader::new(
+        format!("http://{}", server.address()),
+        reqwest::blocking::Client::new(),
+    );
 
     let resource = CkanResource {
         id: id.to_string(),
@@ -84,14 +85,16 @@ fn read_invalid_json() -> Result<()> {
     let body = std::fs::read_to_string(fixture_path(&format!("{id}.json")))?;
     server.mock(|when, then| {
         when.method(GET)
-            .path("/api/3/action/datastore_search")
-            .query_param("resource_id", id)
+            .path(format!("/datastore/dump/{id}"))
             .query_param("limit", "100000");
         then.status(200)
             .header("Content-Type", "application/json")
             .body(body.clone());
     });
-    let reader = DatastoreReader::new(format!("http://{}", server.address()));
+    let reader = DatastoreReader::new(
+        format!("http://{}", server.address()),
+        reqwest::blocking::Client::new(),
+    );
 
     let resource = CkanResource {
         id: id.to_string(),
@@ -115,8 +118,7 @@ fn empty_datastore_returns_empty_vec() -> Result<()> {
 
     server.mock(|when, then| {
         when.method(GET)
-            .path("/api/3/action/datastore_search")
-            .query_param("resource_id", id)
+            .path(format!("/datastore/dump/{id}"))
             .query_param("format", "json")
             .query_param("offset", "0")
             .query_param("limit", "100000");
@@ -125,7 +127,10 @@ fn empty_datastore_returns_empty_vec() -> Result<()> {
             .body("{\"fields\":[{\"id\":\"_id\"}],\"records\":[],\"total\":0}");
     });
 
-    let reader = DatastoreReader::new(format!("http://{}", server.address()));
+    let reader = DatastoreReader::new(
+        format!("http://{}", server.address()),
+        reqwest::blocking::Client::new(),
+    );
 
     let resource = CkanResource {
         id: id.to_string(),
@@ -157,7 +162,10 @@ fn get_row_and_column_count_returns_datastore_metadata() -> Result<()> {
             .body("{\"fields\":[{\"id\":\"col1\"},{\"id\":\"col2\"},{\"id\":\"col3\"}],\"records\":[],\"total\":42}");
     });
 
-    let reader = DatastoreReader::new(format!("http://{}", server.address()));
+    let reader = DatastoreReader::new(
+        format!("http://{}", server.address()),
+        reqwest::blocking::Client::new(),
+    );
 
     let (rows, columns) = reader.get_row_and_column_count(id)?;
     assert_eq!(rows, 42);
@@ -172,7 +180,7 @@ fn reproduce_datastore_response_decoding_error() -> Result<()> {
     let resource_id = "13cfc052-15bb-49cf-b7fa-ce02bc877e84";
     let base_url = format!("http://{}", server.address());
     let data_url = format!(
-        "{base_url}/api/3/action/datastore_search?resource_id={resource_id}&format=json&offset=0&limit=100000"
+        "{base_url}/datastore/dump/{resource_id}?format=json&offset=0&limit=100000"
     );
     let long_invalid_body = format!("{{\"broken\": {}}}", "x".repeat(600));
 
@@ -187,8 +195,7 @@ fn reproduce_datastore_response_decoding_error() -> Result<()> {
     });
     server.mock(|when, then| {
         when.method(GET)
-            .path("/api/3/action/datastore_search")
-            .query_param("resource_id", resource_id)
+            .path(format!("/datastore/dump/{resource_id}"))
             .query_param("format", "json")
             .query_param("offset", "0")
             .query_param("limit", "100000");
@@ -197,7 +204,7 @@ fn reproduce_datastore_response_decoding_error() -> Result<()> {
             .body(long_invalid_body.clone());
     });
 
-    let reader = DatastoreReader::new(base_url);
+    let reader = DatastoreReader::new(base_url, reqwest::blocking::Client::new());
     let resource = CkanResource {
         id: resource_id.to_string(),
         url: String::new(),
