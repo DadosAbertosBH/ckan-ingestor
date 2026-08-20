@@ -20,7 +20,7 @@ use crate::{
     ckan_resource::CkanResource,
     readers::ckan_reader::{CkanReader, FailedResult, ReadResult, SuccessResult},
 };
-use anyhow::Result;
+use anyhow::{Context, Result};
 use duckdb::arrow::{
     array::{ArrayRef, StringArray},
     datatypes::{DataType, Field, Schema},
@@ -30,25 +30,40 @@ use reqwest::blocking::Client;
 use serde_json::Value;
 
 const MAX_RECORDS_FETCH: usize = 100_000;
+const MAX_ERROR_BODY_LENGTH: usize = 512;
+
+fn decode_json_response(resp: reqwest::blocking::Response, url: &str) -> Result<Value> {
+    let body = resp.text()?;
+    let body_preview: String = body.chars().take(MAX_ERROR_BODY_LENGTH).collect();
+    serde_json::from_str(&body).with_context(|| {
+        format!(
+            "error decoding response body from {url}: {body_preview}{}",
+            if body.chars().count() > MAX_ERROR_BODY_LENGTH { "..." } else { "" }
+        )
+    })
+}
 
 /// Mirrors Python's `DatastoreReader` exactly.
 pub struct DatastoreReader {
     datastore_url: String,
+    datastore_metadata_url: String,
     supported_formats: Vec<String>,
 }
 
 impl DatastoreReader {
-    pub fn new(datastore_url: String) -> Self {
+    pub fn new(ckan_base_url: String) -> Self {
+        let ckan_base_url = ckan_base_url.trim_end_matches('/');
         Self {
-            datastore_url,
+            datastore_url: format!("{ckan_base_url}/api/3/action/datastore_search"),
+            datastore_metadata_url: format!("{ckan_base_url}/api/3/action/datastore_search"),
             supported_formats: vec!["CSV".to_string(), "JSON".to_string()],
         }
     }
 
     pub fn get_row_and_column_count(&self, resource_id: &str) -> Result<(usize, usize)> {
         let url = format!(
-            "{}/{}?format=json&offset=0&limit=0",
-            self.datastore_url, resource_id
+            "{}?resource_id={}&limit=0",
+            self.datastore_metadata_url, resource_id
         );
         let client = Client::builder()
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0")
@@ -56,7 +71,8 @@ impl DatastoreReader {
             .build()?;
 
         let resp = client.get(&url).send()?;
-        let json: Value = resp.json()?;
+        let json = decode_json_response(resp, &url)?;
+        let json = json.get("result").unwrap_or(&json);
 
         let total = json
             .get("total")
@@ -89,11 +105,12 @@ impl DatastoreReader {
         let (rows, columns) = self.get_row_and_column_count(resource_id)?;
         loop {
             let url = format!(
-                "{}/{}?format=json&offset={}&limit={}",
+                "{}?resource_id={}&format=json&offset={}&limit={}",
                 self.datastore_url, resource_id, offset, MAX_RECORDS_FETCH
             );
             let resp = client.get(&url).send()?;
-            let json: Value = resp.json()?;
+            let json = decode_json_response(resp, &url)?;
+            let json = json.get("result").unwrap_or(&json);
 
             let recs = json
                 .get("records")

@@ -84,13 +84,11 @@ impl Clone for RealJobProcessor {
 
 impl JobProcessor for RealJobProcessor {
     fn process(&self, job: JobMessage) -> JobResultMessage {
-        let datastore_url = format!("{}/datastore/dump", job.ckan_url.trim_end_matches('/'));
-
         // Determine whether the CKAN resource has an active DataStore, so the
         // ingestion can prefer the datastore endpoint over the raw file.
         let datastore_active = fetch_datastore_active(&job);
 
-        let result = run_ingestion(&self.conn, &job, &datastore_url, datastore_active, &self.s3);
+        let result = run_ingestion(&self.conn, &job, datastore_active, &self.s3);
 
         match result {
             Ok(outcome) => job_result_from_outcome(job.job_id.clone(), outcome),
@@ -142,7 +140,6 @@ fn job_result_from_outcome(
 fn run_ingestion(
     conn: &Connection,
     job: &JobMessage,
-    datastore_url: &str,
     datastore_active: bool,
     s3: &S3DocumentIngestor,
 ) -> Result<ckan_ingestor_lib::ingestor_outcome::IngestionOutcome, anyhow::Error> {
@@ -157,7 +154,7 @@ fn run_ingestion(
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0")
         .build()?;
     let reader = MultipleReader::new(vec![
-        Box::new(DatastoreReader::new(datastore_url.to_string())),
+        Box::new(DatastoreReader::new(job.ckan_url.clone())),
         Box::new(CsvReader::new(conn, http_client)),
         Box::new(JsonReader::new(conn)),
         Box::new(DocumentReader::new(s3)),

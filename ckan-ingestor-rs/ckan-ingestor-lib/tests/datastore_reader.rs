@@ -28,9 +28,8 @@ fn read_datastore() -> Result<()> {
     let body = std::fs::read_to_string(fixture_path(&format!("{id}.json")))?;
     server.mock(|when, then| {
         when.method(GET)
-            .path(format!("/datastore/{id}"))
-            .query_param("format", "json")
-            .query_param("offset", "0")
+            .path("/api/3/action/datastore_search")
+            .query_param("resource_id", id)
             .query_param("limit", "0");
         then.status(200)
             .header("Content-Type", "application/json")
@@ -38,7 +37,8 @@ fn read_datastore() -> Result<()> {
     });
     server.mock(|when, then| {
         when.method(GET)
-            .path(format!("/datastore/{id}"))
+            .path("/api/3/action/datastore_search")
+            .query_param("resource_id", id)
             .query_param("format", "json")
             .query_param("offset", "0")
             .query_param("limit", "100000");
@@ -48,7 +48,8 @@ fn read_datastore() -> Result<()> {
     });
     server.mock(|when, then| {
         when.method(GET)
-            .path(format!("/datastore/{id}"))
+            .path("/api/3/action/datastore_search")
+            .query_param("resource_id", id)
             .query_param("format", "json")
             .query_param("offset", "100000")
             .query_param("limit", "100000");
@@ -57,7 +58,7 @@ fn read_datastore() -> Result<()> {
             .body("{\"fields\":[{\"id\":\"_id\"}],\"records\":[],\"total\":1}");
     });
 
-    let reader = DatastoreReader::new(format!("http://{}/datastore", server.address()));
+    let reader = DatastoreReader::new(format!("http://{}", server.address()));
 
     let resource = CkanResource {
         id: id.to_string(),
@@ -83,9 +84,8 @@ fn read_invalid_json() -> Result<()> {
     let body = std::fs::read_to_string(fixture_path(&format!("{id}.json")))?;
     server.mock(|when, then| {
         when.method(GET)
-            .path(format!("/datastore/{id}"))
-            .query_param("format", "json")
-            .query_param("offset", "0")
+            .path("/api/3/action/datastore_search")
+            .query_param("resource_id", id)
             .query_param("limit", "100000");
         then.status(200)
             .header("Content-Type", "application/json")
@@ -115,7 +115,8 @@ fn empty_datastore_returns_empty_vec() -> Result<()> {
 
     server.mock(|when, then| {
         when.method(GET)
-            .path(format!("/datastore/{id}"))
+            .path("/api/3/action/datastore_search")
+            .query_param("resource_id", id)
             .query_param("format", "json")
             .query_param("offset", "0")
             .query_param("limit", "100000");
@@ -124,7 +125,7 @@ fn empty_datastore_returns_empty_vec() -> Result<()> {
             .body("{\"fields\":[{\"id\":\"_id\"}],\"records\":[],\"total\":0}");
     });
 
-    let reader = DatastoreReader::new(format!("http://{}/datastore", server.address()));
+    let reader = DatastoreReader::new(format!("http://{}", server.address()));
 
     let resource = CkanResource {
         id: id.to_string(),
@@ -148,20 +149,72 @@ fn get_row_and_column_count_returns_datastore_metadata() -> Result<()> {
 
     server.mock(|when, then| {
         when.method(GET)
-            .path(format!("/datastore/{id}"))
-            .query_param("format", "json")
-            .query_param("offset", "0")
+            .path("/api/3/action/datastore_search")
+            .query_param("resource_id", id)
             .query_param("limit", "0");
         then.status(200)
             .header("Content-Type", "application/json")
             .body("{\"fields\":[{\"id\":\"col1\"},{\"id\":\"col2\"},{\"id\":\"col3\"}],\"records\":[],\"total\":42}");
     });
 
-    let reader = DatastoreReader::new(format!("http://{}/datastore", server.address()));
+    let reader = DatastoreReader::new(format!("http://{}", server.address()));
 
     let (rows, columns) = reader.get_row_and_column_count(id)?;
     assert_eq!(rows, 42);
     assert_eq!(columns, 3);
 
+    Ok(())
+}
+
+#[test]
+fn reproduce_datastore_response_decoding_error() -> Result<()> {
+    let server = MockServer::start();
+    let resource_id = "13cfc052-15bb-49cf-b7fa-ce02bc877e84";
+    let base_url = format!("http://{}", server.address());
+    let data_url = format!(
+        "{base_url}/api/3/action/datastore_search?resource_id={resource_id}&format=json&offset=0&limit=100000"
+    );
+    let long_invalid_body = format!("{{\"broken\": {}}}", "x".repeat(600));
+
+    server.mock(|when, then| {
+        when.method(GET)
+            .path("/api/3/action/datastore_search")
+            .query_param("resource_id", resource_id)
+            .query_param("limit", "0");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body("{\"success\":true,\"result\":{\"total\":1,\"fields\":[]}}");
+    });
+    server.mock(|when, then| {
+        when.method(GET)
+            .path("/api/3/action/datastore_search")
+            .query_param("resource_id", resource_id)
+            .query_param("format", "json")
+            .query_param("offset", "0")
+            .query_param("limit", "100000");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(long_invalid_body.clone());
+    });
+
+    let reader = DatastoreReader::new(base_url);
+    let resource = CkanResource {
+        id: resource_id.to_string(),
+        url: String::new(),
+        format: "CSV".to_string(),
+        datastore_active: true,
+    };
+
+    let error = match reader.read_batches(&resource) {
+        Ok(_) => anyhow::bail!("the resource should reproduce the response-decoding error"),
+        Err(error) => error,
+    };
+    let message = error.to_string();
+    assert!(message.contains("error decoding response body"));
+    assert!(message.contains(&data_url));
+    let body_preview: String = long_invalid_body.chars().take(512).collect();
+    assert!(message.contains(&body_preview));
+    assert!(!message.contains(&long_invalid_body));
+    assert!(message.ends_with("..."));
     Ok(())
 }
