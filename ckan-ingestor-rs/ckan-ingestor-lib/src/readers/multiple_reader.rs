@@ -47,11 +47,21 @@ impl CkanReader for MultipleReader<'_> {
 
     fn do_read(&self, resource: &CkanResource) -> ReadResult {
         for reader in &self.readers {
+            if !reader.can_read(resource) {
+                continue;
+            }
             match reader.read(resource) {
                 Ok(result) => {
                     return Ok(result);
                 }
-                Err(_) => {}
+                Err(error) => {
+                    info!(
+                        "reader {} failed to read CKAN resource {}: {}",
+                        reader.reader_name(),
+                        resource.id,
+                        error
+                    );
+                }
             };
         }
         let error = format!(
@@ -94,6 +104,23 @@ mod tests {
         }
     }
 
+    struct CannotReadReader;
+
+    impl CkanReader for CannotReadReader {
+        fn supported_formats(&self) -> &[String] {
+            static FORMATS: [String; 1] = [String::new()];
+            &FORMATS
+        }
+
+        fn can_read(&self, _resource: &CkanResource) -> bool {
+            false
+        }
+
+        fn do_read(&self, _resource: &CkanResource) -> ReadResult {
+            panic!("do_read must not be called when can_read returns false");
+        }
+    }
+
     fn resource(format: &str) -> CkanResource {
         CkanResource {
             id: "resource-id".to_string(),
@@ -117,6 +144,16 @@ mod tests {
     fn falls_back_to_the_next_reader_after_a_failure() {
         let reader = MultipleReader::new(vec![
             Box::new(TestReader::new(&["CSV"], true)),
+            Box::new(TestReader::new(&["CSV"], false)),
+        ]);
+
+        assert!(reader.read(&resource("CSV")).is_ok());
+    }
+
+    #[test]
+    fn skips_readers_that_cannot_read_the_resource() {
+        let reader = MultipleReader::new(vec![
+            Box::new(CannotReadReader),
             Box::new(TestReader::new(&["CSV"], false)),
         ]);
 
