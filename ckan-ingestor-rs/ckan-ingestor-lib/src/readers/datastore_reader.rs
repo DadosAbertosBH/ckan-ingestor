@@ -164,9 +164,39 @@ impl CkanReader for DatastoreReader {
     }
 
     fn can_read(&self, resource: &CkanResource) -> bool {
-        self.supported_formats()
+        !resource.url.ends_with(".gz")
+            && self
+                .supported_formats()
             .iter()
             .any(|format| resource.format.contains(format))
             && resource.datastore_active
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn resource(url: &str, datastore_active: bool) -> CkanResource {
+        CkanResource {
+            id: "resource-id".to_string(),
+            url: url.to_string(),
+            format: "CSV".to_string(),
+            datastore_active,
+        }
+    }
+
+    #[test]
+    fn cannot_read_gzip_resources_even_when_datastore_is_active() {
+        let reader = DatastoreReader::new("https://ckan.example.test/api".to_string());
+
+        assert!(!reader.can_read(&resource("https://example.test/data.csv.gz", true)));
+    }
+
+    #[test]
+    fn can_read_non_gzip_csv_resources_when_datastore_is_active() {
+        let reader = DatastoreReader::new("https://ckan.example.test/api".to_string());
+
+        assert!(reader.can_read(&resource("https://example.test/data.csv", true)));
     }
 }
