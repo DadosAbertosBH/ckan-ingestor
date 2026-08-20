@@ -942,6 +942,7 @@ dependencies = [
  "arrow-ipc",
  "bytes",
  "duckdb",
+ "flate2",
  "httpmock",
  "libduckdb-sys",
  "log",

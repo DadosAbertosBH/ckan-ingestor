@@ -86,7 +86,11 @@ impl<'a> CsvReader<'a> {
             .build()?;
         let response = client.get(url).send()?;
         let bytes = response.bytes()?;
-        let temp_path = std::env::temp_dir().join(format!("{}.csv", uuid::Uuid::new_v4()));
+        let temp_path = std::env::temp_dir().join(format!(
+            "{}{}",
+            uuid::Uuid::new_v4(),
+            downloaded_csv_suffix(url)
+        ));
         std::fs::write(&temp_path, &bytes)?;
         Ok(temp_path.to_string_lossy().to_string())
     }
@@ -164,6 +168,15 @@ impl<'a> CsvReader<'a> {
     }
 }
 
+fn downloaded_csv_suffix(url: &str) -> &'static str {
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    if path.to_ascii_lowercase().ends_with(".gz") {
+        ".csv.gz"
+    } else {
+        ".csv"
+    }
+}
+
 impl CkanReader for CsvReader<'_> {
     fn supported_formats(&self) -> &[String] {
         return &self.supported_formats;
@@ -208,4 +221,5 @@ mod tests {
 
         Ok(())
     }
+
 }

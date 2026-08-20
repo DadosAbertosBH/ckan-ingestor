@@ -20,6 +20,9 @@ use ckan_ingestor_lib::ckan_resource::CkanResource;
 use ckan_ingestor_lib::readers::ckan_reader::CkanReader;
 use ckan_ingestor_lib::readers::csv_reader::CsvReader;
 use common::fixture_path;
+use flate2::{write::GzEncoder, Compression};
+use httpmock::{Method::GET, MockServer};
+use std::io::Write;
 
 #[test]
 fn parse_latin_encoded_csv() -> Result<()> {
@@ -139,5 +142,31 @@ fn try_create_table_atomic_avoids_per_row_inserts() -> Result<()> {
     )?;
     assert!(sample > 0, "Data should be present (atomic CTAS succeeded)");
 
+    Ok(())
+}
+
+#[test]
+fn parse_remote_gzip_csv() -> Result<()> {
+    let server = MockServer::start();
+    let mut compressed = Vec::new();
+    let mut encoder = GzEncoder::new(&mut compressed, Compression::default());
+    encoder.write_all(b"name,value\nAna,1\nBia,2\n")?;
+    encoder.finish()?;
+    server.mock(|when, then| {
+        when.method(GET).path("/ft_diarias_2014.csv.gz");
+        then.status(200).body(compressed.clone());
+    });
+
+    let conn = duckdb::Connection::open_in_memory()?;
+    let reader = CsvReader::new(&conn);
+    let resource = CkanResource {
+        id: "cfba57bb-358b-4b43-96e6-477920e39f19".to_string(),
+        url: format!("{}/ft_diarias_2014.csv.gz", server.url("")),
+        format: "CSV".to_string(),
+        datastore_active: false,
+    };
+
+    let result = reader.read(&resource)?;
+    assert_eq!(result.rows_processed, 2);
     Ok(())
 }

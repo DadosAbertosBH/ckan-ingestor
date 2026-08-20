@@ -163,14 +163,10 @@ mod tests {
         let conn = duckdb::Connection::open_in_memory().expect("in-memory DuckDB");
         conn.execute_batch("INSTALL arrow FROM community; LOAD arrow;")
             .expect("DuckDB Arrow extension is available");
-        let ingestor = DuckdbCkanDataIngestor::new(conn);
-        ingestor
-            .connection()
-            .execute_batch("INSTALL arrow FROM community; LOAD arrow;")
-            .expect("DuckDB Arrow extension is available");
         let reader = MultipleReader::new(vec![Box::new(StaticReader {
             formats: vec!["CSV".to_string()],
         })]);
+        let ingestor = DuckdbCkanDataIngestor::new(&conn, &reader);
         let resource = CkanResource {
             id: "resource_table".to_string(),
             url: "https://example.test/resource.csv".to_string(),
@@ -179,22 +175,20 @@ mod tests {
         };
 
         let outcome = ingestor
-            .ingest_ckan_data(&resource, &reader)
+            .ingest_ckan_data(&resource)
             .expect("ingestion succeeds");
 
         assert_eq!(outcome.status, "success");
         assert_eq!(outcome.rows_processed, 2);
-        let rows: i64 = ingestor
-            .connection()
+        let rows: i64 = conn
             .query_row("SELECT COUNT(*) FROM resource_table", [], |row| row.get(0))
             .expect("table was created");
         assert_eq!(rows, 2);
 
         ingestor
-            .ingest_ckan_data(&resource, &reader)
+            .ingest_ckan_data(&resource)
             .expect("reingestion succeeds");
-        let rows: i64 = ingestor
-            .connection()
+        let rows: i64 = conn
             .query_row("SELECT COUNT(*) FROM resource_table", [], |row| row.get(0))
             .expect("table was replaced");
         assert_eq!(rows, 2);
