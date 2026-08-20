@@ -201,7 +201,10 @@ mod tests {
         let result = SuccessResult::new(vec![batch], "test".to_string());
 
         assert_eq!(result.preview.len(), 5);
-        assert_eq!(result.preview[4], serde_json::json!({"name": "5", "age": "e"}));
+        assert_eq!(
+            result.preview[4],
+            serde_json::json!({"name": "5", "age": "e"})
+        );
     }
 
     #[test]
@@ -282,7 +285,7 @@ pub trait CkanReader {
                 error: anyhow::anyhow!("Unsupported format"),
                 expected_columns: Option::None,
                 expected_rows: Option::None,
-                reader: self.reader_name().to_string()
+                reader: self.reader_name().to_string(),
             });
         }
         self.do_read(resource)

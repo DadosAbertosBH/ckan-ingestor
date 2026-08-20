@@ -86,7 +86,8 @@ fn ingest_includes_s3_url_when_put_object_fails() -> Result<()> {
         "unexpected error: {error:?}"
     );
     assert!(
-        debug_message.contains("Name or service not known") || debug_message.contains("failed to lookup"),
+        debug_message.contains("Name or service not known")
+            || debug_message.contains("failed to lookup"),
         "unexpected error: {error:?}"
     );
     assert!(

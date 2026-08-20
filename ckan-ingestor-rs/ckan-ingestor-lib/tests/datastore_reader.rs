@@ -179,9 +179,8 @@ fn reproduce_datastore_response_decoding_error() -> Result<()> {
     let server = MockServer::start();
     let resource_id = "13cfc052-15bb-49cf-b7fa-ce02bc877e84";
     let base_url = format!("http://{}", server.address());
-    let data_url = format!(
-        "{base_url}/datastore/dump/{resource_id}?format=json&offset=0&limit=100000"
-    );
+    let data_url =
+        format!("{base_url}/datastore/dump/{resource_id}?format=json&offset=0&limit=100000");
     let long_invalid_body = format!("{{\"broken\": {}}}", "x".repeat(600));
 
     server.mock(|when, then| {

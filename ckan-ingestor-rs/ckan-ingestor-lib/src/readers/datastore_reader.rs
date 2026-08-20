@@ -38,7 +38,11 @@ fn decode_json_response(resp: reqwest::blocking::Response, url: &str) -> Result<
     serde_json::from_str(&body).with_context(|| {
         format!(
             "error decoding response body from {url}: {body_preview}{}",
-            if body.chars().count() > MAX_ERROR_BODY_LENGTH { "..." } else { "" }
+            if body.chars().count() > MAX_ERROR_BODY_LENGTH {
+                "..."
+            } else {
+                ""
+            }
         )
     })
 }
@@ -105,15 +109,15 @@ impl DatastoreReader {
             let json = decode_json_response(resp, &url)?;
             let json = json.get("result").unwrap_or(&json);
 
-            let recs = json
-                .get("records")
-                .ok_or_else(|| FailedResult::from_string("records missing", self.reader_name().to_string()))?;
-            let fields = json
-                .get("fields")
-                .ok_or_else(|| FailedResult::from_string("fields missing", self.reader_name().to_string()))?;
-            let recs = recs
-                .as_array()
-                .ok_or_else(|| FailedResult::from_string("records not array", self.reader_name().to_string()))?;
+            let recs = json.get("records").ok_or_else(|| {
+                FailedResult::from_string("records missing", self.reader_name().to_string())
+            })?;
+            let fields = json.get("fields").ok_or_else(|| {
+                FailedResult::from_string("fields missing", self.reader_name().to_string())
+            })?;
+            let recs = recs.as_array().ok_or_else(|| {
+                FailedResult::from_string("records not array", self.reader_name().to_string())
+            })?;
 
             if recs.is_empty() {
                 break;
@@ -121,16 +125,18 @@ impl DatastoreReader {
 
             let column_names: Vec<String> = fields
                 .as_array()
-                .ok_or_else(|| FailedResult::from_string("fields not array", self.reader_name().to_string()))?
+                .ok_or_else(|| {
+                    FailedResult::from_string("fields not array", self.reader_name().to_string())
+                })?
                 .iter()
                 .filter_map(|f| f.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
                 .collect();
 
             let mut columns: Vec<Vec<String>> = vec![Vec::new(); column_names.len()];
             for rec in recs {
-                let arr = rec
-                    .as_array()
-                    .ok_or_else(|| FailedResult::from_string("record not array", self.reader_name().to_string()))?;
+                let arr = rec.as_array().ok_or_else(|| {
+                    FailedResult::from_string("record not array", self.reader_name().to_string())
+                })?;
                 for (i, _name) in column_names.iter().enumerate() {
                     let val = arr
                         .get(i)
@@ -160,7 +166,12 @@ impl DatastoreReader {
             offset += MAX_RECORDS_FETCH;
         }
 
-        Ok(SuccessResult::from_datastore(batches, rows, columns, self.reader_name().to_string()))
+        Ok(SuccessResult::from_datastore(
+            batches,
+            rows,
+            columns,
+            self.reader_name().to_string(),
+        ))
     }
 }
 
@@ -177,8 +188,8 @@ impl CkanReader for DatastoreReader {
         !resource.url.ends_with(".gz")
             && self
                 .supported_formats()
-            .iter()
-            .any(|format| resource.format.contains(format))
+                .iter()
+                .any(|format| resource.format.contains(format))
             && resource.datastore_active
     }
 }
@@ -198,20 +209,16 @@ mod tests {
 
     #[test]
     fn cannot_read_gzip_resources_even_when_datastore_is_active() {
-        let reader = DatastoreReader::new(
-            "https://ckan.example.test/api".to_string(),
-            Client::new(),
-        );
+        let reader =
+            DatastoreReader::new("https://ckan.example.test/api".to_string(), Client::new());
 
         assert!(!reader.can_read(&resource("https://example.test/data.csv.gz", true)));
     }
 
     #[test]
     fn can_read_non_gzip_csv_resources_when_datastore_is_active() {
-        let reader = DatastoreReader::new(
-            "https://ckan.example.test/api".to_string(),
-            Client::new(),
-        );
+        let reader =
+            DatastoreReader::new("https://ckan.example.test/api".to_string(), Client::new());
 
         assert!(reader.can_read(&resource("https://example.test/data.csv", true)));
     }

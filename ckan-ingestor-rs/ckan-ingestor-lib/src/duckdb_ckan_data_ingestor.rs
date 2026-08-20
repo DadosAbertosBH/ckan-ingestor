@@ -157,7 +157,10 @@ mod tests {
                 vec![Arc::new(StringArray::from(vec!["Bia"])) as ArrayRef],
             )
             .expect("valid batch");
-            Ok(SuccessResult::new(vec![first, second], self.reader_name().to_string()))
+            Ok(SuccessResult::new(
+                vec![first, second],
+                self.reader_name().to_string(),
+            ))
         }
     }
 

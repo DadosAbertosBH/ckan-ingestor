@@ -69,5 +69,4 @@ mod tests {
 
         assert_eq!(ingestor.public_url, "http://minio.local:9000/documents");
     }
-
 }
