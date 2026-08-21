@@ -18,8 +18,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ingestor_orchestrator.models import CkanDataJob, JobStatus
+from ingestor_orchestrator.models import (
+    CkanDataJob,
+    JobStatus,
+    ResourceMetadataLabel,
+)
 from ingestor_orchestrator.services.job_service import JobService
+from sqlalchemy import select
 
 
 def _make_success_result_data(preview=None):
@@ -114,6 +119,40 @@ class TestApplyResultPreview:
         import json
 
         json.dumps(stored)
+
+
+@pytest.mark.asyncio
+class TestApplyResultLabels:
+    async def test_csv_strict_mode_becomes_a_resource_label(
+        self, db_session, default_instance
+    ):
+        job = CkanDataJob(
+            resource_id="r-csv-relaxed",
+            dataset_name="ds-csv-relaxed",
+            idempotency_key="r-csv-relaxed",
+            instance_id=default_instance.id,
+            status=JobStatus.PENDING,
+        )
+        db_session.add(job)
+        await db_session.flush()
+
+        data = _make_success_result_data(preview=[{"id": "1"}])
+        data.update({"job_id": job.id, "csv_strict_mode": False})
+
+        await JobService(db_session).apply_result(data)
+
+        labels = (
+            (
+                await db_session.execute(
+                    select(ResourceMetadataLabel.label).where(
+                        ResourceMetadataLabel.resource_id == job.resource_id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert "csv-strict-mode:false" in labels
 
 
 @pytest.mark.asyncio

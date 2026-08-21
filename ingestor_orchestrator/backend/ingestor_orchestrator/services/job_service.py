@@ -184,6 +184,7 @@ class JobService:
         expected_rows = result_data.get("expected_rows")
         resource_size = result_data.get("resource_size")
         encoding = result_data.get("encoding")
+        csv_strict_mode = result_data.get("csv_strict_mode")
         reader = result_data.get("reader")
         datastore_active = result_data.get("datastore_active", False)
         expected_columns = result_data.get("expected_columns")
@@ -214,6 +215,7 @@ class JobService:
                 expected_rows=expected_rows,
                 resource_size=resource_size,
                 encoding=encoding,
+                csv_strict_mode=csv_strict_mode,
                 reader=reader,
                 datastore_active=datastore_active,
                 column_count=column_count,
@@ -297,6 +299,7 @@ class JobService:
         expected_rows: int | None = None,
         resource_size: int | None = None,
         encoding: str | None = None,
+        csv_strict_mode: bool | None = None,
         reader: str | None = None,
         datastore_active: bool = False,
         column_count: int = 0,
@@ -343,6 +346,12 @@ class JobService:
         # encoding (skip utf-8, the default)
         if encoding and encoding != "utf-8":
             await self._label_resource(resource_id, f"encoding:{encoding}")
+
+        if csv_strict_mode is not None:
+            strict_mode_label = "true" if csv_strict_mode else "false"
+            await self._label_resource(
+                resource_id, f"csv-strict-mode:{strict_mode_label}"
+            )
 
         if reader:
             await self._label_resource(resource_id, f"reader:{reader}")

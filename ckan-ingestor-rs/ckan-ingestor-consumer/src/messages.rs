@@ -63,6 +63,8 @@ pub struct JobResultMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub csv_strict_mode: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub expected_columns: Option<i64>,
     pub datastore_active: bool,
     #[serde(skip_serializing_if = "Option::is_none")]

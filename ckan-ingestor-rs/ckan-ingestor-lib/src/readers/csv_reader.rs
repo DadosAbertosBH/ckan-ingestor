@@ -69,17 +69,34 @@ impl<'a> CsvReader<'a> {
         let encodings = ["utf-8", "latin-1", "CP1252"];
         let mut errors: Vec<anyhow::Error> = Vec::new();
         for encoding in encodings {
-            match self.try_read_csv(&csv_path, encoding) {
+            match self.try_read_csv(&csv_path, encoding, true) {
                 Ok(batches) => {
                     return Ok(SuccessResult::from_csv(
                         batches,
                         encoding.to_string(),
+                        true,
                         self.reader_name().to_string(),
                     ))
                 }
                 Err(error) => {
                     errors.push(error);
                     continue;
+                }
+            }
+        }
+
+        if errors.iter().all(is_csv_sniffing_error) {
+            for encoding in encodings {
+                match self.try_read_csv(&csv_path, encoding, false) {
+                    Ok(batches) => {
+                        return Ok(SuccessResult::from_csv(
+                            batches,
+                            encoding.to_string(),
+                            false,
+                            self.reader_name().to_string(),
+                        ))
+                    }
+                    Err(error) => errors.push(error),
                 }
             }
         }
@@ -113,10 +130,15 @@ impl<'a> CsvReader<'a> {
     }
 
     /// Try DuckDB's `read_csv` with a specific encoding.
-    fn try_read_csv(&self, path: &str, encoding: &str) -> Result<Vec<RecordBatch>> {
+    fn try_read_csv(
+        &self,
+        path: &str,
+        encoding: &str,
+        strict_mode: bool,
+    ) -> Result<Vec<RecordBatch>> {
         let mut stmt = self.conn.prepare(&format!(
-            "SELECT * FROM read_csv('{}', sample_size=900000, encoding='{}')",
-            path, encoding
+            "SELECT * FROM read_csv('{}', sample_size=900000, encoding='{}', strict_mode={})",
+            path, encoding, strict_mode
         ))?;
         let arrow_iter = stmt.query_arrow([])?;
         let batches: Vec<RecordBatch> = arrow_iter.collect();
@@ -125,6 +147,10 @@ impl<'a> CsvReader<'a> {
         }
         Ok(batches)
     }
+}
+
+fn is_csv_sniffing_error(error: &anyhow::Error) -> bool {
+    error.to_string().contains("Error when sniffing file")
 }
 
 fn downloaded_csv_suffix(url: &str) -> &'static str {

@@ -29,6 +29,7 @@ pub struct SuccessResult {
     pub number_of_columns: usize,
     pub reader: String,
     pub encoding: Option<String>,
+    pub csv_strict_mode: Option<bool>,
     pub expected_rows: Option<usize>,
     pub expected_columns: Option<usize>,
 }
@@ -57,14 +58,21 @@ impl SuccessResult {
             number_of_columns,
             reader,
             encoding: None,
+            csv_strict_mode: None,
             expected_rows: None,
             expected_columns: None,
         }
     }
 
-    pub fn from_csv(data: Vec<RecordBatch>, encoding: String, reader: String) -> Self {
+    pub fn from_csv(
+        data: Vec<RecordBatch>,
+        encoding: String,
+        csv_strict_mode: bool,
+        reader: String,
+    ) -> Self {
         Self {
             encoding: Some(encoding),
+            csv_strict_mode: Some(csv_strict_mode),
             ..Self::new(data, reader)
         }
     }
@@ -153,6 +161,7 @@ mod tests {
         assert_eq!(result.expected_rows, Some(42));
         assert_eq!(result.expected_columns, Some(3));
         assert_eq!(result.encoding, None);
+        assert_eq!(result.csv_strict_mode, None);
     }
 
     #[test]
@@ -160,6 +169,7 @@ mod tests {
         let result = SuccessResult::new(Vec::new(), "test".to_string());
 
         assert_eq!(result.encoding, None);
+        assert_eq!(result.csv_strict_mode, None);
         assert_eq!(result.expected_rows, None);
         assert_eq!(result.expected_columns, None);
     }

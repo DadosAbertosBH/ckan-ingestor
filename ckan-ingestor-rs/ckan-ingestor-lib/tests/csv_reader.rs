@@ -22,7 +22,9 @@ use ckan_ingestor_lib::readers::csv_reader::CsvReader;
 use common::fixture_path;
 use flate2::{write::GzEncoder, Compression};
 use httpmock::{Method::GET, MockServer};
+use std::fs;
 use std::io::Write;
+use std::path::PathBuf;
 use std::time::Duration;
 
 fn test_client() -> reqwest::blocking::Client {
@@ -83,6 +85,54 @@ fn parse_non_latin_and_non_utf8() -> Result<()> {
 }
 
 #[test]
+fn parses_csv_with_mixed_line_endings_in_quoted_header() -> Result<()> {
+    let conn = duckdb::Connection::open_in_memory()?;
+    let reader = CsvReader::new(&conn, test_client());
+
+    struct TemporaryCsv(PathBuf);
+
+    impl Drop for TemporaryCsv {
+        fn drop(&mut self) {
+            let _ = fs::remove_file(&self.0);
+        }
+    }
+
+    let csv_path = std::env::temp_dir().join(format!(
+        "voos-multiline-header-{}.csv",
+        uuid::Uuid::new_v4()
+    ));
+    let temporary_csv = TemporaryCsv(csv_path);
+
+    let mut csv = Vec::new();
+    csv.extend_from_slice(
+        b"Reg Voo;ANO;DATA;SOLICITANTE;PASSAGEIROS;AERONAVE;MATR;ORIGEM;DESTINO 1;\"DESTINO 2\n(quando houve)\"\r\n",
+    );
+    for id in 1..=2 {
+        csv.extend_from_slice(
+            format!(
+                "{id};2011;01/01/2011;Governador;Passageiro;Aeronave;PT-ABC;Origem;Destino;\r\n"
+            )
+            .as_bytes(),
+        );
+    }
+    fs::write(&temporary_csv.0, csv)?;
+
+    let resource = CkanResource {
+        id: "fa4f8391-33d1-46ed-9e9e-22ca2ae51103".to_string(),
+        url: temporary_csv.0.to_str().unwrap().to_string(),
+        format: "CSV".to_string(),
+        datastore_active: false,
+    };
+
+    let result = reader.read(&resource)?;
+
+    assert_eq!(result.rows_processed, 2);
+    assert_eq!(result.number_of_columns, 10);
+    assert_eq!(result.csv_strict_mode, Some(false));
+    Ok(())
+}
+
+#[test]
 fn csv_with_bom() -> Result<()> {
     let conn = duckdb::Connection::open_in_memory()?;
     let reader = CsvReader::new(&conn, test_client());
@@ -99,6 +149,7 @@ fn csv_with_bom() -> Result<()> {
     let result = reader.read(&resource)?;
     assert_eq!(result.rows_processed, 804);
     assert_eq!(result.encoding.as_deref(), Some("utf-8"));
+    assert_eq!(result.csv_strict_mode, Some(true));
     Ok(())
 }
 

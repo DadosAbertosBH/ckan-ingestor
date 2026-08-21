@@ -101,6 +101,7 @@ impl JobProcessor for RealJobProcessor {
                     rows_processed: None,
                     expected_rows: None,
                     encoding: None,
+                    csv_strict_mode: None,
                     expected_columns: None,
                     datastore_active: false,
                     error_message: Some(truncated.to_string()),
@@ -115,10 +116,10 @@ fn job_result_from_outcome(
     job_id: String,
     outcome: ckan_ingestor_lib::ingestor_outcome::IngestionOutcome,
 ) -> JobResultMessage {
-    if outcome.status == ckan_ingestor_lib::ingestor_outcome::IngestionStatus::Failed {
-        if let Some(error_message) = &outcome.error_message {
-            log::error!("Job {} failed: {}", job_id, error_message);
-        }
+    if outcome.status == ckan_ingestor_lib::ingestor_outcome::IngestionStatus::Failed
+        && let Some(error_message) = &outcome.error_message
+    {
+        log::error!("Job {} failed: {}", job_id, error_message);
     }
 
     JobResultMessage {
@@ -133,6 +134,7 @@ fn job_result_from_outcome(
             .expected_rows
             .and_then(|value| i64::try_from(value).ok()),
         encoding: outcome.encoding,
+        csv_strict_mode: outcome.csv_strict_mode,
         expected_columns: outcome
             .expected_columns
             .and_then(|value| i64::try_from(value).ok()),
@@ -234,6 +236,7 @@ mod tests {
                 preview: vec![serde_json::json!({"name": "Ana"})],
                 expected_rows: Some(50),
                 encoding: Some("latin-1".to_string()),
+                csv_strict_mode: Some(false),
                 datastore_active: true,
                 expected_columns: Some(3),
                 error_message: None,
@@ -245,6 +248,7 @@ mod tests {
         assert_eq!(result.rows_processed, Some(42));
         assert_eq!(result.expected_rows, Some(50));
         assert_eq!(result.expected_columns, Some(3));
+        assert_eq!(result.csv_strict_mode, Some(false));
         assert_eq!(
             result.preview,
             Some(vec![serde_json::json!({"name": "Ana"})])
@@ -261,6 +265,7 @@ mod tests {
                 preview: vec![],
                 expected_rows: None,
                 encoding: None,
+                csv_strict_mode: None,
                 datastore_active: false,
                 expected_columns: None,
                 error_message: Some("No data to create table from".to_string()),
