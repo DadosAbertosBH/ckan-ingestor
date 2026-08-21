@@ -137,7 +137,7 @@ impl<'a> CsvReader<'a> {
         strict_mode: bool,
     ) -> Result<Vec<RecordBatch>> {
         let mut stmt = self.conn.prepare(&format!(
-            "SELECT * FROM read_csv('{}', sample_size=900000, encoding='{}', strict_mode={})",
+            "SELECT * FROM read_csv('{}', sample_size=900000, encoding='{}', strict_mode={}, nullstr=['', '-', ' - ', ' -   '])",
             path, encoding, strict_mode
         ))?;
         let arrow_iter = stmt.query_arrow([])?;

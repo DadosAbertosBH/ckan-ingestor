@@ -175,6 +175,38 @@ fn reads_csv_data_with_rows() -> Result<()> {
 }
 
 #[test]
+fn parses_numeric_columns_with_whitespace_padded_dash_as_null() -> Result<()> {
+    let conn = duckdb::Connection::open_in_memory()?;
+    let reader = CsvReader::new(&conn, test_client());
+
+    let resource = CkanResource {
+        id: "cb05125e-e879-420f-9bf6-0fcbc75bbc8e".to_string(),
+        url: fixture_path("despesa_pessoal_mensal(1).csv")
+            .to_str()
+            .unwrap()
+            .to_string(),
+        format: "CSV".to_string(),
+        datastore_active: false,
+    };
+
+    let result = reader.read(&resource)?;
+
+    assert_eq!(result.rows_processed, 52);
+    assert_eq!(result.number_of_columns, 19);
+    assert_eq!(
+        result.data[0].schema().field(16).data_type(),
+        &duckdb::arrow::datatypes::DataType::Float64
+    );
+    let null_count: usize = result
+        .data
+        .iter()
+        .map(|batch| batch.column(16).null_count())
+        .sum();
+    assert_eq!(null_count, 36);
+    Ok(())
+}
+
+#[test]
 fn parse_remote_gzip_csv() -> Result<()> {
     let server = MockServer::start();
     let mut compressed = Vec::new();
