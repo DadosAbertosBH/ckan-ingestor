@@ -35,14 +35,14 @@ impl<'a> MultipleReader<'a> {
         }
         Self {
             readers,
-            supported_formarts: supported_formarts,
+            supported_formarts,
         }
     }
 }
 
 impl CkanReader for MultipleReader<'_> {
     fn supported_formats(&self) -> &[String] {
-        return &self.supported_formarts;
+        &self.supported_formarts
     }
 
     fn do_read(&self, resource: &CkanResource) -> ReadResult {
@@ -59,7 +59,7 @@ impl CkanReader for MultipleReader<'_> {
                         "reader {} failed to read CKAN resource {}: {}",
                         reader.reader_name(),
                         resource.id,
-                        format!("{:#}", error.error)
+                        error.error
                     );
                 }
             };

@@ -127,7 +127,7 @@ fn downloaded_csv_suffix(url: &str) -> &'static str {
 
 impl CkanReader for CsvReader<'_> {
     fn supported_formats(&self) -> &[String] {
-        return &self.supported_formats;
+        &self.supported_formats
     }
 
     fn do_read(&self, resource: &CkanResource) -> ReadResult {

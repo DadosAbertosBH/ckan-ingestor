@@ -40,7 +40,7 @@ impl<'a> DocumentReader<'a> {
 
 impl CkanReader for DocumentReader<'_> {
     fn supported_formats(&self) -> &[String] {
-        return &self.supported_formats;
+        &self.supported_formats
     }
 
     fn do_read(&self, resource: &CkanResource) -> ReadResult {

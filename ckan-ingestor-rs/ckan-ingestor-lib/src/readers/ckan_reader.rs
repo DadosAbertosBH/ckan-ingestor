@@ -94,7 +94,7 @@ impl SuccessResult {
         }
     }
 
-    fn generate_preview(data: &Vec<RecordBatch>) -> Option<Vec<serde_json::Value>> {
+    fn generate_preview(data: &[RecordBatch]) -> Option<Vec<serde_json::Value>> {
         let batch = data.first()?;
         let mut rows = Vec::new();
         for row_idx in 0..batch.num_rows().min(PREVIEW_MAX_ROWS) {
@@ -117,11 +117,12 @@ impl SuccessResult {
             rows.push(serde_json::Value::Object(row_map));
         }
 
-        return Some(rows);
+        Some(rows)
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use std::sync::Arc;
 

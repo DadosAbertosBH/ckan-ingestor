@@ -78,10 +78,6 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
         resource_id: &str,
         batches: &[duckdb::arrow::array::RecordBatch],
     ) -> Result<()> {
-        if batches.is_empty() {
-            anyhow::bail!("No data to create table from");
-        }
-
         let temp_path = std::env::temp_dir().join(format!("{}.arrow", uuid::Uuid::new_v4()));
         {
             let mut file = std::fs::File::create(&temp_path)?;

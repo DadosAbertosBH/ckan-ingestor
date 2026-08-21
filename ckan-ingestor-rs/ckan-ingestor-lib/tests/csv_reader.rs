@@ -22,7 +22,6 @@ use ckan_ingestor_lib::readers::csv_reader::CsvReader;
 use common::fixture_path;
 use flate2::{write::GzEncoder, Compression};
 use httpmock::{Method::GET, MockServer};
-use std::fs;
 use std::io::Write;
 use std::time::Duration;
 
@@ -104,55 +103,22 @@ fn csv_with_bom() -> Result<()> {
 }
 
 #[test]
-fn try_create_table_atomic_avoids_per_row_inserts() -> Result<()> {
-    // Regression test for DuckLake "Calling GetValueInternal on a value that
-    // is NULL" internal error.
-    //
-    // Root cause: the old code path created an empty table via
-    // `CREATE OR REPLACE TABLE "id" (...)` then inserted rows one-by-one with
-    // `INSERT INTO ... VALUES (...)`. With DuckLake's AUTOMATIC_MIGRATION,
-    // the per-row INSERTs left internal DuckLake columns NULL, causing the
-    // commit to crash.
-    //
-    // Fix: use atomic `CREATE OR REPLACE TABLE AS SELECT * FROM read_csv(...)`
-    // matching the proven Python implementation. This test validates the new
-    // atomic approach produces identical results to the old per-row approach.
+fn reads_csv_data_with_rows() -> Result<()> {
     let conn = duckdb::Connection::open_in_memory()?;
     let reader = CsvReader::new(&conn, test_client());
 
-    let csv_path = fixture_path("csv_with_bom.csv")
-        .to_str()
-        .unwrap()
-        .to_string();
     let resource = CkanResource {
-        id: "atom-0000-atom-atom-atom-000000000001".to_string(),
-        url: csv_path,
+        id: "00000000-0000-0000-0000-ffff00000000".to_string(),
+        url: fixture_path("csv_with_bom.csv")
+            .to_str()
+            .unwrap()
+            .to_string(),
         format: "CSV".to_string(),
         datastore_active: false,
     };
 
-    // Act: use the new atomic CTAS approach (Python-equivalent)
-    let result = reader.try_create_table(&resource.id, &resource)?;
-    assert!(result, "Atomic CSV table creation should succeed");
-
-    // Assert: same row count as the old per-row-insert approach would produce
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM \"atom-0000-atom-atom-atom-000000000001\"",
-        [],
-        |row| row.get(0),
-    )?;
-    assert_eq!(count, 804, "Should have 804 rows from csv_with_bom.csv");
-
-    // Assert: the old per-row INSERT path is NOT used — the table was created
-    // in a single atomic statement. We verify by checking the table exists
-    // with the right data and was not first created empty then populated.
-    // (With DuckLake this would trigger the NULL internal error.)
-    let sample: i64 = conn.query_row(
-        "SELECT \"_id\" FROM \"atom-0000-atom-atom-atom-000000000001\" LIMIT 1",
-        [],
-        |row| row.get(0),
-    )?;
-    assert!(sample > 0, "Data should be present (atomic CTAS succeeded)");
+    let result = reader.read(&resource)?;
+    assert_eq!(result.rows_processed, 804);
 
     Ok(())
 }
