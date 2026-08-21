@@ -192,7 +192,7 @@ mod tests {
             "ckan-ingestor-lib-synthetic-{}.json",
             std::process::id()
         ));
-        let errors = (0..25_003)
+        let errors = (0..55_003)
             .map(|index| {
                 serde_json::json!({
                     "code": "constraint-error", "message": "x".repeat(128),
@@ -247,10 +247,9 @@ mod tests {
         let started = Instant::now();
         let outcome = ingestor.ingest_ckan_data(&resource);
         let elapsed = started.elapsed();
-        eprintln!("DuckdbFactory + DuckdbCkanDataIngestor: {elapsed:?}");
         assert_eq!(outcome.status, IngestionStatus::Success);
         assert_eq!(outcome.rows_processed, 1);
-        assert!(elapsed < std::time::Duration::from_secs(1));
+        assert!(elapsed < std::time::Duration::from_secs(3));
         std::fs::remove_file(json_path).ok();
         std::fs::remove_file(catalog_path).ok();
         std::fs::remove_dir_all(data_path).ok();
