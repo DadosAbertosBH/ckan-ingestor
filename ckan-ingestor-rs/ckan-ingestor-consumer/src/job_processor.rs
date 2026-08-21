@@ -28,8 +28,8 @@ use reqwest::blocking::Client;
 use serde_json::Value;
 use std::time::Duration;
 
-use crate::duckdb_factory::DuckdbFactory;
 use crate::messages::{JobMessage, JobResultMessage, JobStatus};
+use ckan_ingestor_lib::duckdb_factory::DuckdbFactory;
 
 // ---------------------------------------------------------------------------
 // JobProcessor trait

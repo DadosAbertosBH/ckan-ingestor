@@ -145,7 +145,7 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{sync::Arc, time::Instant};
 
     use duckdb::arrow::{
         array::{ArrayRef, StringArray},
@@ -163,6 +163,96 @@ mod tests {
     };
 
     use super::DuckdbCkanDataIngestor;
+
+    use crate::duckdb_factory::{DuckdbConfig, DuckdbFactory};
+
+    struct BatchReader {
+        batches: Vec<RecordBatch>,
+        formats: Vec<String>,
+    }
+
+    impl CkanReader for BatchReader {
+        fn supported_formats(&self) -> &[String] {
+            &self.formats
+        }
+
+        fn do_read(&self, _resource: &CkanResource) -> ReadResult {
+            Ok(SuccessResult::new(
+                self.batches.clone(),
+                "BatchReader".to_string(),
+            ))
+        }
+    }
+
+    #[test]
+    fn persists_synthetic_nested_json_with_duckdb_factory() {
+        let json_path = std::env::temp_dir().join(format!(
+            "ckan-ingestor-lib-synthetic-{}.json",
+            std::process::id()
+        ));
+        let errors = (0..25_003)
+            .map(|index| {
+                serde_json::json!({
+                    "code": "constraint-error", "message": "x".repeat(128),
+                    "description": "y".repeat(32), "rowNumber": index,
+                    "fieldName": format!("field_{}", index % 889)
+                })
+            })
+            .collect::<Vec<_>>();
+        let fields = (0..889)
+            .map(|index| {
+                serde_json::json!({
+                    "name": format!("field_{index}"), "type": "string"
+                })
+            })
+            .collect::<Vec<_>>();
+        let json = serde_json::json!({"resources": [{
+            "name": "synthetic-resource", "schema": {"fields": fields},
+            "validation": {"tasks": [{"errors": errors}]}
+        }]});
+        std::fs::write(&json_path, serde_json::to_vec(&json).unwrap()).unwrap();
+        let catalog_path = std::env::temp_dir().join(format!(
+            "ckan-ingestor-lib-catalog-{}.ducklake",
+            std::process::id()
+        ));
+        let data_path =
+            std::env::temp_dir().join(format!("ckan-ingestor-lib-data-{}", std::process::id()));
+        let factory = DuckdbFactory::new(DuckdbConfig::for_local_ducklake(
+            catalog_path.to_string_lossy(),
+            data_path.to_string_lossy(),
+        ));
+        let conn = factory.open().expect("DuckLake connection should open");
+        let batches: Vec<RecordBatch> = conn
+            .prepare(&format!(
+                "SELECT * FROM read_json_auto('{}')",
+                json_path.display()
+            ))
+            .unwrap()
+            .query_arrow([])
+            .unwrap()
+            .collect();
+        let reader = MultipleReader::new(vec![Box::new(BatchReader {
+            batches,
+            formats: vec!["JSON".to_string()],
+        })]);
+        let ingestor = DuckdbCkanDataIngestor::new(&conn, &reader);
+        let resource = CkanResource {
+            id: format!("synthetic-{}", std::process::id()),
+            url: json_path.to_string_lossy().to_string(),
+            format: "JSON".to_string(),
+            datastore_active: false,
+        };
+        let started = Instant::now();
+        let outcome = ingestor.ingest_ckan_data(&resource);
+        let elapsed = started.elapsed();
+        eprintln!("DuckdbFactory + DuckdbCkanDataIngestor: {elapsed:?}");
+        assert_eq!(outcome.status, IngestionStatus::Success);
+        assert_eq!(outcome.rows_processed, 1);
+        assert!(elapsed < std::time::Duration::from_secs(1));
+        std::fs::remove_file(json_path).ok();
+        std::fs::remove_file(catalog_path).ok();
+        std::fs::remove_dir_all(data_path).ok();
+    }
 
     struct StaticReader {
         formats: Vec<String>,

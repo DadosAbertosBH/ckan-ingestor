@@ -16,7 +16,6 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
 pub mod coordinator_consumer_context;
-pub mod duckdb_factory;
 pub mod job_processor;
 pub mod message_source;
 pub mod messages;
@@ -37,9 +36,9 @@ use std::sync::Arc;
 use tokio::sync::{Notify, mpsc};
 
 use crate::coordinator_consumer_context::CoordinatorConsumerContext;
-use crate::duckdb_factory::DuckdbFactory;
 use crate::job_processor::RealJobProcessor;
 use crate::worker_coordinator::WorkerCoordinator;
+use ckan_ingestor_lib::duckdb_factory::DuckdbFactory;
 
 const RESULT_TOPIC: &str = "ckan.ingest.jobs_result";
 

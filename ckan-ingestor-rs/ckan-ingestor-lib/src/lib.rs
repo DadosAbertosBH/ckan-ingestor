@@ -19,6 +19,7 @@ pub mod ckan_resource;
 pub mod config;
 pub mod dataset_fetcher;
 pub mod duckdb_ckan_data_ingestor;
+pub mod duckdb_factory;
 pub mod ingestor_outcome;
 pub mod readers;
 pub mod s3_document_ingestor;
