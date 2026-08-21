@@ -48,9 +48,10 @@ impl<'a> JsonReader<'a> {
     }
 
     fn try_read_json(&self, path: &str) -> Result<Vec<RecordBatch>> {
-        let mut statement = self
-            .conn
-            .prepare(&format!("SELECT * FROM read_json_auto('{}')", path))?;
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT * FROM read_json_auto('{}', maximum_object_size=67108864)",
+            path
+        ))?;
         Ok(statement.query_arrow([])?.collect())
     }
 }

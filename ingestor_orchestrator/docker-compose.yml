@@ -164,7 +164,7 @@ services:
       resources:
         limits:
           cpus: "2"
-          memory: "2048M"
+          memory: "4096M"
     depends_on:
       kafka:
         condition: service_healthy

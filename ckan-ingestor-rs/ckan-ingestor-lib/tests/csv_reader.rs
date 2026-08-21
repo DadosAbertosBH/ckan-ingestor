@@ -148,3 +148,39 @@ fn parse_remote_gzip_csv() -> Result<()> {
     assert_eq!(result.rows_processed, 2);
     Ok(())
 }
+
+#[test]
+fn fails_to_parse_quoted_semicolon_after_long_csv_sample() -> Result<()> {
+    let server = MockServer::start();
+    let mut csv =
+        String::from("id_favorecido;tp_documento;nr_documento_anonimizado;nome_anonimizado\n");
+
+    for id in 1..800_000 {
+        csv.push_str(&format!("{id};1;0;NOME\n"));
+    }
+    csv.push_str(
+        "1254412;2;912488000123;\"COOPERATIVA DE CREDITO DE LIVRE ADMISSAO DO ALTO E MED. S; F\"\n",
+    );
+
+    let mock = server.mock(|when, then| {
+        when.method(GET).path("/dm_favorecido.csv");
+        then.status(200).body(csv);
+    });
+
+    let conn = duckdb::Connection::open_in_memory()?;
+    let reader = CsvReader::new(&conn, test_client());
+    let resource = CkanResource {
+        id: "0331ad41-85e6-41da-bbf2-19c0505beef5".to_string(),
+        url: format!("{}/dm_favorecido.csv", server.url("")),
+        format: "CSV".to_string(),
+        datastore_active: false,
+    };
+
+    let result = reader.read(&resource);
+    mock.assert();
+    let result = result?;
+
+    assert_eq!(result.rows_processed, 800_000);
+    assert_eq!(result.encoding.as_deref(), Some("utf-8"));
+    Ok(())
+}

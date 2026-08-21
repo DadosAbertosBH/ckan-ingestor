@@ -67,7 +67,7 @@ impl<'a> CsvReader<'a> {
         });
 
         let encodings = ["utf-8", "latin-1", "CP1252"];
-
+        let mut errors: Vec<anyhow::Error> = Vec::new();
         for encoding in encodings {
             match self.try_read_csv(&csv_path, encoding) {
                 Ok(batches) => {
@@ -77,11 +77,22 @@ impl<'a> CsvReader<'a> {
                         self.reader_name().to_string(),
                     ))
                 }
-                Err(_) => continue,
+                Err(error) => {
+                    errors.push(error);
+                    continue;
+                }
             }
         }
 
-        let error = format!("Failed to parse CSV file from {}", resource.url);
+        let msg = errors
+            .iter()
+            .map(|e| format!("- {:?}", e))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let error = format!(
+            "Failed to parse CSV file from {} erros: {} \n",
+            resource.url, msg
+        );
         Err(FailedResult::from_string(
             &error,
             self.reader_name().to_string(),
@@ -104,7 +115,7 @@ impl<'a> CsvReader<'a> {
     /// Try DuckDB's `read_csv` with a specific encoding.
     fn try_read_csv(&self, path: &str, encoding: &str) -> Result<Vec<RecordBatch>> {
         let mut stmt = self.conn.prepare(&format!(
-            "SELECT * FROM read_csv('{}', sample_size=300000, encoding='{}')",
+            "SELECT * FROM read_csv('{}', sample_size=900000, encoding='{}')",
             path, encoding
         ))?;
         let arrow_iter = stmt.query_arrow([])?;

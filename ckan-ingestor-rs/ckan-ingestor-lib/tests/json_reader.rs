@@ -48,3 +48,29 @@ fn reads_a_json_array_of_objects() -> Result<()> {
     assert_eq!(result.preview[0]["name"], "Ana");
     Ok(())
 }
+
+#[test]
+fn reads_json_object_larger_than_default_maximum_object_size() -> Result<()> {
+    let path = std::env::temp_dir().join(format!(
+        "ckan-ingestor-large-json-reader-{}.json",
+        std::process::id()
+    ));
+    let json = format!(r#"{{"payload":"{}"}}"#, "x".repeat(34 * 1024 * 1024));
+    std::fs::write(&path, json)?;
+
+    let conn = duckdb::Connection::open_in_memory()?;
+    let reader = JsonReader::new(&conn);
+    let resource = CkanResource {
+        id: "large-json-resource".to_string(),
+        url: path.to_string_lossy().to_string(),
+        format: "JSON".to_string(),
+        datastore_active: false,
+    };
+
+    let result = reader.read(&resource);
+    std::fs::remove_file(&path)?;
+    let result = result?;
+
+    assert_eq!(result.rows_processed, 1);
+    Ok(())
+}
