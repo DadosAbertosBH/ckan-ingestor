@@ -159,6 +159,7 @@ class JobService:
             job.started_at = datetime.now(timezone.utc)
             job.completed_at = None
             job.updated_at = datetime.now(timezone.utc)
+            await self._update_latest_resource_status(job)
             await self.db.commit()
             return
 
@@ -253,9 +254,9 @@ class JobService:
         await self.db.flush()
 
     async def _update_latest_resource_status(self, job: CkanDataJob) -> None:
-        """Update the LatestResourceJob status after processing completes."""
+        """Update the status when this job is still the resource's latest one."""
         latest = await self.db.get(LatestResourceJob, job.resource_id)
-        if latest:
+        if latest and latest.latest_job_id == job.id:
             latest.status = job.status
             latest.resource_name = job.resource_name
             latest.resource_url = job.resource_url

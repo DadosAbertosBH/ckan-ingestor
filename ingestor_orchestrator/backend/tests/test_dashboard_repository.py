@@ -34,7 +34,15 @@ from ingestor_orchestrator.repositories.sqlalchemy_dashboard_repository import (
 pytestmark = pytest.mark.asyncio
 
 
-async def _create_job(sess, instance: CkanInstance, resource_id: str, status: JobStatus):
+async def _create_job(
+    sess,
+    instance: CkanInstance,
+    resource_id: str,
+    status: JobStatus,
+    *,
+    is_latest: bool = True,
+    latest_status: JobStatus | None = None,
+):
     """Helper to create a CkanDataJob with a specific status."""
     job = CkanDataJob(
         resource_id=resource_id,
@@ -49,20 +57,28 @@ async def _create_job(sess, instance: CkanInstance, resource_id: str, status: Jo
     )
     sess.add(job)
     await sess.flush()
+
+    if is_latest:
+        sess.add(
+            LatestResourceJob(
+                resource_id=resource_id,
+                instance_id=instance.id,
+                latest_job_id=job.id,
+                resource_name=job.resource_name,
+                resource_url=job.resource_url,
+                resource_format=job.resource_format,
+                dataset_name=job.dataset_name,
+                status=latest_status or job.status,
+            )
+        )
+        await sess.flush()
+
     return job
 
 
 async def _create_empty_label(sess, instance: CkanInstance, resource_id: str):
-    """Helper: create LatestResourceJob + ResourceMetadataLabel("empty")."""
-    lr = LatestResourceJob(
-        resource_id=resource_id,
-        instance_id=instance.id,
-        latest_job_id="job-00000000-0000-0000-0000-000000000000",
-        dataset_name="ds-test",
-        status=JobStatus.COMPLETED,
-    )
-    sess.add(lr)
-    await sess.flush()
+    """Helper: create a completed latest job + ResourceMetadataLabel("empty")."""
+    await _create_job(sess, instance, resource_id, JobStatus.COMPLETED)
 
     label = ResourceMetadataLabel(resource_id=resource_id, label="empty")
     sess.add(label)
@@ -97,6 +113,50 @@ class TestDashboardRepository:
         assert stats.failed == 1
         assert stats.empty == 0
 
+    async def test_get_stats_counts_only_latest_job_per_resource(
+        self, db_session, default_instance
+    ):
+        """Historical jobs do not contribute to dashboard status totals."""
+        await _create_job(
+            db_session,
+            default_instance,
+            "r-reprocessed",
+            JobStatus.FAILED,
+            is_latest=False,
+        )
+        await _create_job(
+            db_session,
+            default_instance,
+            "r-reprocessed",
+            JobStatus.COMPLETED,
+        )
+
+        repo = SqlAlchemyDashboardRepository(db_session)
+        result = await repo.get_stats()
+
+        assert len(result) == 1
+        assert result[0].completed == 1
+        assert result[0].failed == 0
+
+    async def test_get_stats_uses_the_latest_job_current_status(
+        self, db_session, default_instance
+    ):
+        """Dashboard reads the job status rather than its stale denormalized copy."""
+        await _create_job(
+            db_session,
+            default_instance,
+            "r-processing",
+            JobStatus.PROCESSING,
+            latest_status=JobStatus.PENDING,
+        )
+
+        repo = SqlAlchemyDashboardRepository(db_session)
+        result = await repo.get_stats()
+
+        assert len(result) == 1
+        assert result[0].pending == 0
+        assert result[0].processing == 1
+
     async def test_get_stats_includes_empty_count(self, db_session, default_instance):
         """get_stats includes empty resource count."""
         await _create_job(db_session, default_instance, "r-completed", JobStatus.COMPLETED)
@@ -108,7 +168,7 @@ class TestDashboardRepository:
 
         assert len(result) == 1
         stats = result[0]
-        assert stats.completed == 1
+        assert stats.completed == 3
         assert stats.empty == 2
 
     async def test_get_stats_multiple_instances(self, db_session, default_instance):
@@ -134,7 +194,7 @@ class TestDashboardRepository:
         # Ordered by instance name (Default < Other)
         assert result[0].instance.name == "Default"
         assert result[1].instance.name == "Other"
-        assert result[0].completed == 1
+        assert result[0].completed == 2
         assert result[0].pending == 0
         assert result[0].empty == 1
         assert result[1].completed == 0

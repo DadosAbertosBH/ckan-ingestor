@@ -281,6 +281,50 @@ class TestJobServiceUpsertsLatestResource:
         lrj = await sess.get(LatestResourceJob, "r-proc")
         assert lrj.status == JobStatus.COMPLETED
 
+    async def test_processing_result_updates_latest_resource_status(self, sess, instance):
+        """A processing result keeps the latest-resource status in sync."""
+        service = JobService(sess)
+        job = await service.create_job(
+            JobCreate(
+                resource_id="r-processing-result",
+                dataset_name="ds-processing-result",
+                instance_id=instance.id,
+            )
+        )
+
+        await service.apply_result({"job_id": job.id, "status": "PROCESSING"})
+
+        latest = await sess.get(LatestResourceJob, job.resource_id)
+        assert latest is not None
+        assert latest.status == JobStatus.PROCESSING
+
+    async def test_processing_result_for_old_job_does_not_update_latest_resource(
+        self, sess, instance
+    ):
+        """An older job result does not replace the newer latest-job status."""
+        service = JobService(sess)
+        first_job = await service.create_job(
+            JobCreate(
+                resource_id="r-newer-job",
+                dataset_name="ds-newer-job",
+                instance_id=instance.id,
+            )
+        )
+        second_job = await service.create_job(
+            JobCreate(
+                resource_id="r-newer-job",
+                dataset_name="ds-newer-job",
+                instance_id=instance.id,
+            )
+        )
+
+        await service.apply_result({"job_id": first_job.id, "status": "PROCESSING"})
+
+        latest = await sess.get(LatestResourceJob, first_job.resource_id)
+        assert latest is not None
+        assert latest.latest_job_id == second_job.id
+        assert latest.status == JobStatus.PENDING
+
     async def test_process_job_updates_latest_status_to_failed(self, sess, instance):
         """Failing a job updates LatestResourceJob status to FAILED."""
         service = JobService(sess)

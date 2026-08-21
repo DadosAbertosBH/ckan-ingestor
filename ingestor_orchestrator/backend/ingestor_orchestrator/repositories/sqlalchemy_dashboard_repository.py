@@ -43,13 +43,18 @@ class SqlAlchemyDashboardRepository(DashboardRepository):
         if not instances:
             return []
 
-        # Fetch job counts grouped by instance_id and status
+        # Fetch latest job counts grouped by instance_id and status
         job_counts = await self._session.execute(
             select(
-                CkanDataJob.instance_id,
+                LatestResourceJob.instance_id,
                 CkanDataJob.status,
                 func.count(CkanDataJob.id),
-            ).group_by(CkanDataJob.instance_id, CkanDataJob.status)
+            )
+            .join(
+                CkanDataJob,
+                CkanDataJob.id == LatestResourceJob.latest_job_id,
+            )
+            .group_by(LatestResourceJob.instance_id, CkanDataJob.status)
         )
         counts_by_instance: dict[str, dict[JobStatus, int]] = {}
         for row in job_counts:
