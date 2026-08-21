@@ -146,7 +146,8 @@ impl DuckdbFactory {
             .with("s3_use_ssl", bool_str(c.s3_use_ssl))?
             .with("s3_access_key_id", &c.s3_access_key)?
             .with("s3_secret_access_key", &c.s3_secret_key)?
-            .with("force_download", "true")?;
+            .with("enable_external_file_cache", "false")?
+            .with("force_download", "false")?;
         Ok(config)
     }
 

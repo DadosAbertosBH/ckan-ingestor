@@ -114,64 +114,6 @@ impl<'a> CsvReader<'a> {
         }
         Ok(batches)
     }
-
-    /// Create a DuckDB table atomically via `CREATE TABLE AS SELECT * FROM read_csv(...)`.
-    ///
-    /// Downloads the file if remote, then tries encodings (utf-8, latin-1, utf-16).
-    /// Uses atomic CTAS to avoid the per-row INSERT pattern that triggers DuckLake
-    /// "Calling GetValueInternal on a value that is NULL" internal errors.
-    /// Returns `Ok(true)` on success, `Ok(false)` when all encodings exhausted.
-    pub fn try_create_table(&self, resource_id: &str, resource: &CkanResource) -> Result<bool> {
-        let is_remote = resource.url.starts_with("http://") || resource.url.starts_with("https://");
-        let csv_path = if is_remote {
-            self.download_to_temp(&resource.url)?
-        } else {
-            resource.url.clone()
-        };
-
-        // Cleanup temp file when done
-        struct Cleanup(Option<String>);
-        impl Drop for Cleanup {
-            fn drop(&mut self) {
-                if let Some(ref path) = self.0 {
-                    let _ = std::fs::remove_file(path);
-                }
-            }
-        }
-        let _cleanup = Cleanup(if is_remote {
-            Some(csv_path.clone())
-        } else {
-            None
-        });
-
-        let encodings = ["utf-8", "latin-1", "CP1252"];
-
-        for encoding in &encodings {
-            match self.try_create_table_with_encoding(resource_id, &csv_path, encoding) {
-                Ok(()) => {
-                    return Ok(true);
-                }
-                Err(_) => continue,
-            }
-        }
-
-        Ok(false)
-    }
-
-    /// Execute a single `CREATE OR REPLACE TABLE AS SELECT * FROM read_csv(...)`.
-    fn try_create_table_with_encoding(
-        &self,
-        resource_id: &str,
-        path: &str,
-        encoding: &str,
-    ) -> Result<()> {
-        let sql = format!(
-            "CREATE OR REPLACE TABLE \"{}\" AS SELECT * FROM read_csv('{}', sample_size=300000, encoding='{}')",
-            resource_id, path, encoding
-        );
-        self.conn.execute_batch(&sql)?;
-        Ok(())
-    }
 }
 
 fn downloaded_csv_suffix(url: &str) -> &'static str {
