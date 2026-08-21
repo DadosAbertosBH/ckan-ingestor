@@ -77,11 +77,20 @@ impl CkanReader for MultipleReader<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use duckdb::arrow::{
+        array::{ArrayRef, StringArray},
+        datatypes::{DataType, Field, Schema},
+        record_batch::RecordBatch,
+    };
+
     use super::*;
 
     struct TestReader {
         formats: Vec<String>,
         fails: bool,
+        returns_data: bool,
     }
 
     impl TestReader {
@@ -89,6 +98,15 @@ mod tests {
             Self {
                 formats: formats.iter().map(|format| (*format).to_string()).collect(),
                 fails,
+                returns_data: false,
+            }
+        }
+
+        fn with_data(formats: &[&str]) -> Self {
+            Self {
+                formats: formats.iter().map(|format| (*format).to_string()).collect(),
+                fails: false,
+                returns_data: true,
             }
         }
     }
@@ -105,8 +123,22 @@ mod tests {
                     self.reader_name().to_string(),
                 ))
             } else {
+                let data = if self.returns_data {
+                    let schema = Arc::new(Schema::new(vec![Field::new(
+                        "value",
+                        DataType::Utf8,
+                        false,
+                    )]));
+                    vec![RecordBatch::try_new(
+                        schema,
+                        vec![Arc::new(StringArray::from(vec!["value"])) as ArrayRef],
+                    )
+                    .expect("valid test batch")]
+                } else {
+                    Vec::new()
+                };
                 Ok(crate::readers::ckan_reader::SuccessResult::new(
-                    Vec::new(),
+                    data,
                     self.reader_name().to_string(),
                 ))
             }
@@ -153,17 +185,39 @@ mod tests {
     fn falls_back_to_the_next_reader_after_a_failure() {
         let reader = MultipleReader::new(vec![
             Box::new(TestReader::new(&["CSV"], true)),
-            Box::new(TestReader::new(&["CSV"], false)),
+            Box::new(TestReader::with_data(&["CSV"])),
         ]);
 
         assert!(reader.read(&resource("CSV")).is_ok());
     }
 
     #[test]
+    fn falls_back_to_the_next_reader_after_empty_data() {
+        let reader = MultipleReader::new(vec![
+            Box::new(TestReader::new(&["CSV"], false)),
+            Box::new(TestReader::with_data(&["CSV"])),
+        ]);
+
+        assert!(reader.read(&resource("CSV")).is_ok());
+    }
+
+    #[test]
+    fn treats_an_empty_success_as_a_failure_for_reader_fallback() {
+        let reader = TestReader::new(&["CSV"], false);
+
+        let result = reader.read(&resource("CSV"));
+
+        match result {
+            Err(error) => assert_eq!(error.to_string(), "No data"),
+            Ok(_) => panic!("an empty reader result must be treated as a failure"),
+        }
+    }
+
+    #[test]
     fn skips_readers_that_cannot_read_the_resource() {
         let reader = MultipleReader::new(vec![
             Box::new(CannotReadReader),
-            Box::new(TestReader::new(&["CSV"], false)),
+            Box::new(TestReader::with_data(&["CSV"])),
         ]);
 
         assert!(reader.read(&resource("CSV")).is_ok());

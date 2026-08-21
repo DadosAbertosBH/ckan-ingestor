@@ -288,7 +288,20 @@ pub trait CkanReader {
                 reader: self.reader_name().to_string(),
             });
         }
-        self.do_read(resource)
+        match self.do_read(resource) {
+            Ok(result)
+                if result.data.is_empty()
+                    || result.data.iter().all(|batch| batch.num_rows() == 0) =>
+            {
+                Err(FailedResult {
+                    error: anyhow::anyhow!("No data"),
+                    reader: result.reader,
+                    expected_rows: result.expected_rows,
+                    expected_columns: result.expected_columns,
+                })
+            }
+            result => result,
+        }
     }
 
     fn can_read(&self, resource: &CkanResource) -> bool {
