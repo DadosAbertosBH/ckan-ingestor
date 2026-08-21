@@ -88,13 +88,12 @@ impl JobProcessor for RealJobProcessor {
         // ingestion can prefer the datastore endpoint over the raw file.
         let datastore_active = fetch_datastore_active(&job);
 
-        let result = run_ingestion(&self.conn, &job, datastore_active, &self.s3);
-
-        match result {
+        match run_ingestion(&self.conn, &job, datastore_active, &self.s3) {
             Ok(outcome) => job_result_from_outcome(job.job_id.clone(), outcome),
             Err(e) => {
                 let error_str = format!("{}", e);
                 let truncated = &error_str[..error_str.len().min(16_000)];
+                log::error!("Job {} failed: {}", job.job_id, truncated);
                 JobResultMessage {
                     reader: String::new(),
                     job_id: job.job_id.clone(),
@@ -116,6 +115,12 @@ fn job_result_from_outcome(
     job_id: String,
     outcome: ckan_ingestor_lib::ingestor_outcome::IngestionOutcome,
 ) -> JobResultMessage {
+    if outcome.status == ckan_ingestor_lib::ingestor_outcome::IngestionStatus::Failed {
+        if let Some(error_message) = &outcome.error_message {
+            log::error!("Job {} failed: {}", job_id, error_message);
+        }
+    }
+
     JobResultMessage {
         job_id,
         reader: outcome.reader,
@@ -132,7 +137,7 @@ fn job_result_from_outcome(
             .expected_columns
             .and_then(|value| i64::try_from(value).ok()),
         datastore_active: outcome.datastore_active,
-        error_message: None,
+        error_message: outcome.error_message,
         preview: Some(outcome.preview),
     }
 }
@@ -166,7 +171,7 @@ fn run_ingestion(
     ]);
     let ingestor = DuckdbCkanDataIngestor::new(conn, &reader);
 
-    ingestor.ingest_ckan_data(&resource)
+    Ok(ingestor.ingest_ckan_data(&resource))
 }
 
 /// Query CKAN's `resource_show` action to learn whether the resource has an
@@ -231,6 +236,7 @@ mod tests {
                 encoding: Some("latin-1".to_string()),
                 datastore_active: true,
                 expected_columns: Some(3),
+                error_message: None,
                 status: IngestionStatus::Success,
             },
         );
@@ -257,11 +263,16 @@ mod tests {
                 encoding: None,
                 datastore_active: false,
                 expected_columns: None,
+                error_message: Some("No data to create table from".to_string()),
                 status: IngestionStatus::Failed,
             },
         );
 
         assert_eq!(result.status, JobStatus::Failed);
+        assert_eq!(
+            result.error_message.as_deref(),
+            Some("No data to create table from")
+        );
         assert_eq!(serde_json::to_value(&result).unwrap()["status"], "FAILED");
     }
 }

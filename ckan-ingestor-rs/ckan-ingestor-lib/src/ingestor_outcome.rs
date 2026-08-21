@@ -39,6 +39,8 @@ pub struct IngestionOutcome {
     pub datastore_active: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expected_columns: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
     pub status: IngestionStatus,
 }
 
@@ -56,6 +58,7 @@ mod tests {
             encoding: Some("latin-1".to_string()),
             datastore_active: true,
             expected_columns: Some(3),
+            error_message: None,
             status: IngestionStatus::Success,
         };
 

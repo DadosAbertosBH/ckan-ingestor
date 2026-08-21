@@ -17,8 +17,9 @@
 
 use crate::ingestor_outcome::{IngestionOutcome, IngestionStatus};
 use crate::{
-    ckan_resource::CkanResource, readers::ckan_reader::CkanReader,
-    readers::multiple_reader::MultipleReader,
+    ckan_resource::CkanResource,
+    readers::ckan_reader::CkanReader,
+    readers::{ckan_reader::SuccessResult, multiple_reader::MultipleReader},
 };
 use anyhow::Result;
 use arrow_ipc::writer::FileWriter;
@@ -34,21 +35,14 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
         Self { conn, reader }
     }
 
-    pub fn ingest_ckan_data(&self, resource: &CkanResource) -> Result<IngestionOutcome> {
+    pub fn ingest_ckan_data(&self, resource: &CkanResource) -> IngestionOutcome {
         let resource_id = &resource.id;
 
         debug!("updating {} from resource {}", resource_id, resource_id);
 
-        let outcome = match self.reader.read(resource) {
-            Ok(result) => {
-                self.conn.execute_batch(
-                    "CREATE TABLE IF NOT EXISTS ckan_resource_last_update \
-                      (ckan_resource_id VARCHAR, last_modified TIMESTAMP)",
-                )?;
-                self.create_table_from_batches(resource_id, &result.data)?;
-                self.update_last_modified(resource_id)?;
-
-                IngestionOutcome {
+        match self.reader.read(resource) {
+            Ok(result) => match self.persist_successful_ingestion(resource_id, &result) {
+                Ok(()) => IngestionOutcome {
                     reader: result.reader,
                     rows_processed: result.rows_processed,
                     preview: result.preview,
@@ -56,21 +50,59 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
                     encoding: result.encoding,
                     datastore_active: resource.datastore_active,
                     expected_columns: result.expected_columns,
+                    error_message: None,
                     status: IngestionStatus::Success,
-                }
-            }
-            Err(failed) => IngestionOutcome {
-                reader: failed.reader,
-                rows_processed: 0,
-                preview: vec![],
-                expected_rows: failed.expected_rows,
-                encoding: None,
-                datastore_active: resource.datastore_active,
-                expected_columns: failed.expected_columns,
-                status: IngestionStatus::Failed,
+                },
+                Err(error) => Self::failed_outcome(
+                    result.reader,
+                    resource,
+                    error.to_string(),
+                    result.expected_rows,
+                    result.expected_columns,
+                ),
             },
-        };
-        Ok(outcome)
+            Err(failed) => Self::failed_outcome(
+                failed.reader,
+                resource,
+                failed.error.to_string(),
+                failed.expected_rows,
+                failed.expected_columns,
+            ),
+        }
+    }
+
+    fn persist_successful_ingestion(
+        &self,
+        resource_id: &str,
+        result: &SuccessResult,
+    ) -> Result<()> {
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS ckan_resource_last_update \
+              (ckan_resource_id VARCHAR, last_modified TIMESTAMP)",
+        )?;
+        self.create_table_from_batches(resource_id, &result.data)?;
+        self.update_last_modified(resource_id)?;
+        Ok(())
+    }
+
+    fn failed_outcome(
+        reader: String,
+        resource: &CkanResource,
+        error_message: String,
+        expected_rows: Option<usize>,
+        expected_columns: Option<usize>,
+    ) -> IngestionOutcome {
+        IngestionOutcome {
+            reader,
+            rows_processed: 0,
+            preview: vec![],
+            expected_rows,
+            encoding: None,
+            datastore_active: resource.datastore_active,
+            expected_columns,
+            error_message: Some(error_message),
+            status: IngestionStatus::Failed,
+        }
     }
 
     fn create_table_from_batches(
@@ -125,7 +157,7 @@ mod tests {
         ckan_resource::CkanResource,
         ingestor_outcome::IngestionStatus,
         readers::{
-            ckan_reader::{CkanReader, ReadResult, SuccessResult},
+            ckan_reader::{CkanReader, FailedResult, ReadResult, SuccessResult},
             multiple_reader::MultipleReader,
         },
     };
@@ -160,6 +192,23 @@ mod tests {
         }
     }
 
+    struct FailingReader {
+        formats: Vec<String>,
+    }
+
+    impl CkanReader for FailingReader {
+        fn supported_formats(&self) -> &[String] {
+            &self.formats
+        }
+
+        fn do_read(&self, _resource: &CkanResource) -> ReadResult {
+            Err(FailedResult::from_string(
+                "No data to create table from",
+                self.reader_name().to_string(),
+            ))
+        }
+    }
+
     #[test]
     fn persists_batches_and_returns_a_success_outcome() {
         let conn = duckdb::Connection::open_in_memory().expect("in-memory DuckDB");
@@ -176,9 +225,7 @@ mod tests {
             datastore_active: false,
         };
 
-        let outcome = ingestor
-            .ingest_ckan_data(&resource)
-            .expect("ingestion succeeds");
+        let outcome = ingestor.ingest_ckan_data(&resource);
 
         assert_eq!(outcome.status, IngestionStatus::Success);
         assert_eq!(outcome.rows_processed, 2);
@@ -187,12 +234,33 @@ mod tests {
             .expect("table was created");
         assert_eq!(rows, 2);
 
-        ingestor
-            .ingest_ckan_data(&resource)
-            .expect("reingestion succeeds");
+        ingestor.ingest_ckan_data(&resource);
         let rows: i64 = conn
             .query_row("SELECT COUNT(*) FROM resource_table", [], |row| row.get(0))
             .expect("table was replaced");
         assert_eq!(rows, 2);
+    }
+
+    #[test]
+    fn preserves_reader_error_in_failed_outcome() {
+        let conn = duckdb::Connection::open_in_memory().expect("in-memory DuckDB");
+        let reader = MultipleReader::new(vec![Box::new(FailingReader {
+            formats: vec!["CSV".to_string()],
+        })]);
+        let ingestor = DuckdbCkanDataIngestor::new(&conn, &reader);
+        let resource = CkanResource {
+            id: "failed-resource".to_string(),
+            url: "https://example.test/resource.csv".to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+        };
+
+        let outcome = ingestor.ingest_ckan_data(&resource);
+
+        assert_eq!(outcome.status, IngestionStatus::Failed);
+        assert_eq!(
+            outcome.error_message.as_deref(),
+            Some("No data to create table from")
+        );
     }
 }

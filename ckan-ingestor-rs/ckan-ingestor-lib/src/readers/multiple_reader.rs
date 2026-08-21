@@ -46,6 +46,7 @@ impl CkanReader for MultipleReader<'_> {
     }
 
     fn do_read(&self, resource: &CkanResource) -> ReadResult {
+        let mut last_failure = None;
         for reader in &self.readers {
             if !reader.can_read(resource) {
                 continue;
@@ -61,8 +62,12 @@ impl CkanReader for MultipleReader<'_> {
                         resource.id,
                         error.error
                     );
+                    last_failure = Some(error);
                 }
             };
+        }
+        if let Some(failure) = last_failure {
+            return Err(failure);
         }
         let error = format!(
             "no reader could read CKAN resource {} (unsupported format)",
