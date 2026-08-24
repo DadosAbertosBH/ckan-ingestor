@@ -33,6 +33,10 @@ const MAX_RECORDS_FETCH: usize = 100_000;
 const MAX_ERROR_BODY_LENGTH: usize = 512;
 
 fn decode_json_response(resp: reqwest::blocking::Response, url: &str) -> Result<Value> {
+    let status = resp.status();
+    if !status.is_success() {
+        anyhow::bail!("datastore request failed with HTTP status {status}: {url}");
+    }
     let body = resp.text()?;
     let body_preview: String = body.chars().take(MAX_ERROR_BODY_LENGTH).collect();
     serde_json::from_str(&body).with_context(|| {

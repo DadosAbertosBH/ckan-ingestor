@@ -17,7 +17,7 @@
 use crate::ckan_resource::CkanResource;
 use crate::readers::ckan_reader::{CkanReader, ReadResult, SuccessResult};
 use anyhow::Result;
-use csv_nose::{Metadata, Quote, Sniffer};
+use csv_nose::{Metadata, Quote, SampleSize, Sniffer};
 use duckdb::arrow::array::RecordBatch;
 use duckdb::Connection;
 use flate2::read::GzDecoder;
@@ -85,6 +85,10 @@ impl<'a> CsvReader<'a> {
     /// Download a remote file to a temporary location.
     fn download_to_temp(&self, url: &str) -> Result<String> {
         let response = self.client.get(url).send()?;
+        let status = response.status();
+        if !status.is_success() {
+            anyhow::bail!("CSV download failed with HTTP status {status}: {url}");
+        }
         let bytes = response.bytes()?;
         let temp_path = std::env::temp_dir().join(format!(
             "{}{}",
@@ -108,7 +112,7 @@ impl<'a> CsvReader<'a> {
             Quote::Some(value) => (value as char).to_string(),
         };
         let mut stmt = self.conn.prepare(&format!(
-            "SELECT * FROM read_csv('{}', sample_size=900000, encoding='{}', delim='{}', quote='{}', header={}, skip={}, strict_mode={}, nullstr=['', '-', ' - ', ' -   '])",
+            "SELECT * FROM read_csv('{}', sample_size=20000, encoding='{}', delim='{}', quote='{}', header={}, skip={}, strict_mode={}, nullstr=['', '-', ' - ', ' -   '])",
             escape_sql_literal(path),
             escape_sql_literal(duckdb_encoding(metadata.encoding.name)),
             escape_sql_literal((dialect.delimiter as char).to_string()),
@@ -142,8 +146,11 @@ fn duckdb_encoding(name: &str) -> &str {
 }
 
 fn sniff_metadata(path: &str) -> Result<Metadata> {
+    let mut sniffer = Sniffer::new();
+    sniffer.sample_size(SampleSize::Records(900_000));
+
     if !path.to_ascii_lowercase().ends_with(".gz") {
-        return Ok(Sniffer::new().sniff_path(path)?);
+        return Ok(sniffer.sniff_path(path)?);
     }
 
     let sniff_path =
@@ -153,7 +160,7 @@ fn sniff_metadata(path: &str) -> Result<Metadata> {
         let mut decoder = GzDecoder::new(input);
         let mut output = File::create(&sniff_path)?;
         io::copy(&mut decoder, &mut output)?;
-        Ok(Sniffer::new().sniff_path(&sniff_path)?)
+        Ok(sniffer.sniff_path(&sniff_path)?)
     })();
     let _ = std::fs::remove_file(sniff_path);
     result

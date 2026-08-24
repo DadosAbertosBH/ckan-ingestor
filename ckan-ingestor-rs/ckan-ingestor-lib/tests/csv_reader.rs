@@ -85,6 +85,57 @@ fn parse_non_latin_and_non_utf8() -> Result<()> {
 }
 
 #[test]
+fn returns_http_error_for_failed_remote_csv_download() -> Result<()> {
+    let server = MockServer::start();
+    server.mock(|when, then| {
+        when.method(GET).path("/failed.csv");
+        then.status(500)
+            .header("Content-Type", "text/html")
+            .body("<html><title>Erro [500]</title></html>");
+    });
+
+    let conn = duckdb::Connection::open_in_memory()?;
+    let reader = CsvReader::new(&conn, test_client());
+    let resource = CkanResource {
+        id: "failed-remote-csv".to_string(),
+        url: format!("{}/failed.csv", server.url("")),
+        format: "CSV".to_string(),
+        datastore_active: false,
+    };
+
+    let error = match reader.read(&resource) {
+        Ok(_) => anyhow::bail!("a failed remote CSV response should return an HTTP error"),
+        Err(error) => error,
+    };
+    let message = error.to_string();
+    assert!(message.contains("500"), "unexpected error: {message}");
+    Ok(())
+}
+
+#[test]
+fn parses_dm_subitem_rec_utf8_csv_fixture() -> Result<()> {
+    let conn = duckdb::Connection::open_in_memory()?;
+    let reader = CsvReader::new(&conn, test_client());
+
+    let resource = CkanResource {
+        id: "00000000-0000-0000-0000-ffff00000000".to_string(),
+        url: fixture_path("dm_subitem_rec.csv")
+            .to_str()
+            .unwrap()
+            .to_string(),
+        format: "CSV".to_string(),
+        datastore_active: false,
+    };
+
+    let result = reader.read(&resource)?;
+
+    assert_eq!(result.rows_processed, 7_134);
+    assert_eq!(result.number_of_columns, 3);
+    assert_eq!(result.encoding.as_deref(), Some("UTF-8"));
+    Ok(())
+}
+
+#[test]
 fn parses_csv_with_mixed_line_endings_in_quoted_header() -> Result<()> {
     let conn = duckdb::Connection::open_in_memory()?;
     let reader = CsvReader::new(&conn, test_client());

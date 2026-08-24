@@ -30,14 +30,15 @@ services:
 
   # Create RustFS bucket
   rustfs-setup:
-    image: amazon/aws-cli:2
+    image: rustfs/rc:latest
     depends_on:
       rustfs:
         condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      aws s3api create-bucket --bucket warehouse --endpoint-url http://rustfs:9000;
-      "
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        rc alias set local http://rustfs:9000 admin password &&
+        rc bucket create local/warehouse --ignore-existing
     environment:
       AWS_ACCESS_KEY_ID: admin
       AWS_SECRET_ACCESS_KEY: password

@@ -118,6 +118,15 @@ fn empty_datastore_returns_empty_vec() -> Result<()> {
 
     server.mock(|when, then| {
         when.method(GET)
+            .path("/api/3/action/datastore_search")
+            .query_param("resource_id", id)
+            .query_param("limit", "0");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body("{\"success\":true,\"result\":{\"total\":0,\"fields\":[]}}");
+    });
+    server.mock(|when, then| {
+        when.method(GET)
             .path(format!("/datastore/dump/{id}"))
             .query_param("format", "json")
             .query_param("offset", "0")
@@ -171,6 +180,50 @@ fn get_row_and_column_count_returns_datastore_metadata() -> Result<()> {
     assert_eq!(rows, 42);
     assert_eq!(columns, 3);
 
+    Ok(())
+}
+
+#[test]
+fn returns_http_error_for_failed_datastore_dump() -> Result<()> {
+    let server = MockServer::start();
+    let resource_id = "failed-datastore-dump-id";
+    let base_url = format!("http://{}", server.address());
+
+    server.mock(|when, then| {
+        when.method(GET)
+            .path("/api/3/action/datastore_search")
+            .query_param("resource_id", resource_id)
+            .query_param("limit", "0");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body("{\"success\":true,\"result\":{\"total\":1,\"fields\":[]}}");
+    });
+    server.mock(|when, then| {
+        when.method(GET)
+            .path(format!("/datastore/dump/{resource_id}"))
+            .query_param("format", "json")
+            .query_param("offset", "0")
+            .query_param("limit", "100000");
+        then.status(500)
+            .header("Content-Type", "text/html")
+            .body("<html><title>Erro [500]</title></html>");
+    });
+
+    let reader = DatastoreReader::new(base_url, reqwest::blocking::Client::new());
+    let resource = CkanResource {
+        id: resource_id.to_string(),
+        url: String::new(),
+        format: "CSV".to_string(),
+        datastore_active: true,
+    };
+
+    let error = match reader.read_batches(&resource) {
+        Ok(_) => anyhow::bail!("a failed datastore response should return an HTTP error"),
+        Err(error) => error,
+    };
+    let message = error.to_string();
+    assert!(message.contains("500"), "unexpected error: {message}");
+    assert!(!message.contains("error decoding response body"));
     Ok(())
 }
 
