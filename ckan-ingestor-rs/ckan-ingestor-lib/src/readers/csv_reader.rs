@@ -15,10 +15,14 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 use crate::ckan_resource::CkanResource;
-use crate::readers::ckan_reader::{CkanReader, FailedResult, ReadResult, SuccessResult};
+use crate::readers::ckan_reader::{CkanReader, ReadResult, SuccessResult};
 use anyhow::Result;
+use csv_nose::{Metadata, Quote, Sniffer};
 use duckdb::arrow::array::RecordBatch;
 use duckdb::Connection;
+use flate2::read::GzDecoder;
+use std::fs::File;
+use std::io;
 
 pub struct CsvReader<'a> {
     conn: &'a Connection,
@@ -35,13 +39,7 @@ impl<'a> CsvReader<'a> {
         }
     }
 
-    /// Read CSV batches matching Swift's encoding fallback chain.
-    ///
-    /// Tries encodings in order:
-    ///   1. utf-8 via DuckDB `read_csv`
-    ///   2. latin-1 via DuckDB `read_csv`
-    ///   3. utf-16 via DuckDB `read_csv`
-    ///
+    /// Detect the CSV metadata once, then read it with the detected settings.
     /// Downloads the file first (if remote), matching Swift's approach.
     pub fn read_batches(&self, resource: &CkanResource) -> ReadResult {
         let is_remote = resource.url.starts_with("http://") || resource.url.starts_with("https://");
@@ -66,52 +64,20 @@ impl<'a> CsvReader<'a> {
             None
         });
 
-        let encodings = ["utf-8", "latin-1", "CP1252"];
-        let mut errors: Vec<anyhow::Error> = Vec::new();
-        for encoding in encodings {
-            match self.try_read_csv(&csv_path, encoding, true) {
-                Ok(batches) => {
-                    return Ok(SuccessResult::from_csv(
-                        batches,
-                        encoding.to_string(),
-                        true,
-                        self.reader_name().to_string(),
-                    ))
-                }
-                Err(error) => {
-                    errors.push(error);
-                    continue;
-                }
+        let metadata = sniff_metadata(&csv_path)?;
+        let encoding = metadata.encoding.name.to_string();
+        let batches = match self.try_read_csv(&csv_path, &metadata, true) {
+            Ok(batches) => (batches, true),
+            Err(error) if is_csv_sniffing_error(&error) => {
+                (self.try_read_csv(&csv_path, &metadata, false)?, false)
             }
-        }
+            Err(error) => return Err(error.into()),
+        };
 
-        if errors.iter().all(is_csv_sniffing_error) {
-            for encoding in encodings {
-                match self.try_read_csv(&csv_path, encoding, false) {
-                    Ok(batches) => {
-                        return Ok(SuccessResult::from_csv(
-                            batches,
-                            encoding.to_string(),
-                            false,
-                            self.reader_name().to_string(),
-                        ))
-                    }
-                    Err(error) => errors.push(error),
-                }
-            }
-        }
-
-        let msg = errors
-            .iter()
-            .map(|e| format!("- {:?}", e))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let error = format!(
-            "Failed to parse CSV file from {} erros: {} \n",
-            resource.url, msg
-        );
-        Err(FailedResult::from_string(
-            &error,
+        Ok(SuccessResult::from_csv(
+            batches.0,
+            encoding,
+            batches.1,
             self.reader_name().to_string(),
         ))
     }
@@ -133,12 +99,23 @@ impl<'a> CsvReader<'a> {
     fn try_read_csv(
         &self,
         path: &str,
-        encoding: &str,
+        metadata: &Metadata,
         strict_mode: bool,
     ) -> Result<Vec<RecordBatch>> {
+        let dialect = &metadata.dialect;
+        let quote = match dialect.quote {
+            Quote::None => String::new(),
+            Quote::Some(value) => (value as char).to_string(),
+        };
         let mut stmt = self.conn.prepare(&format!(
-            "SELECT * FROM read_csv('{}', sample_size=900000, encoding='{}', strict_mode={}, nullstr=['', '-', ' - ', ' -   '])",
-            path, encoding, strict_mode
+            "SELECT * FROM read_csv('{}', sample_size=900000, encoding='{}', delim='{}', quote='{}', header={}, skip={}, strict_mode={}, nullstr=['', '-', ' - ', ' -   '])",
+            escape_sql_literal(path),
+            escape_sql_literal(duckdb_encoding(metadata.encoding.name)),
+            escape_sql_literal((dialect.delimiter as char).to_string()),
+            escape_sql_literal(&quote),
+            dialect.header.has_header_row,
+            dialect.header.num_preamble_rows,
+            strict_mode,
         ))?;
         let arrow_iter = stmt.query_arrow([])?;
         let batches: Vec<RecordBatch> = arrow_iter.collect();
@@ -147,6 +124,39 @@ impl<'a> CsvReader<'a> {
         }
         Ok(batches)
     }
+}
+
+fn escape_sql_literal(value: impl AsRef<str>) -> String {
+    value.as_ref().replace('\'', "''")
+}
+
+fn duckdb_encoding(name: &str) -> &str {
+    match name {
+        "UTF-8" => "utf-8",
+        "UTF-16LE" | "UTF-16BE" => "utf-16",
+        "windows-1252" => "CP1252",
+        "windows-1251" => "CP1251",
+        "ISO-8859-1" => "latin-1",
+        other => other,
+    }
+}
+
+fn sniff_metadata(path: &str) -> Result<Metadata> {
+    if !path.to_ascii_lowercase().ends_with(".gz") {
+        return Ok(Sniffer::new().sniff_path(path)?);
+    }
+
+    let sniff_path =
+        std::env::temp_dir().join(format!("csv-nose-sniff-{}.csv", uuid::Uuid::new_v4()));
+    let result = (|| -> Result<Metadata> {
+        let input = File::open(path)?;
+        let mut decoder = GzDecoder::new(input);
+        let mut output = File::create(&sniff_path)?;
+        io::copy(&mut decoder, &mut output)?;
+        Ok(Sniffer::new().sniff_path(&sniff_path)?)
+    })();
+    let _ = std::fs::remove_file(sniff_path);
+    result
 }
 
 fn is_csv_sniffing_error(error: &anyhow::Error) -> bool {
@@ -191,6 +201,14 @@ mod tests {
             .timeout(Duration::from_secs(300))
             .build()
             .unwrap()
+    }
+
+    #[test]
+    fn maps_csv_nose_encoding_names_to_duckdb_aliases() {
+        assert_eq!(duckdb_encoding("UTF-8"), "utf-8");
+        assert_eq!(duckdb_encoding("windows-1252"), "CP1252");
+        assert_eq!(duckdb_encoding("ISO-8859-1"), "latin-1");
+        assert_eq!(duckdb_encoding("custom-encoding"), "custom-encoding");
     }
 
     /// A semicolon-delimited CSV containing quoted fields with embedded

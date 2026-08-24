@@ -148,7 +148,7 @@ fn csv_with_bom() -> Result<()> {
     };
     let result = reader.read(&resource)?;
     assert_eq!(result.rows_processed, 804);
-    assert_eq!(result.encoding.as_deref(), Some("utf-8"));
+    assert_eq!(result.encoding.as_deref(), Some("UTF-8"));
     assert_eq!(result.csv_strict_mode, Some(true));
     Ok(())
 }
@@ -264,6 +264,6 @@ fn fails_to_parse_quoted_semicolon_after_long_csv_sample() -> Result<()> {
     let result = result?;
 
     assert_eq!(result.rows_processed, 800_000);
-    assert_eq!(result.encoding.as_deref(), Some("utf-8"));
+    assert_eq!(result.encoding.as_deref(), Some("UTF-8"));
     Ok(())
 }
