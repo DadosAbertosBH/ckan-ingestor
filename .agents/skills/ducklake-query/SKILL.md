@@ -21,7 +21,7 @@ The `.env` uses Docker service hostnames. When connecting locally, map as follow
 
 | .env Value | Local Value | Docker Port Mapping |
 |------------|-------------|---------------------|
-| `minio:9000` | `localhost:9100` | `9100:9000` |
+| `rustfs:9000` | `localhost:9100` | `9100:9000` |
 | `postgres` (host) | `localhost` | `5433:5432` |
 | `mysql` (host) | `localhost` | `3306:3306` |
 

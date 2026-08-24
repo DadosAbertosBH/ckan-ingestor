@@ -44,11 +44,19 @@ mod tests {
     #[test]
     fn s3_endpoint_url_uses_http_when_ssl_is_disabled() {
         let settings = S3Settings {
-            endpoint: "minio.local:9000".to_string(),
+            endpoint: "rustfs.local:9000".to_string(),
             use_ssl: false,
             ..S3Settings::default()
         };
 
-        assert_eq!(settings.endpoint_url(), "http://minio.local:9000");
+        assert_eq!(settings.endpoint_url(), "http://rustfs.local:9000");
+    }
+
+    #[test]
+    fn environment_defaults_to_rustfs_for_local_s3() {
+        let settings = S3Settings::from_getter(|_| None);
+
+        assert_eq!(settings.endpoint, "rustfs:9000");
+        assert_eq!(settings.url_style, "vhost");
     }
 }

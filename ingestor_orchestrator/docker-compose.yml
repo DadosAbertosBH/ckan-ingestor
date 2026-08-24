@@ -55,36 +55,39 @@ services:
     networks:
       - orchestrator_net
 
-  minio:
-    image: quay.io/minio/minio:RELEASE.2024-08-03T04-33-23Z
+  rustfs:
+    image: rustfs/rustfs:latest
     ports:
       - "9100:9000"
       - "9101:9001"
     environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: password
-      MINIO_ADDRESS: ":9000"
-      MINIO_CONSOLE_ADDRESS: ":9001"
-    command: server /data
+      RUSTFS_ACCESS_KEY: admin
+      RUSTFS_SECRET_KEY: password
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+    command: ["--access-key", "admin", "--secret-key", "password", "/data"]
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
       interval: 5s
       timeout: 2s
       retries: 15
     networks:
       - orchestrator_net
 
-  minio-setup:
-    image: quay.io/minio/minio:RELEASE.2024-08-03T04-33-23Z
+  rustfs-setup:
+    image: amazon/aws-cli:2
     depends_on:
-      minio:
+      rustfs:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      /usr/bin/mc config host add minio http://minio:9000 admin password;
-      /usr/bin/mc mb --ignore-existing minio/warehouse/;
-      /usr/bin/mc policy set public minio/warehouse/;
+      aws s3api create-bucket --bucket warehouse --endpoint-url http://rustfs:9000 || true;
       "
+    environment:
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      AWS_DEFAULT_REGION: us-east-1
     networks:
       - orchestrator_net
 
@@ -168,7 +171,7 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-      minio-setup:
+      rustfs-setup:
         condition: service_completed_successfully
       db-init:
         condition: service_completed_successfully
@@ -179,7 +182,7 @@ services:
       KAFKA_GROUP_ID: ckan-worker
       DUCKLAKE_DATABASE: ":memory:"
       DUCKLAKE_CATALOG_URI: "postgres:dbname=ducklake_catalog host=postgres user=postgres password=postgres"
-      S3_ENDPOINT: minio:9000
+      S3_ENDPOINT: rustfs:9000
       S3_BUCKET: warehouse
       S3_ACCESS_KEY_ID: admin
       S3_SECRET_ACCESS_KEY: password

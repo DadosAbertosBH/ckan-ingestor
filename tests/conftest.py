@@ -25,7 +25,7 @@ import pytest
 from flask import Flask, request, send_from_directory
 from flask_cors import CORS
 from testcontainers.core.wait_strategies import HttpWaitStrategy
-from testcontainers.minio import MinioContainer
+from testcontainers.core.container import DockerContainer
 
 from ckan_ingestor.config.ducklake_settings import DucklakeSettings
 from ckan_ingestor.duckdb_connection_factory import from_settings
@@ -64,28 +64,36 @@ def ckman_mock_url():
 
 
 @pytest.fixture(scope="session")
-def minio_url(request) -> str:
+def rustfs_url(request) -> str:
     # ...existing code from infrastructure.py...
-    minio = MinioContainer(
-        image="minio/minio:RELEASE.2024-09-22T00-33-43Z",
-        access_key="admin",
-        secret_key="password",
+    rustfs = (
+        DockerContainer("rustfs/rustfs:latest")
+        .with_env("RUSTFS_ACCESS_KEY", "admin")
+        .with_env("RUSTFS_SECRET_KEY", "password")
+        .with_env("RUSTFS_CONSOLE_ENABLE", "true")
+        .with_exposed_ports(9000, 9001)
+        .with_command("--access-key admin --secret-key password /data")
+        .waiting_for(HttpWaitStrategy(9000, "/health").for_status_code(200))
     )
-    minio.with_env("MINIO_CONSOLE_ADDRESS", ":9001")
-    minio.with_exposed_ports(9000, 9001)
-    # Espera estruturada: healthcheck HTTP no serviço do MinIO
-    minio.waiting_for(HttpWaitStrategy(9000, "/minio/health/live").for_status_code(200))
-    minio.start()
-    host_ip = minio.get_container_host_ip()
-    exposed_port = minio.get_exposed_port(minio.port)
+    rustfs.start()
+    host_ip = rustfs.get_container_host_ip()
+    exposed_port = rustfs.get_exposed_port(9000)
 
     def remove_container():
-        # minio.stop()
+        rustfs.stop()
         pass
 
     request.addfinalizer(remove_container)
     bucket = "warehouse"
-    minio.get_client().make_bucket(bucket)
+    from minio import Minio
+
+    client = Minio(
+        f"{host_ip}:{exposed_port}",
+        access_key="admin",
+        secret_key="password",
+        secure=False,
+    )
+    client.make_bucket(bucket)
 
     policy = {
         "Version": "2012-10-17",
@@ -104,17 +112,17 @@ def minio_url(request) -> str:
             },
         ],
     }
-    minio.get_client().set_bucket_policy(bucket, json.dumps(policy))
+    client.set_bucket_policy(bucket, json.dumps(policy))
 
     return f"{host_ip}:{exposed_port}"
 
 
 @pytest.fixture
-def ducklake_settings(minio_url) -> DucklakeSettings:
+def ducklake_settings(rustfs_url) -> DucklakeSettings:
     # ...existing code from infrastructure.py...
     os.environ["DUCKLAKE_DATABASE"] = ":memory:"
     os.environ["DUCKLAKE_CATALOG_URI"] = ":memory:"
-    os.environ["DUCKLAKE_DATA_PATH__ENDPOINT"] = minio_url
+    os.environ["DUCKLAKE_DATA_PATH__ENDPOINT"] = rustfs_url
     os.environ["DUCKLAKE_DATA_PATH__URL_STYLE"] = "path"
     os.environ["DUCKLAKE_DATA_PATH__USE_SSL"] = "false"
     return DucklakeSettings()

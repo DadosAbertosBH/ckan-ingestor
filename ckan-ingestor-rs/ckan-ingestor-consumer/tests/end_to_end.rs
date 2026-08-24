@@ -118,7 +118,6 @@ impl ResultPublisher for NoopPublisher {
 }
 
 #[tokio::test]
-#[ignore = "requires a Docker daemon to run Kafka via testcontainers"]
 async fn end_to_end_message_flow() -> anyhow::Result<()> {
     // 1. Start a single-node Kafka broker (KRaft mode).
     let _kafka = start_kafka().await?;
@@ -215,7 +214,6 @@ async fn end_to_end_message_flow() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "requires a Docker daemon to run Kafka via testcontainers"]
 async fn restart_processes_messages_waiting_before_partition_queues_are_split() -> anyhow::Result<()>
 {
     let _kafka = start_kafka().await?;
@@ -321,7 +319,6 @@ async fn restart_processes_messages_waiting_before_partition_queues_are_split() 
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires a Docker daemon to run Kafka via testcontainers"]
 async fn subscribe_delivers_assignment_only_after_consumer_polling() -> anyhow::Result<()> {
     let _kafka = start_kafka().await?;
 

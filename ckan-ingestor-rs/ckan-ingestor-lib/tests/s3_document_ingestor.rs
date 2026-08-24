@@ -25,7 +25,6 @@ use crate::common::fixture_path;
 use fixtures::s3::s3_settings;
 
 #[test]
-#[ignore = "requires a Docker daemon to run MinIO via testcontainers"]
 fn ingest_pdf() -> Result<()> {
     let server = MockServer::start();
     let body = std::fs::read(fixture_path("a_pdf_file.pdf"))?;

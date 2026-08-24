@@ -59,7 +59,7 @@ mod tests {
     #[test]
     fn new_builds_the_public_document_base_url() {
         let settings = S3Settings {
-            endpoint: "minio.local:9000".to_string(),
+            endpoint: "rustfs.local:9000".to_string(),
             bucket: "documents".to_string(),
             use_ssl: false,
             ..S3Settings::default()
@@ -67,6 +67,6 @@ mod tests {
 
         let ingestor = S3DocumentIngestor::new(settings).expect("valid S3 settings");
 
-        assert_eq!(ingestor.public_url, "http://minio.local:9000/documents");
+        assert_eq!(ingestor.public_url, "http://rustfs.local:9000/documents");
     }
 }

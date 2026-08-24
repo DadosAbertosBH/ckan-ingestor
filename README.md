@@ -1,6 +1,6 @@
 # CKAN Ingestor
 
-Pipeline de ingestão de dados do portal [CKAN](https://ckan.org) para um lakehouse baseado em [DuckLake](https://ducklake.io) (DuckDB + catálogo Postgres + dados em S3/MinIO).
+Pipeline de ingestão de dados do portal [CKAN](https://ckan.org) para um lakehouse baseado em [DuckLake](https://ducklake.io) (DuckDB + catálogo Postgres + dados em S3/RustFS).
 
 O projeto é composto por dois serviços principais:
 
@@ -22,7 +22,7 @@ graph TD
     KAFKA -->|consome resultados| RESULT[Result Consumer]
     RESULT -->|atualiza estado| MYSQL
     LAKE -->|catálogo| PG[(Postgres)]
-    LAKE -->|dados| S3[(MinIO / S3)]
+    LAKE -->|dados| S3[(RustFS / S3)]
 ```
 
 ### Componentes
@@ -36,7 +36,7 @@ graph TD
 | Worker | Rust + rdkafka + DuckDB | Consome jobs e executa a ingestão de dados |
 | Fila | Kafka (Strimzi) | Comunicação assíncrona entre API/scheduler, worker e result consumer |
 | Estado | MySQL 8.0 | Persistência do estado dos jobs |
-| Lakehouse | DuckLake | DuckDB + catálogo Postgres + dados em S3/MinIO |
+| Lakehouse | DuckLake | DuckDB + catálogo Postgres + dados em S3/RustFS |
 
 ### Fluxo de mensagens (Kafka)
 
@@ -76,9 +76,9 @@ Serviços disponíveis:
 |---|---|
 | API | http://localhost:8000 (docs em `/docs`) |
 | Redpanda Console (Kafka) | http://localhost:8080 |
-| MinIO Console | http://localhost:9101 |
+| RustFS Console | http://localhost:9101 |
 
-O compose sobe MySQL, Kafka, MinIO, Postgres (catálogo DuckLake), a API, o worker Rust e o `db-init` (migrações Alembic).
+O compose sobe MySQL, Kafka, RustFS, Postgres (catálogo DuckLake), a API, o worker Rust e o `db-init` (migrações Alembic).
 
 ## Testes
 
@@ -141,7 +141,7 @@ O `.gitlab-ci.yml` constrói e publica as imagens no registry do GitLab:
 | `KAFKA_GROUP_ID` | `ckan-worker-rs` | Group ID do Kafka |
 | `DUCKLAKE_DATABASE` | (obrigatório) | Database DuckDB local |
 | `DUCKLAKE_CATALOG_URI` | (obrigatório) | URI do catálogo DuckLake (Postgres) |
-| `S3_ENDPOINT` | `minio:9000` | Endpoint S3/MinIO |
+| `S3_ENDPOINT` | `rustfs:9000` | Endpoint S3/RustFS |
 | `S3_BUCKET` | `warehouse` | Bucket de dados |
 | `S3_ACCESS_KEY_ID` | `admin` | Access key do S3 |
 | `S3_SECRET_ACCESS_KEY` | `password` | Secret key do S3 |

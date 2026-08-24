@@ -52,13 +52,13 @@ impl S3Settings {
         Self::from_getter(|key| env::var(key).ok())
     }
 
-    fn from_getter<F>(get: F) -> Self
+    pub(crate) fn from_getter<F>(get: F) -> Self
     where
         F: Fn(&str) -> Option<String>,
     {
         Self {
             protocol: get("S3_PROTOCOL").unwrap_or_else(|| "s3".into()),
-            endpoint: get("S3_ENDPOINT").unwrap_or_else(|| "minio:9000".into()),
+            endpoint: get("S3_ENDPOINT").unwrap_or_else(|| "rustfs:9000".into()),
             bucket: get("S3_BUCKET").unwrap_or_else(|| "warehouse".into()),
             access_key_id: get("S3_ACCESS_KEY_ID").unwrap_or_else(|| "admin".into()),
             secret_access_key: get("S3_SECRET_ACCESS_KEY").unwrap_or_else(|| "password".into()),
@@ -75,7 +75,8 @@ impl S3Settings {
     }
 
     /// Build a `rust-s3` `Bucket` configured for this settings. Custom
-    /// endpoint (MinIO, etc.) is used when `endpoint` is not the default
+    /// endpoint (RustFS or another S3-compatible service) is used when
+    /// `endpoint` is not the default
     /// S3 host.
     pub fn bucket(&self) -> anyhow::Result<Box<s3::bucket::Bucket>> {
         let region = s3::region::Region::Custom {

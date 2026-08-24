@@ -88,12 +88,14 @@ test-rust:
         - $CARGO_HOME
         - ckan-ingestor-rs/target
   script:
-    - apt-get update && apt-get install -y --no-install-recommends build-essential cmake libssl-dev libcurl4-openssl-dev pkg-config && rm -rf /var/lib/apt/lists/*
+    - apt-get update && apt-get install -y --no-install-recommends build-essential cmake curl libssl-dev libcurl4-openssl-dev pkg-config && rm -rf /var/lib/apt/lists/*
+    - until curl -fsS http://docker:2375/_ping; do sleep 1; done
     - rustup component add rustfmt clippy
     - cd ckan-ingestor-rs
     - cargo fmt --all -- --check
     - cargo clippy --all-targets -- -D warnings
-    - cargo test --all
+    # Kafka integration tests use the fixed host port 9092.
+    - cargo test --all -- --include-ignored --test-threads=1
   rules:
     - if: $CI_COMMIT_TAG
     - changes:

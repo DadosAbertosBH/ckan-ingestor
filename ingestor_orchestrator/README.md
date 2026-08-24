@@ -10,7 +10,7 @@ graph TD
     C[Scheduler]:::accent2 -->|enfileira jobs| D[NATS JetStream]:::accent3
     B -->|enfileira jobs| D
     D -->|consome jobs| E[Worker]:::accent4
-    E -->|ingere dados via ckan_ingestor| F[DuckLake / MinIO]:::accent5
+    E -->|ingere dados via ckan_ingestor| F[DuckLake / RustFS]:::accent5
     E -->|atualiza estado| G[MySQL]:::accent6
     B -->|consulta estado| G
 ```
