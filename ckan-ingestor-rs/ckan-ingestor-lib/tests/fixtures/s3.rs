@@ -18,6 +18,7 @@ use ckan_ingestor_lib::config::S3Settings;
 use s3::creds::Credentials;
 use s3::region::Region;
 use s3::{Bucket, BucketConfiguration};
+use std::env;
 use std::sync::OnceLock;
 use testcontainers::{core::IntoContainerPort, runners::SyncRunner, GenericImage, ImageExt};
 
@@ -45,7 +46,8 @@ fn ensure_rustfs() -> &'static String {
 
         std::mem::forget(container);
 
-        format!("127.0.0.1:{}", port)
+        let host = env::var("TESTCONTAINERS_HOST_OVERRIDE").unwrap_or_else(|_| "127.0.0.1".into());
+        format!("{}:{}", host, port)
     })
 }
 

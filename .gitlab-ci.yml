@@ -80,6 +80,7 @@ test-rust:
     # tests and builds can link against it on Linux runners.
     DUCKDB_DOWNLOAD_LIB: "1"
     CARGO_HOME: .cargo-home
+    TESTCONTAINERS_HOST_OVERRIDE: "docker"
   cache:
     - key:
         files:

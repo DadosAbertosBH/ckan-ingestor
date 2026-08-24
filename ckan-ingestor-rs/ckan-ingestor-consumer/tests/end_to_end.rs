@@ -15,6 +15,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
+use std::env;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -36,7 +37,13 @@ use tokio::sync::{Notify, mpsc};
 const JOB_TOPIC: &str = "ckan.ingest.jobs";
 const RETRY_TOPIC: &str = "ckan.ingest.jobs.retry";
 
+fn kafka_bootstrap() -> String {
+    let host = env::var("TESTCONTAINERS_HOST_OVERRIDE").unwrap_or_else(|_| "localhost".into());
+    format!("{host}:9092")
+}
+
 async fn start_kafka() -> anyhow::Result<ContainerAsync<GenericImage>> {
+    let host = env::var("TESTCONTAINERS_HOST_OVERRIDE").unwrap_or_else(|_| "localhost".into());
     Ok(GenericImage::new("apache/kafka-native", "4.2.1")
         .with_env_var("KAFKA_NODE_ID", "1")
         .with_env_var("KAFKA_PROCESS_ROLES", "broker,controller")
@@ -44,7 +51,10 @@ async fn start_kafka() -> anyhow::Result<ContainerAsync<GenericImage>> {
             "KAFKA_LISTENERS",
             "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093",
         )
-        .with_env_var("KAFKA_ADVERTISED_LISTENERS", "PLAINTEXT://localhost:9092")
+        .with_env_var(
+            "KAFKA_ADVERTISED_LISTENERS",
+            format!("PLAINTEXT://{host}:9092"),
+        )
         .with_env_var("KAFKA_CONTROLLER_LISTENER_NAMES", "CONTROLLER")
         .with_env_var(
             "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP",
@@ -122,15 +132,15 @@ async fn end_to_end_message_flow() -> anyhow::Result<()> {
     // 1. Start a single-node Kafka broker (KRaft mode).
     let _kafka = start_kafka().await?;
 
-    let bootstrap = "localhost:9092";
+    let bootstrap = kafka_bootstrap();
 
     // 2. Create topics explicitly (mirrors worker.rs ensure_topics).
-    ckan_ingestor_consumer::ensure_topics(bootstrap, "ckan.ingest.jobs", "ckan.ingest.jobs.retry")
+    ckan_ingestor_consumer::ensure_topics(&bootstrap, "ckan.ingest.jobs", "ckan.ingest.jobs.retry")
         .await;
 
     // 3. A separate consumer verifies the result topic.
     let result_consumer: StreamConsumer = ClientConfig::new()
-        .set("bootstrap.servers", bootstrap)
+        .set("bootstrap.servers", &bootstrap)
         .set("group.id", "test-verifier")
         .set("auto.offset.reset", "earliest")
         .create()?;
@@ -138,7 +148,7 @@ async fn end_to_end_message_flow() -> anyhow::Result<()> {
 
     // 3. Producer for the input job message.
     let producer: FutureProducer = ClientConfig::new()
-        .set("bootstrap.servers", bootstrap)
+        .set("bootstrap.servers", &bootstrap)
         .create()?;
     let producer = Arc::new(producer);
 
@@ -147,7 +157,7 @@ async fn end_to_end_message_flow() -> anyhow::Result<()> {
     let context = CoordinatorConsumerContext::new(cmd_tx);
 
     let consumer: StreamConsumer<CoordinatorConsumerContext> = ClientConfig::new()
-        .set("bootstrap.servers", bootstrap)
+        .set("bootstrap.servers", &bootstrap)
         .set("group.id", "test-worker")
         .set("auto.offset.reset", "earliest")
         .set("enable.auto.commit", "false")
@@ -218,16 +228,16 @@ async fn restart_processes_messages_waiting_before_partition_queues_are_split() 
 {
     let _kafka = start_kafka().await?;
 
-    let bootstrap = "localhost:9092";
+    let bootstrap = kafka_bootstrap();
     let group_id = "restart-before-split-worker";
-    ckan_ingestor_consumer::ensure_topics(bootstrap, JOB_TOPIC, RETRY_TOPIC).await;
+    ckan_ingestor_consumer::ensure_topics(&bootstrap, JOB_TOPIC, RETRY_TOPIC).await;
 
     // Let the first incarnation join the group and then stop it. Messages
     // published next will already be waiting when the replacement rejoins.
     let (first_cmd_tx, first_cmd_rx) = mpsc::unbounded_channel();
     let first_context = CoordinatorConsumerContext::new(first_cmd_tx);
     let first_consumer: StreamConsumer<CoordinatorConsumerContext> = ClientConfig::new()
-        .set("bootstrap.servers", bootstrap)
+        .set("bootstrap.servers", &bootstrap)
         .set("group.id", group_id)
         .set("auto.offset.reset", "earliest")
         .set("enable.auto.commit", "false")
@@ -251,7 +261,7 @@ async fn restart_processes_messages_waiting_before_partition_queues_are_split() 
         .await
         .map_err(|_| anyhow::anyhow!("initial consumer did not stop cleanly"))??;
     let producer: FutureProducer = ClientConfig::new()
-        .set("bootstrap.servers", bootstrap)
+        .set("bootstrap.servers", &bootstrap)
         .create()?;
     let producer = Arc::new(producer);
 
@@ -278,7 +288,7 @@ async fn restart_processes_messages_waiting_before_partition_queues_are_split() 
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
     let context = CoordinatorConsumerContext::new(cmd_tx);
     let restarted_consumer: StreamConsumer<CoordinatorConsumerContext> = ClientConfig::new()
-        .set("bootstrap.servers", bootstrap)
+        .set("bootstrap.servers", &bootstrap)
         .set("group.id", group_id)
         .set("auto.offset.reset", "earliest")
         .set("enable.auto.commit", "false")
@@ -322,14 +332,14 @@ async fn restart_processes_messages_waiting_before_partition_queues_are_split() 
 async fn subscribe_delivers_assignment_only_after_consumer_polling() -> anyhow::Result<()> {
     let _kafka = start_kafka().await?;
 
-    let bootstrap = "localhost:9092";
-    ckan_ingestor_consumer::ensure_topics(bootstrap, JOB_TOPIC, RETRY_TOPIC).await;
+    let bootstrap = kafka_bootstrap();
+    ckan_ingestor_consumer::ensure_topics(&bootstrap, JOB_TOPIC, RETRY_TOPIC).await;
 
     let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
     let context = CoordinatorConsumerContext::new(cmd_tx);
     let consumer = Arc::new(
         ClientConfig::new()
-            .set("bootstrap.servers", bootstrap)
+            .set("bootstrap.servers", &bootstrap)
             .set("group.id", "subscribe-without-polling")
             .set("auto.offset.reset", "earliest")
             .set("partition.assignment.strategy", "cooperative-sticky")
