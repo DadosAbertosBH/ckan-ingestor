@@ -17,15 +17,6 @@
 
 use anyhow::Result;
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn installs_a_process_level_rustls_provider() {
-        super::install_rustls_crypto_provider();
-        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     install_rustls_crypto_provider();
@@ -46,5 +37,14 @@ fn install_rustls_crypto_provider() {
         rustls::crypto::ring::default_provider()
             .install_default()
             .expect("failed to install the rustls crypto provider");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn installs_a_process_level_rustls_provider() {
+        super::install_rustls_crypto_provider();
+        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
     }
 }
