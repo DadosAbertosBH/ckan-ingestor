@@ -130,7 +130,7 @@ pub async fn ensure_topics(bootstrap: &str, topic: &str, retry_topic: &str) {
         .iter()
         .map(|t| NewTopic {
             name: t,
-            num_partitions: 5,
+            num_partitions: 10,
             replication: TopicReplication::Fixed(1),
             config: vec![],
         })

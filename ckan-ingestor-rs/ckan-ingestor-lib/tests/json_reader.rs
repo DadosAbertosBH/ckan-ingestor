@@ -21,18 +21,17 @@ use ckan_ingestor_lib::readers::ckan_reader::CkanReader;
 use ckan_ingestor_lib::readers::json_reader::JsonReader;
 
 #[test]
-fn reads_a_json_array_of_objects() -> Result<()> {
+fn reads_multiple_json_objects() -> Result<()> {
     let path = std::env::temp_dir().join(format!(
         "ckan-ingestor-json-reader-{}.json",
         std::process::id()
     ));
     std::fs::write(
         &path,
-        r#"[{"name":"Ana","age":30},{"name":"Bia","age":25}]"#,
+        "{\"name\":\"Ana\",\"age\":30}\n{\"name\":\"Bia\",\"age\":25}\n",
     )?;
 
-    let conn = duckdb::Connection::open_in_memory()?;
-    let reader = JsonReader::new(&conn);
+    let reader = JsonReader::new();
     let resource = CkanResource {
         id: "json-resource".to_string(),
         url: path.to_string_lossy().to_string(),
@@ -58,8 +57,7 @@ fn reads_json_object_larger_than_default_maximum_object_size() -> Result<()> {
     let json = format!(r#"{{"payload":"{}"}}"#, "x".repeat(34 * 1024 * 1024));
     std::fs::write(&path, json)?;
 
-    let conn = duckdb::Connection::open_in_memory()?;
-    let reader = JsonReader::new(&conn);
+    let reader = JsonReader::new();
     let resource = CkanResource {
         id: "large-json-resource".to_string(),
         url: path.to_string_lossy().to_string(),

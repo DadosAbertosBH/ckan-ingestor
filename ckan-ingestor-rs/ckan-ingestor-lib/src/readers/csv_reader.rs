@@ -1,3 +1,4 @@
+use crate::arrow_ipc_output::ArrowIpcOutput;
 // ckan-ingestor-rs
 //
 // This file is part of ckan-ingestor-rs.
@@ -16,11 +17,10 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 use crate::ckan_resource::CkanResource;
 use crate::readers::ckan_reader::{CkanReader, ReadResult, SuccessResult};
+use crate::readers::temp_file_cleanup::TempFileCleanup;
 use anyhow::Result;
 use arrow_csv::reader::{Format, ReaderBuilder};
 use csv_nose::{Metadata, Quote, SampleSize, Sniffer};
-use duckdb::arrow::array::RecordBatch;
-use duckdb::Connection;
 use encoding_rs::Encoding;
 use encoding_rs_io::DecodeReaderBytesBuilder;
 use flate2::read::GzDecoder;
@@ -29,38 +29,14 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 
-struct TempFileCleanup {
-    path: Option<PathBuf>,
-}
-
-impl TempFileCleanup {
-    fn new(path: Option<PathBuf>) -> Self {
-        Self { path }
-    }
-
-    fn commit(&mut self) {
-        self.path = None;
-    }
-}
-
-impl Drop for TempFileCleanup {
-    fn drop(&mut self) {
-        if let Some(path) = self.path.take() {
-            let _ = std::fs::remove_file(path);
-        }
-    }
-}
-
-pub struct CsvReader<'a> {
-    _conn: &'a Connection,
+pub struct CsvReader {
     client: reqwest::blocking::Client,
     supported_formats: Vec<String>,
 }
 
-impl<'a> CsvReader<'a> {
-    pub fn new(conn: &'a Connection, client: reqwest::blocking::Client) -> Self {
+impl CsvReader {
+    pub fn new(client: reqwest::blocking::Client) -> Self {
         Self {
-            _conn: conn,
             client,
             supported_formats: vec!["CSV".to_string()],
         }
@@ -76,11 +52,10 @@ impl<'a> CsvReader<'a> {
             resource.url.clone()
         };
 
-        let _cleanup = TempFileCleanup::new(if is_remote {
-            Some(PathBuf::from(&csv_path))
-        } else {
-            None
-        });
+        let mut cleanup = TempFileCleanup::from_path(PathBuf::from(&csv_path));
+        if !is_remote {
+            cleanup.commit();
+        }
 
         let metadata = sniff_metadata(&csv_path)?;
         let encoding = metadata.encoding.name.to_string();
@@ -89,15 +64,15 @@ impl<'a> CsvReader<'a> {
             metadata.encoding.name,
             metadata.dialect.header.num_preamble_rows,
         )?;
-        let batches = match try_read_csv(&csv_path, &metadata, true) {
+        let (arrow_ipc, strict_mode) = match try_read_csv(&csv_path, &metadata, true) {
             Ok(batches) => (batches, !has_mixed_line_endings),
             Err(_) => (try_read_csv(&csv_path, &metadata, false)?, false),
         };
 
         Ok(SuccessResult::from_csv(
-            batches.0,
+            arrow_ipc,
             encoding,
-            batches.1,
+            strict_mode,
             self.reader_name().to_string(),
         ))
     }
@@ -118,7 +93,7 @@ impl<'a> CsvReader<'a> {
             uuid::Uuid::new_v4(),
             downloaded_csv_suffix(url)
         ));
-        let mut cleanup = TempFileCleanup::new(Some(temp_path.clone()));
+        let mut cleanup = TempFileCleanup::from_path(temp_path.clone());
         let mut output = File::create(&temp_path)?;
         stream_download(&mut response, &mut output).map_err(|error| {
             download_body_error(url, status, &content_type, &content_encoding, error)
@@ -156,7 +131,7 @@ fn stream_download(reader: &mut impl Read, writer: &mut impl Write) -> io::Resul
     io::copy(reader, writer)
 }
 
-fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<Vec<RecordBatch>> {
+fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<ArrowIpcOutput> {
     let dialect = &metadata.dialect;
     let format = Format::default()
         .with_header(dialect.header.has_header_row)
@@ -183,11 +158,22 @@ fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<Ve
         .with_format(format)
         .with_batch_size(32_768)
         .build(reader)?;
-    let batches: Vec<RecordBatch> = csv_reader.collect::<std::result::Result<_, _>>()?;
-    if batches.is_empty() || batches.iter().all(|b| b.num_rows() == 0) {
-        anyhow::bail!("No data");
+
+    let mut arrow_ipc = None;
+    for batch_result in csv_reader {
+        let batch = batch_result?;
+        if arrow_ipc.is_none() {
+            arrow_ipc = Some(ArrowIpcOutput::try_new(&batch)?);
+        }
+
+        arrow_ipc
+            .as_mut()
+            .expect("Arrow IPC output initialized")
+            .write(&batch)?;
     }
-    Ok(batches)
+    let mut arrow_ipc = arrow_ipc.ok_or_else(|| anyhow::anyhow!("No data"))?;
+    arrow_ipc.finish()?;
+    Ok(arrow_ipc)
 }
 
 fn sniff_metadata(path: &str) -> Result<Metadata> {
@@ -268,7 +254,7 @@ fn downloaded_csv_suffix(url: &str) -> &'static str {
     }
 }
 
-impl CkanReader for CsvReader<'_> {
+impl CkanReader for CsvReader {
     fn supported_formats(&self) -> &[String] {
         &self.supported_formats
     }
@@ -394,40 +380,11 @@ mod tests {
         assert!(message.contains("error decoding response body"));
     }
 
-    #[test]
-    fn temp_file_cleanup_guard_removes_uncommitted_files() -> Result<()> {
-        let path = std::env::temp_dir().join(format!("csv-reader-test-{}", uuid::Uuid::new_v4()));
-        File::create(&path)?;
-
-        {
-            let _cleanup = TempFileCleanup::new(Some(path.clone()));
-        }
-
-        assert!(!path.exists());
-        Ok(())
-    }
-
-    #[test]
-    fn temp_file_cleanup_guard_preserves_committed_files() -> Result<()> {
-        let path = std::env::temp_dir().join(format!("csv-reader-test-{}", uuid::Uuid::new_v4()));
-        File::create(&path)?;
-
-        {
-            let mut cleanup = TempFileCleanup::new(Some(path.clone()));
-            cleanup.commit();
-        }
-
-        assert!(path.exists());
-        std::fs::remove_file(path)?;
-        Ok(())
-    }
-
     /// A semicolon-delimited CSV containing quoted fields with embedded
     /// semicolons must still be parsed into a table with all records.
     #[test]
     fn do_read_parses_windows1152_enconde_semicolon_delimited_csv() -> Result<()> {
-        let conn = Connection::open_in_memory()?;
-        let reader = CsvReader::new(&conn, test_client());
+        let reader = CsvReader::new(test_client());
 
         let csv_path = fixture_path("renuncia-fiscal-informacoes-conceituais-2024.csv");
         let resource = CkanResource {
@@ -438,8 +395,7 @@ mod tests {
         };
 
         let result = reader.do_read(&resource)?;
-        let total: usize = result.data.iter().map(|batch| batch.num_rows()).sum();
-        assert_eq!(total, 31, "should read all 31 data records");
+        assert_eq!(result.rows_processed, 31, "should read all 31 data records");
 
         Ok(())
     }

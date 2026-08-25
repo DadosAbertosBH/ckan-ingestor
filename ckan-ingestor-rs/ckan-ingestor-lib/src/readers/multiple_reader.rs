@@ -84,6 +84,7 @@ impl CkanReader for MultipleReader<'_> {
 mod tests {
     use std::sync::Arc;
 
+    use crate::arrow_ipc_output::ArrowIpcOutput;
     use duckdb::arrow::{
         array::{ArrayRef, StringArray},
         datatypes::{DataType, Field, Schema},
@@ -96,6 +97,15 @@ mod tests {
         formats: Vec<String>,
         fails: bool,
         returns_data: bool,
+    }
+
+    fn output(batches: &[RecordBatch]) -> ArrowIpcOutput {
+        let mut output = ArrowIpcOutput::try_new(&batches[0]).expect("valid IPC output");
+        for batch in batches {
+            output.write(batch).expect("write IPC batch");
+        }
+        output.finish().expect("finish IPC output");
+        output
     }
 
     impl TestReader {
@@ -140,10 +150,16 @@ mod tests {
                     )
                     .expect("valid test batch")]
                 } else {
-                    Vec::new()
+                    let schema =
+                        Arc::new(Schema::new(vec![Field::new("value", DataType::Utf8, true)]));
+                    vec![RecordBatch::try_new(
+                        schema,
+                        vec![Arc::new(StringArray::from(Vec::<String>::new())) as ArrayRef],
+                    )
+                    .expect("valid empty test batch")]
                 };
                 Ok(crate::readers::ckan_reader::SuccessResult::new(
-                    data,
+                    output(&data),
                     self.reader_name().to_string(),
                 ))
             }

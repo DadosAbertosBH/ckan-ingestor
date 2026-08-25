@@ -23,7 +23,6 @@ use crate::{
     readers::{ckan_reader::SuccessResult, multiple_reader::MultipleReader},
 };
 use anyhow::Result;
-use arrow_ipc::writer::FileWriter;
 use log::debug;
 
 pub struct DuckdbCkanDataIngestor<'a> {
@@ -44,22 +43,12 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
         memory_profile::log_snapshot(self.conn, "before_read", resource_id, None);
         match self.reader.read(resource) {
             Ok(result) => {
-                memory_profile::log_snapshot(
-                    self.conn,
-                    "after_read",
-                    resource_id,
-                    Some(&result.data),
-                );
+                memory_profile::log_snapshot(self.conn, "after_read", resource_id, None);
                 match self.persist_successful_ingestion(resource_id, &result) {
                     Ok(()) => {
-                        memory_profile::log_snapshot(
-                            self.conn,
-                            "after_persist",
-                            resource_id,
-                            Some(&result.data),
-                        );
+                        memory_profile::log_snapshot(self.conn, "after_persist", resource_id, None);
                         let SuccessResult {
-                            data,
+                            arrow_ipc,
                             reader,
                             preview,
                             rows_processed,
@@ -69,7 +58,7 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
                             expected_columns,
                             ..
                         } = result;
-                        drop(data);
+                        drop(arrow_ipc);
                         memory_profile::log_snapshot(
                             self.conn,
                             "after_arrow_drop",
@@ -91,13 +80,13 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
                     }
                     Err(error) => {
                         let SuccessResult {
-                            data,
+                            arrow_ipc,
                             reader,
                             expected_rows,
                             expected_columns,
                             ..
                         } = result;
-                        drop(data);
+                        drop(arrow_ipc);
                         memory_profile::log_snapshot(
                             self.conn,
                             "after_arrow_drop",
@@ -133,7 +122,7 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
             "CREATE TABLE IF NOT EXISTS ckan_resource_last_update \
               (ckan_resource_id VARCHAR, last_modified TIMESTAMP)",
         )?;
-        self.create_table_from_batches(resource_id, &result.data)?;
+        self.create_table_from_ipc(resource_id, result.arrow_ipc.path())?;
         self.update_last_modified(resource_id)?;
         Ok(())
     }
@@ -159,27 +148,12 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
         }
     }
 
-    fn create_table_from_batches(
-        &self,
-        resource_id: &str,
-        batches: &[duckdb::arrow::array::RecordBatch],
-    ) -> Result<()> {
-        let temp_path = std::env::temp_dir().join(format!("{}.arrow", uuid::Uuid::new_v4()));
-        {
-            let mut file = std::fs::File::create(&temp_path)?;
-            let mut writer = FileWriter::try_new(&mut file, &batches[0].schema())?;
-            for batch in batches {
-                writer.write(batch)?;
-            }
-            writer.finish()?;
-        }
-
+    fn create_table_from_ipc(&self, resource_id: &str, path: &std::path::Path) -> Result<()> {
         let result = self.conn.execute_batch(&format!(
             "CREATE OR REPLACE TABLE \"{}\" AS SELECT * FROM read_arrow('{}')",
             resource_id,
-            temp_path.to_string_lossy()
+            path.to_string_lossy()
         ));
-        std::fs::remove_file(&temp_path)?;
         result?;
         Ok(())
     }
@@ -208,6 +182,7 @@ mod tests {
     };
 
     use crate::{
+        arrow_ipc_output::ArrowIpcOutput,
         ckan_resource::CkanResource,
         ingestor_outcome::IngestionStatus,
         readers::{
@@ -225,6 +200,15 @@ mod tests {
         formats: Vec<String>,
     }
 
+    fn output(batches: &[RecordBatch]) -> ArrowIpcOutput {
+        let mut output = ArrowIpcOutput::try_new(&batches[0]).expect("valid IPC output");
+        for batch in batches {
+            output.write(batch).expect("write IPC batch");
+        }
+        output.finish().expect("finish IPC output");
+        output
+    }
+
     impl CkanReader for BatchReader {
         fn supported_formats(&self) -> &[String] {
             &self.formats
@@ -232,7 +216,7 @@ mod tests {
 
         fn do_read(&self, _resource: &CkanResource) -> ReadResult {
             Ok(SuccessResult::new(
-                self.batches.clone(),
+                output(&self.batches),
                 "BatchReader".to_string(),
             ))
         }
@@ -329,7 +313,7 @@ mod tests {
             )
             .expect("valid batch");
             Ok(SuccessResult::new(
-                vec![first, second],
+                output(&[first, second]),
                 self.reader_name().to_string(),
             ))
         }

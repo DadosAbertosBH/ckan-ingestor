@@ -14,6 +14,7 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
+pub mod arrow_ipc_output;
 pub mod ckan_dataset_fetcher;
 pub mod ckan_resource;
 pub mod config;

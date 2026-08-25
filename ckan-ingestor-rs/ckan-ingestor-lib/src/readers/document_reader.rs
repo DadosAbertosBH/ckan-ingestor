@@ -14,6 +14,7 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
+use crate::arrow_ipc_output::ArrowIpcOutput;
 use crate::readers::ckan_reader::{CkanReader, SuccessResult};
 use crate::s3_document_ingestor::S3DocumentIngestor;
 use crate::{ckan_resource::CkanResource, readers::ckan_reader::ReadResult};
@@ -68,8 +69,12 @@ impl CkanReader for DocumentReader<'_> {
         // Criar o RecordBatch
         let batch = RecordBatch::try_new(schema, vec![Arc::new(url_array)])?;
 
+        let mut arrow_ipc = ArrowIpcOutput::try_new(&batch)?;
+        arrow_ipc.write(&batch)?;
+        arrow_ipc.finish()?;
+
         Ok(SuccessResult::new(
-            vec![batch],
+            arrow_ipc,
             self.reader_name().to_string(),
         ))
     }

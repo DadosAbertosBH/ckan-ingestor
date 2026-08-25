@@ -965,6 +965,7 @@ dependencies = [
  "arrow",
  "arrow-csv",
  "arrow-ipc",
+ "arrow-json",
  "bytes",
  "csv-nose",
  "duckdb",

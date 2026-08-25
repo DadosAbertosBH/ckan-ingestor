@@ -72,7 +72,7 @@ fn read_datastore() -> Result<()> {
     };
 
     let result = reader.read_batches(&resource)?;
-    assert!(!result.data.is_empty());
+    assert_eq!(result.rows_processed, 1);
     assert_eq!(result.expected_rows, Some(1));
     assert_eq!(result.expected_columns, Some(3));
     Ok(())
@@ -149,10 +149,7 @@ fn empty_datastore_returns_empty_vec() -> Result<()> {
     };
 
     let result = reader.read_batches(&resource)?;
-    assert!(
-        result.data.is_empty(),
-        "Empty datastore should return empty vec, not Err"
-    );
+    assert_eq!(result.rows_processed, 0, "Empty datastore should succeed");
     Ok(())
 }
 

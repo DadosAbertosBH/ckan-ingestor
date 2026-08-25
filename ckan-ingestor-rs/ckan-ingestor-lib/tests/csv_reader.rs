@@ -39,8 +39,7 @@ fn test_client() -> reqwest::blocking::Client {
 
 #[test]
 fn parse_latin_encoded_csv() -> Result<()> {
-    let conn = duckdb::Connection::open_in_memory()?;
-    let reader = CsvReader::new(&conn, test_client());
+    let reader = CsvReader::new(test_client());
 
     let resource = CkanResource {
         id: "00000000-0000-0000-0000-ffff00000000".to_string(),
@@ -63,8 +62,7 @@ fn parse_latin_encoded_csv() -> Result<()> {
 
 #[test]
 fn parse_non_latin_and_non_utf8() -> Result<()> {
-    let conn = duckdb::Connection::open_in_memory()?;
-    let reader = CsvReader::new(&conn, test_client());
+    let reader = CsvReader::new(test_client());
 
     let resource = CkanResource {
         id: "00000000-0000-0000-0000-ffff00000000".to_string(),
@@ -94,8 +92,7 @@ fn returns_http_error_for_failed_remote_csv_download() -> Result<()> {
             .body("<html><title>Erro [500]</title></html>");
     });
 
-    let conn = duckdb::Connection::open_in_memory()?;
-    let reader = CsvReader::new(&conn, test_client());
+    let reader = CsvReader::new(test_client());
     let resource = CkanResource {
         id: "failed-remote-csv".to_string(),
         url: format!("{}/failed.csv", server.url("")),
@@ -122,8 +119,7 @@ fn returns_http_error_for_failed_remote_csv_download() -> Result<()> {
 
 #[test]
 fn parses_dm_subitem_rec_utf8_csv_fixture() -> Result<()> {
-    let conn = duckdb::Connection::open_in_memory()?;
-    let reader = CsvReader::new(&conn, test_client());
+    let reader = CsvReader::new(test_client());
 
     let resource = CkanResource {
         id: "00000000-0000-0000-0000-ffff00000000".to_string(),
@@ -145,8 +141,7 @@ fn parses_dm_subitem_rec_utf8_csv_fixture() -> Result<()> {
 
 #[test]
 fn parses_csv_with_mixed_line_endings_in_quoted_header() -> Result<()> {
-    let conn = duckdb::Connection::open_in_memory()?;
-    let reader = CsvReader::new(&conn, test_client());
+    let reader = CsvReader::new(test_client());
 
     struct TemporaryCsv(PathBuf);
 
@@ -193,8 +188,7 @@ fn parses_csv_with_mixed_line_endings_in_quoted_header() -> Result<()> {
 
 #[test]
 fn csv_with_bom() -> Result<()> {
-    let conn = duckdb::Connection::open_in_memory()?;
-    let reader = CsvReader::new(&conn, test_client());
+    let reader = CsvReader::new(test_client());
 
     let resource = CkanResource {
         id: "00000000-0000-0000-0000-ffff00000000".to_string(),
@@ -214,8 +208,7 @@ fn csv_with_bom() -> Result<()> {
 
 #[test]
 fn reads_csv_data_with_rows() -> Result<()> {
-    let conn = duckdb::Connection::open_in_memory()?;
-    let reader = CsvReader::new(&conn, test_client());
+    let reader = CsvReader::new(test_client());
 
     let resource = CkanResource {
         id: "00000000-0000-0000-0000-ffff00000000".to_string(),
@@ -235,8 +228,7 @@ fn reads_csv_data_with_rows() -> Result<()> {
 
 #[test]
 fn parses_numeric_columns_with_whitespace_padded_dash_as_null() -> Result<()> {
-    let conn = duckdb::Connection::open_in_memory()?;
-    let reader = CsvReader::new(&conn, test_client());
+    let reader = CsvReader::new(test_client());
 
     let resource = CkanResource {
         id: "cb05125e-e879-420f-9bf6-0fcbc75bbc8e".to_string(),
@@ -252,12 +244,16 @@ fn parses_numeric_columns_with_whitespace_padded_dash_as_null() -> Result<()> {
 
     assert_eq!(result.rows_processed, 52);
     assert_eq!(result.number_of_columns, 19);
+    let batches: Vec<_> = arrow_ipc::reader::FileReader::try_new(
+        std::fs::File::open(result.arrow_ipc.path())?,
+        None,
+    )?
+    .collect::<std::result::Result<_, _>>()?;
     assert_eq!(
-        result.data[0].schema().field(16).data_type(),
+        batches[0].schema().field(16).data_type(),
         &duckdb::arrow::datatypes::DataType::Float64
     );
-    let null_count: usize = result
-        .data
+    let null_count: usize = batches
         .iter()
         .map(|batch| batch.column(16).null_count())
         .sum();
@@ -277,8 +273,7 @@ fn parse_remote_gzip_csv() -> Result<()> {
         then.status(200).body(compressed.clone());
     });
 
-    let conn = duckdb::Connection::open_in_memory()?;
-    let reader = CsvReader::new(&conn, test_client());
+    let reader = CsvReader::new(test_client());
     let resource = CkanResource {
         id: "cfba57bb-358b-4b43-96e6-477920e39f19".to_string(),
         url: format!("{}/ft_diarias_2014.csv.gz", server.url("")),
@@ -309,8 +304,7 @@ fn fails_to_parse_quoted_semicolon_after_long_csv_sample() -> Result<()> {
         then.status(200).body(csv);
     });
 
-    let conn = duckdb::Connection::open_in_memory()?;
-    let reader = CsvReader::new(&conn, test_client());
+    let reader = CsvReader::new(test_client());
     let resource = CkanResource {
         id: "0331ad41-85e6-41da-bbf2-19c0505beef5".to_string(),
         url: format!("{}/dm_favorecido.csv", server.url("")),

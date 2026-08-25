@@ -17,6 +17,7 @@
 use std::sync::Arc;
 
 use crate::{
+    arrow_ipc_output::ArrowIpcOutput,
     ckan_resource::CkanResource,
     readers::ckan_reader::{CkanReader, FailedResult, ReadResult, SuccessResult},
 };
@@ -102,7 +103,7 @@ impl DatastoreReader {
     pub fn read_batches(&self, resource: &CkanResource) -> ReadResult {
         let resource_id = &resource.id;
         let mut offset = 0;
-        let mut batches = Vec::new();
+        let mut arrow_ipc = None;
         let (rows, columns) = self.get_row_and_column_count(resource_id)?;
         loop {
             let url = format!(
@@ -123,10 +124,6 @@ impl DatastoreReader {
                 FailedResult::from_string("records not array", self.reader_name().to_string())
             })?;
 
-            if recs.is_empty() {
-                break;
-            }
-
             let column_names: Vec<String> = fields
                 .as_array()
                 .ok_or_else(|| {
@@ -135,6 +132,24 @@ impl DatastoreReader {
                 .iter()
                 .filter_map(|f| f.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
                 .collect();
+
+            if arrow_ipc.is_none() {
+                let schema_fields: Vec<Field> = column_names
+                    .iter()
+                    .map(|name| Field::new(name, DataType::Utf8, true))
+                    .collect();
+                let schema = Arc::new(Schema::new(schema_fields));
+                let empty_arrays: Vec<ArrayRef> = column_names
+                    .iter()
+                    .map(|_| Arc::new(StringArray::from(Vec::<String>::new())) as ArrayRef)
+                    .collect();
+                let empty_batch = RecordBatch::try_new(schema, empty_arrays)?;
+                arrow_ipc = Some(ArrowIpcOutput::try_new(&empty_batch)?);
+            }
+
+            if recs.is_empty() {
+                break;
+            }
 
             let mut columns: Vec<Vec<String>> = vec![Vec::new(); column_names.len()];
             for rec in recs {
@@ -159,19 +174,24 @@ impl DatastoreReader {
                 .map(|c| Arc::new(StringArray::from(c)) as ArrayRef)
                 .collect();
 
-            let schema_fields: Vec<Field> = column_names
-                .iter()
-                .map(|n| Field::new(n, DataType::Utf8, true))
-                .collect();
-
-            let schema = Arc::new(Schema::new(schema_fields));
+            let schema = arrow_ipc
+                .as_ref()
+                .expect("Arrow IPC output initialized")
+                .writer
+                .schema()
+                .clone();
             let batch = RecordBatch::try_new(schema, arrays)?;
-            batches.push(batch);
+            arrow_ipc
+                .as_mut()
+                .expect("Arrow IPC output initialized")
+                .write(&batch)?;
             offset += MAX_RECORDS_FETCH;
         }
 
+        let mut arrow_ipc = arrow_ipc.ok_or_else(|| anyhow::anyhow!("No data"))?;
+        arrow_ipc.finish()?;
         Ok(SuccessResult::from_datastore(
-            batches,
+            arrow_ipc,
             rows,
             columns,
             self.reader_name().to_string(),

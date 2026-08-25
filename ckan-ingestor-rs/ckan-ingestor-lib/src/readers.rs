@@ -20,3 +20,4 @@ pub mod datastore_reader;
 pub mod document_reader;
 pub mod json_reader;
 pub mod multiple_reader;
+pub mod temp_file_cleanup;

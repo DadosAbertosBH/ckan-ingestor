@@ -167,8 +167,8 @@ fn run_ingestion(
             job.ckan_url.clone(),
             http_client.clone(),
         )),
-        Box::new(CsvReader::new(conn, http_client)),
-        Box::new(JsonReader::new(conn)),
+        Box::new(CsvReader::new(http_client)),
+        Box::new(JsonReader::new()),
         Box::new(DocumentReader::new(s3)),
     ]);
     let ingestor = DuckdbCkanDataIngestor::new(conn, &reader);

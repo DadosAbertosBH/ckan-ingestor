@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git Release Tag"
+  short_description: "Create and push the next semantic version tag"
+  default_prompt: "Create the next release tag for the current repository and push it to origin."
