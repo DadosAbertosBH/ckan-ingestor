@@ -10,6 +10,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 anyhow = "1.0"
 arrow = { version = "58.4.0", features = ["ipc"] }
+arrow-csv = "58.4.0"
 arrow-ipc = "58.4.0"
 duckdb = "1.5.5"
 uuid = { version = "1.17.0", features = ["v4"] }
@@ -18,6 +19,9 @@ libduckdb-sys = "1.5.5"
 rust-s3 = { version = "0.37", default-features = false, features = ["sync-rustls-tls"] }
 csv-nose = { git = "https://github.com/guitcastro/csv-nose.git", branch = "issue-44-encoding-metadata" }
 flate2 = "1"
+encoding_rs = "0.8"
+encoding_rs_io = "0.1"
+regex = "1"
 
 [dev-dependencies]
 httpmock = "0.7"

@@ -21,5 +21,6 @@ pub mod dataset_fetcher;
 pub mod duckdb_ckan_data_ingestor;
 pub mod duckdb_factory;
 pub mod ingestor_outcome;
+pub(crate) mod memory_profile;
 pub mod readers;
 pub mod s3_document_ingestor;

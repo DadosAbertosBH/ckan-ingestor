@@ -17,15 +17,19 @@
 use crate::ckan_resource::CkanResource;
 use crate::readers::ckan_reader::{CkanReader, ReadResult, SuccessResult};
 use anyhow::Result;
+use arrow_csv::reader::{Format, ReaderBuilder};
 use csv_nose::{Metadata, Quote, SampleSize, Sniffer};
 use duckdb::arrow::array::RecordBatch;
 use duckdb::Connection;
+use encoding_rs::Encoding;
+use encoding_rs_io::DecodeReaderBytesBuilder;
 use flate2::read::GzDecoder;
+use regex::Regex;
 use std::fs::File;
-use std::io;
+use std::io::{self, BufRead, BufReader, Read};
 
 pub struct CsvReader<'a> {
-    conn: &'a Connection,
+    _conn: &'a Connection,
     client: reqwest::blocking::Client,
     supported_formats: Vec<String>,
 }
@@ -33,7 +37,7 @@ pub struct CsvReader<'a> {
 impl<'a> CsvReader<'a> {
     pub fn new(conn: &'a Connection, client: reqwest::blocking::Client) -> Self {
         Self {
-            conn,
+            _conn: conn,
             client,
             supported_formats: vec!["CSV".to_string()],
         }
@@ -66,12 +70,14 @@ impl<'a> CsvReader<'a> {
 
         let metadata = sniff_metadata(&csv_path)?;
         let encoding = metadata.encoding.name.to_string();
-        let batches = match self.try_read_csv(&csv_path, &metadata, true) {
-            Ok(batches) => (batches, true),
-            Err(error) if is_csv_sniffing_error(&error) => {
-                (self.try_read_csv(&csv_path, &metadata, false)?, false)
-            }
-            Err(error) => return Err(error.into()),
+        let has_mixed_line_endings = has_mixed_line_endings(
+            &csv_path,
+            metadata.encoding.name,
+            metadata.dialect.header.num_preamble_rows,
+        )?;
+        let batches = match try_read_csv(&csv_path, &metadata, true) {
+            Ok(batches) => (batches, !has_mixed_line_endings),
+            Err(_) => (try_read_csv(&csv_path, &metadata, false)?, false),
         };
 
         Ok(SuccessResult::from_csv(
@@ -98,51 +104,40 @@ impl<'a> CsvReader<'a> {
         std::fs::write(&temp_path, &bytes)?;
         Ok(temp_path.to_string_lossy().to_string())
     }
-
-    /// Try DuckDB's `read_csv` with a specific encoding.
-    fn try_read_csv(
-        &self,
-        path: &str,
-        metadata: &Metadata,
-        strict_mode: bool,
-    ) -> Result<Vec<RecordBatch>> {
-        let dialect = &metadata.dialect;
-        let quote = match dialect.quote {
-            Quote::None => String::new(),
-            Quote::Some(value) => (value as char).to_string(),
-        };
-        let mut stmt = self.conn.prepare(&format!(
-            "SELECT * FROM read_csv('{}', sample_size=20000, encoding='{}', delim='{}', quote='{}', header={}, skip={}, strict_mode={}, nullstr=['', '-', ' - ', ' -   '])",
-            escape_sql_literal(path),
-            escape_sql_literal(duckdb_encoding(metadata.encoding.name)),
-            escape_sql_literal((dialect.delimiter as char).to_string()),
-            escape_sql_literal(&quote),
-            dialect.header.has_header_row,
-            dialect.header.num_preamble_rows,
-            strict_mode,
-        ))?;
-        let arrow_iter = stmt.query_arrow([])?;
-        let batches: Vec<RecordBatch> = arrow_iter.collect();
-        if batches.is_empty() || batches.iter().all(|b| b.num_rows() == 0) {
-            anyhow::bail!("No data");
-        }
-        Ok(batches)
-    }
 }
 
-fn escape_sql_literal(value: impl AsRef<str>) -> String {
-    value.as_ref().replace('\'', "''")
-}
+fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<Vec<RecordBatch>> {
+    let dialect = &metadata.dialect;
+    let format = Format::default()
+        .with_header(dialect.header.has_header_row)
+        .with_delimiter(dialect.delimiter)
+        .with_truncated_rows(!strict_mode)
+        .with_null_regex(Regex::new(r"^(| - | -   | -)$")?);
+    let format = match dialect.quote {
+        Quote::None => format.with_quote(0),
+        Quote::Some(quote) => format.with_quote(quote),
+    };
 
-fn duckdb_encoding(name: &str) -> &str {
-    match name {
-        "UTF-8" => "utf-8",
-        "UTF-16LE" | "UTF-16BE" => "utf-16",
-        "windows-1252" => "CP1252",
-        "windows-1251" => "CP1251",
-        "ISO-8859-1" => "latin-1",
-        other => other,
+    let mut schema_reader = decoded_reader(
+        path,
+        metadata.encoding.name,
+        dialect.header.num_preamble_rows,
+    )?;
+    let (schema, _) = format.infer_schema(&mut schema_reader, Some(50_000))?;
+    let reader = decoded_reader(
+        path,
+        metadata.encoding.name,
+        dialect.header.num_preamble_rows,
+    )?;
+    let csv_reader = ReaderBuilder::new(std::sync::Arc::new(schema))
+        .with_format(format)
+        .with_batch_size(32_768)
+        .build(reader)?;
+    let batches: Vec<RecordBatch> = csv_reader.collect::<std::result::Result<_, _>>()?;
+    if batches.is_empty() || batches.iter().all(|b| b.num_rows() == 0) {
+        anyhow::bail!("No data");
     }
+    Ok(batches)
 }
 
 fn sniff_metadata(path: &str) -> Result<Metadata> {
@@ -166,8 +161,52 @@ fn sniff_metadata(path: &str) -> Result<Metadata> {
     result
 }
 
-fn is_csv_sniffing_error(error: &anyhow::Error) -> bool {
-    error.to_string().contains("Error when sniffing file")
+fn encoding(name: &str) -> Result<&'static Encoding> {
+    Encoding::for_label(name.as_bytes())
+        .ok_or_else(|| anyhow::anyhow!("unsupported CSV encoding detected: {name}"))
+}
+
+fn decode_reader<R: Read>(reader: R, name: &str) -> Result<impl Read> {
+    let mut builder = DecodeReaderBytesBuilder::new();
+    builder.encoding(Some(encoding(name)?));
+    Ok(builder.build(reader))
+}
+
+fn decoded_reader(path: &str, encoding_name: &str, preamble_rows: usize) -> Result<Box<dyn Read>> {
+    let input: Box<dyn Read> = if path.to_ascii_lowercase().ends_with(".gz") {
+        Box::new(GzDecoder::new(File::open(path)?))
+    } else {
+        Box::new(File::open(path)?)
+    };
+    let mut reader = BufReader::new(decode_reader(input, encoding_name)?);
+    let mut line = String::new();
+    for _ in 0..preamble_rows {
+        line.clear();
+        if reader.read_line(&mut line)? == 0 {
+            break;
+        }
+    }
+    Ok(Box::new(reader))
+}
+
+fn has_mixed_line_endings(path: &str, encoding_name: &str, preamble_rows: usize) -> Result<bool> {
+    let mut reader = decoded_reader(path, encoding_name, preamble_rows)?;
+    let mut sample = Vec::new();
+    reader.by_ref().take(1024 * 1024).read_to_end(&mut sample)?;
+
+    let mut has_crlf = false;
+    let mut has_bare_lf = false;
+    for (index, byte) in sample.iter().enumerate() {
+        if *byte != b'\n' {
+            continue;
+        }
+        if index > 0 && sample[index - 1] == b'\r' {
+            has_crlf = true;
+        } else {
+            has_bare_lf = true;
+        }
+    }
+    Ok(has_crlf && has_bare_lf)
 }
 
 fn downloaded_csv_suffix(url: &str) -> &'static str {
@@ -192,6 +231,7 @@ impl CkanReader for CsvReader<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
     use std::path::PathBuf;
     use std::time::Duration;
 
@@ -211,11 +251,21 @@ mod tests {
     }
 
     #[test]
-    fn maps_csv_nose_encoding_names_to_duckdb_aliases() {
-        assert_eq!(duckdb_encoding("UTF-8"), "utf-8");
-        assert_eq!(duckdb_encoding("windows-1252"), "CP1252");
-        assert_eq!(duckdb_encoding("ISO-8859-1"), "latin-1");
-        assert_eq!(duckdb_encoding("custom-encoding"), "custom-encoding");
+    fn supports_csv_nose_encoding_names() {
+        assert!(encoding("UTF-8").is_ok());
+        assert!(encoding("windows-1252").is_ok());
+        assert!(encoding("UTF-16LE").is_ok());
+    }
+
+    #[test]
+    fn decodes_windows_1252_as_utf8_while_streaming() -> Result<()> {
+        let bytes = b"name\nCaf\xe9\n";
+        let mut reader = decode_reader(bytes.as_slice(), "windows-1252")?;
+        let mut decoded = String::new();
+        reader.read_to_string(&mut decoded)?;
+
+        assert_eq!(decoded, "name\nCafé\n");
+        Ok(())
     }
 
     /// A semicolon-delimited CSV containing quoted fields with embedded

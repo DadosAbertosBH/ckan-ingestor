@@ -962,14 +962,18 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arrow",
+ "arrow-csv",
  "arrow-ipc",
  "bytes",
  "csv-nose",
  "duckdb",
+ "encoding_rs",
+ "encoding_rs_io",
  "flate2",
  "httpmock",
  "libduckdb-sys",
  "log",
+ "regex",
  "reqwest",
  "rstest",
  "rust-s3",
@@ -1460,6 +1464,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "encoding_rs_io"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fba3fe847045ecff794b9c138293a80db914678c453ad63fbf0c6a9eb6e00b22"
+dependencies = [
+ "encoding_rs",
 ]
 
 [[package]]
@@ -3165,7 +3178,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.0",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
@@ -3203,9 +3216,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.0",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

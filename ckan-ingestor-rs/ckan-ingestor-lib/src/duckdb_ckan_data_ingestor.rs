@@ -16,6 +16,7 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::ingestor_outcome::{IngestionOutcome, IngestionStatus};
+use crate::memory_profile;
 use crate::{
     ckan_resource::CkanResource,
     readers::ckan_reader::CkanReader,
@@ -40,28 +41,79 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
 
         debug!("updating {} from resource {}", resource_id, resource_id);
 
+        memory_profile::log_snapshot(self.conn, "before_read", resource_id, None);
         match self.reader.read(resource) {
-            Ok(result) => match self.persist_successful_ingestion(resource_id, &result) {
-                Ok(()) => IngestionOutcome {
-                    reader: result.reader,
-                    rows_processed: result.rows_processed,
-                    preview: result.preview,
-                    expected_rows: result.expected_rows,
-                    encoding: result.encoding,
-                    csv_strict_mode: result.csv_strict_mode,
-                    datastore_active: resource.datastore_active,
-                    expected_columns: result.expected_columns,
-                    error_message: None,
-                    status: IngestionStatus::Success,
-                },
-                Err(error) => Self::failed_outcome(
-                    result.reader,
-                    resource,
-                    error.to_string(),
-                    result.expected_rows,
-                    result.expected_columns,
-                ),
-            },
+            Ok(result) => {
+                memory_profile::log_snapshot(
+                    self.conn,
+                    "after_read",
+                    resource_id,
+                    Some(&result.data),
+                );
+                match self.persist_successful_ingestion(resource_id, &result) {
+                    Ok(()) => {
+                        memory_profile::log_snapshot(
+                            self.conn,
+                            "after_persist",
+                            resource_id,
+                            Some(&result.data),
+                        );
+                        let SuccessResult {
+                            data,
+                            reader,
+                            preview,
+                            rows_processed,
+                            expected_rows,
+                            encoding,
+                            csv_strict_mode,
+                            expected_columns,
+                            ..
+                        } = result;
+                        drop(data);
+                        memory_profile::log_snapshot(
+                            self.conn,
+                            "after_arrow_drop",
+                            resource_id,
+                            None,
+                        );
+                        IngestionOutcome {
+                            reader,
+                            rows_processed,
+                            preview,
+                            expected_rows,
+                            encoding,
+                            csv_strict_mode,
+                            datastore_active: resource.datastore_active,
+                            expected_columns,
+                            error_message: None,
+                            status: IngestionStatus::Success,
+                        }
+                    }
+                    Err(error) => {
+                        let SuccessResult {
+                            data,
+                            reader,
+                            expected_rows,
+                            expected_columns,
+                            ..
+                        } = result;
+                        drop(data);
+                        memory_profile::log_snapshot(
+                            self.conn,
+                            "after_arrow_drop",
+                            resource_id,
+                            None,
+                        );
+                        Self::failed_outcome(
+                            reader,
+                            resource,
+                            error.to_string(),
+                            expected_rows,
+                            expected_columns,
+                        )
+                    }
+                }
+            }
             Err(failed) => Self::failed_outcome(
                 failed.reader,
                 resource,

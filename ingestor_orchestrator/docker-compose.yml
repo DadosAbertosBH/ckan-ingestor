@@ -189,7 +189,7 @@ services:
       S3_SECRET_ACCESS_KEY: password
       S3_USE_SSL: "false"
       S3_URL_STYLE: path
-      RUST_LOG: info
+      RUST_LOG: "info,memory_profile=debug"
     networks:
       - orchestrator_net
 
