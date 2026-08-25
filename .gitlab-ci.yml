@@ -102,25 +102,67 @@ test-rust:
     - changes:
         - "ckan-ingestor-rs/**/*"
 
-build-orchestrator:
+.build-orchestrator-base:
   stage: build
+  image: docker
+  timeout: 2h
   script:
     - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
-    - docker pull $CI_REGISTRY_IMAGE/orchestrator:latest || true
     - docker context create builder
     - docker buildx create builder --use
     - |
-      TAG_ARGS="--tag $CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA --tag $CI_REGISTRY_IMAGE/orchestrator:latest"
-      if [ -n "$CI_COMMIT_TAG" ]; then
-        TAG_ARGS="$TAG_ARGS --tag $CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_TAG"
-      fi
+      ARCH_TAG="$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA-$TARGET_ARCH"
       docker buildx build \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
-        --cache-from $CI_REGISTRY_IMAGE/orchestrator:latest \
-        --platform linux/amd64,linux/arm64 \
-        $TAG_ARGS \
+        --cache-from type=registry,ref=$CI_REGISTRY_IMAGE/orchestrator-cache:$TARGET_ARCH \
+        --cache-to type=registry,ref=$CI_REGISTRY_IMAGE/orchestrator-cache:$TARGET_ARCH,mode=max \
+        --platform linux/$TARGET_ARCH \
+        --tag "$ARCH_TAG" \
         --file ingestor_orchestrator/Dockerfile \
         --push .
+  rules:
+    - if: $CI_COMMIT_TAG
+
+build-orchestrator-amd64:
+  extends: .build-orchestrator-base
+  variables:
+    TARGET_ARCH: amd64
+  tags:
+    - saas-linux-medium-amd64
+
+build-orchestrator-arm64:
+  extends: .build-orchestrator-base
+  variables:
+    TARGET_ARCH: arm64
+  tags:
+    - saas-linux-small-arm64
+
+build-orchestrator:
+  stage: build
+  image: docker
+  timeout: 2h
+  needs:
+    - build-orchestrator-amd64
+    - build-orchestrator-arm64
+  script:
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
+    - docker context create builder
+    - docker buildx create builder --use
+    - |
+      AMD64="$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA-amd64"
+      ARM64="$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA-arm64"
+      docker buildx imagetools create \
+        --tag "$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA" \
+        --tag "$CI_REGISTRY_IMAGE/orchestrator:latest" \
+        "$AMD64" \
+        "$ARM64"
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        docker buildx imagetools create \
+          --tag "$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_TAG" \
+          "$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA-amd64" \
+          "$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA-arm64"
+      fi
   rules:
     - if: $CI_COMMIT_TAG
 
