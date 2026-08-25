@@ -17,8 +17,19 @@
 
 use anyhow::Result;
 
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn installs_a_process_level_rustls_provider() {
+        super::install_rustls_crypto_provider();
+        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    install_rustls_crypto_provider();
+
     std::panic::set_hook(Box::new(|info| {
         eprintln!("{}", info);
         std::process::abort();
@@ -28,4 +39,12 @@ async fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     ckan_ingestor_consumer::run().await
+}
+
+fn install_rustls_crypto_provider() {
+    if rustls::crypto::CryptoProvider::get_default().is_none() {
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .expect("failed to install the rustls crypto provider");
+    }
 }
