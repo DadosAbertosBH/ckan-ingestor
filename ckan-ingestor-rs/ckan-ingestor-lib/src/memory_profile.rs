@@ -19,6 +19,10 @@ use duckdb::arrow::array::RecordBatch;
 use duckdb::Connection;
 use log::debug;
 
+#[cfg(test)]
+static SNAPSHOT_COLLECTION_COUNT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 #[derive(Debug)]
 struct DuckDbMemory {
     tag: String,
@@ -39,6 +43,13 @@ pub(crate) fn log_snapshot(
     resource_id: &str,
     batches: Option<&[RecordBatch]>,
 ) {
+    if !log::log_enabled!(target: "memory_profile", log::Level::Debug) {
+        return;
+    }
+
+    #[cfg(test)]
+    SNAPSHOT_COLLECTION_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
     let process_rss_bytes = read_process_rss_bytes();
     let cgroup_memory_bytes = read_u64_file("/sys/fs/cgroup/memory.current");
     let cgroup_memory_limit_bytes = std::fs::read_to_string("/sys/fs/cgroup/memory.max")
@@ -145,6 +156,20 @@ mod tests {
 
     use duckdb::arrow::datatypes::Schema;
 
+    struct DisabledLogger;
+
+    impl log::Log for DisabledLogger {
+        fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+            false
+        }
+
+        fn log(&self, _: &log::Record<'_>) {}
+
+        fn flush(&self) {}
+    }
+
+    static DISABLED_LOGGER: DisabledLogger = DisabledLogger;
+
     #[test]
     fn parses_linux_memory_values_in_kibibytes() {
         assert_eq!(parse_memory_value("VmRSS:       2048 kB"), Some(2_097_152));
@@ -180,6 +205,21 @@ mod tests {
                 row_count: 0,
                 memory_bytes: 0,
             }
+        );
+    }
+
+    #[test]
+    fn skips_snapshot_collection_when_profiling_is_disabled() {
+        log::set_logger(&DISABLED_LOGGER).expect("test logger should be installed once");
+        log::set_max_level(log::LevelFilter::Trace);
+        SNAPSHOT_COLLECTION_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
+        let conn = Connection::open_in_memory().expect("in-memory DuckDB");
+
+        log_snapshot(&conn, "test", "resource", None);
+
+        assert_eq!(
+            SNAPSHOT_COLLECTION_COUNT.load(std::sync::atomic::Ordering::SeqCst),
+            0
         );
     }
 }

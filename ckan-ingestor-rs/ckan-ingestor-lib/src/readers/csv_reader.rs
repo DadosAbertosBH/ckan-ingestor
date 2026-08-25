@@ -26,7 +26,30 @@ use encoding_rs_io::DecodeReaderBytesBuilder;
 use flate2::read::GzDecoder;
 use regex::Regex;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, Read};
+use std::io::{self, BufRead, BufReader, Read, Write};
+use std::path::PathBuf;
+
+struct TempFileCleanup {
+    path: Option<PathBuf>,
+}
+
+impl TempFileCleanup {
+    fn new(path: Option<PathBuf>) -> Self {
+        Self { path }
+    }
+
+    fn commit(&mut self) {
+        self.path = None;
+    }
+}
+
+impl Drop for TempFileCleanup {
+    fn drop(&mut self) {
+        if let Some(path) = self.path.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
 
 pub struct CsvReader<'a> {
     _conn: &'a Connection,
@@ -53,17 +76,8 @@ impl<'a> CsvReader<'a> {
             resource.url.clone()
         };
 
-        // Cleanup temp file when done
-        struct Cleanup(Option<String>);
-        impl Drop for Cleanup {
-            fn drop(&mut self) {
-                if let Some(ref path) = self.0 {
-                    let _ = std::fs::remove_file(path);
-                }
-            }
-        }
-        let _cleanup = Cleanup(if is_remote {
-            Some(csv_path.clone())
+        let _cleanup = TempFileCleanup::new(if is_remote {
+            Some(PathBuf::from(&csv_path))
         } else {
             None
         });
@@ -90,20 +104,26 @@ impl<'a> CsvReader<'a> {
 
     /// Download a remote file to a temporary location.
     fn download_to_temp(&self, url: &str) -> Result<String> {
-        let response = self.client.get(url).send()?;
+        let mut response = self.client.get(url).send()?;
         let status = response.status();
         if !status.is_success() {
             anyhow::bail!("CSV download failed with HTTP status {status}: {url}");
         }
-        let bytes = response.bytes()?;
         let temp_path = std::env::temp_dir().join(format!(
             "{}{}",
             uuid::Uuid::new_v4(),
             downloaded_csv_suffix(url)
         ));
-        std::fs::write(&temp_path, &bytes)?;
+        let mut cleanup = TempFileCleanup::new(Some(temp_path.clone()));
+        let mut output = File::create(&temp_path)?;
+        stream_download(&mut response, &mut output)?;
+        cleanup.commit();
         Ok(temp_path.to_string_lossy().to_string())
     }
+}
+
+fn stream_download(reader: &mut impl Read, writer: &mut impl Write) -> io::Result<u64> {
+    io::copy(reader, writer)
 }
 
 fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<Vec<RecordBatch>> {
@@ -231,9 +251,51 @@ impl CkanReader for CsvReader<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Read;
+    use std::cell::Cell;
+    use std::io::{Read, Write};
     use std::path::PathBuf;
+    use std::rc::Rc;
     use std::time::Duration;
+
+    struct WriteAwareReader {
+        write_started: Rc<Cell<bool>>,
+        reads: usize,
+    }
+
+    impl Read for WriteAwareReader {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            if self.reads == 1 && !self.write_started.get() {
+                return Err(io::Error::other(
+                    "the next download chunk was read before the first was written",
+                ));
+            }
+            if self.reads >= 2 {
+                return Ok(0);
+            }
+
+            let chunk: &[u8] = if self.reads == 0 { b"first" } else { b"second" };
+            buffer[..chunk.len()].copy_from_slice(chunk);
+            self.reads += 1;
+            Ok(chunk.len())
+        }
+    }
+
+    struct WriteObserver {
+        write_started: Rc<Cell<bool>>,
+        bytes: Vec<u8>,
+    }
+
+    impl Write for WriteObserver {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            self.write_started.set(true);
+            self.bytes.extend_from_slice(buffer);
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
 
     fn fixture_path(file: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -265,6 +327,52 @@ mod tests {
         reader.read_to_string(&mut decoded)?;
 
         assert_eq!(decoded, "name\nCafé\n");
+        Ok(())
+    }
+
+    #[test]
+    fn writes_each_download_chunk_before_reading_the_next_one() -> Result<()> {
+        let write_started = Rc::new(Cell::new(false));
+        let mut reader = WriteAwareReader {
+            write_started: Rc::clone(&write_started),
+            reads: 0,
+        };
+        let mut writer = WriteObserver {
+            write_started,
+            bytes: Vec::new(),
+        };
+
+        stream_download(&mut reader, &mut writer)?;
+
+        assert_eq!(writer.bytes, b"firstsecond");
+        Ok(())
+    }
+
+    #[test]
+    fn temp_file_cleanup_guard_removes_uncommitted_files() -> Result<()> {
+        let path = std::env::temp_dir().join(format!("csv-reader-test-{}", uuid::Uuid::new_v4()));
+        File::create(&path)?;
+
+        {
+            let _cleanup = TempFileCleanup::new(Some(path.clone()));
+        }
+
+        assert!(!path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn temp_file_cleanup_guard_preserves_committed_files() -> Result<()> {
+        let path = std::env::temp_dir().join(format!("csv-reader-test-{}", uuid::Uuid::new_v4()));
+        File::create(&path)?;
+
+        {
+            let mut cleanup = TempFileCleanup::new(Some(path.clone()));
+            cleanup.commit();
+        }
+
+        assert!(path.exists());
+        std::fs::remove_file(path)?;
         Ok(())
     }
 
