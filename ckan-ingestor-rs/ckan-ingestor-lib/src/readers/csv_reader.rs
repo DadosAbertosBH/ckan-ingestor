@@ -106,8 +106,12 @@ impl<'a> CsvReader<'a> {
     fn download_to_temp(&self, url: &str) -> Result<String> {
         let mut response = self.client.get(url).send()?;
         let status = response.status();
+        let content_type = response_header(&response, reqwest::header::CONTENT_TYPE);
+        let content_encoding = response_header(&response, reqwest::header::CONTENT_ENCODING);
         if !status.is_success() {
-            anyhow::bail!("CSV download failed with HTTP status {status}: {url}");
+            anyhow::bail!(
+                "CSV download failed with HTTP status {status}: {url} (Content-Type: {content_type}, Content-Encoding: {content_encoding})"
+            );
         }
         let temp_path = std::env::temp_dir().join(format!(
             "{}{}",
@@ -116,10 +120,36 @@ impl<'a> CsvReader<'a> {
         ));
         let mut cleanup = TempFileCleanup::new(Some(temp_path.clone()));
         let mut output = File::create(&temp_path)?;
-        stream_download(&mut response, &mut output)?;
+        stream_download(&mut response, &mut output).map_err(|error| {
+            download_body_error(url, status, &content_type, &content_encoding, error)
+        })?;
         cleanup.commit();
         Ok(temp_path.to_string_lossy().to_string())
     }
+}
+
+fn response_header(
+    resp: &reqwest::blocking::Response,
+    name: reqwest::header::HeaderName,
+) -> String {
+    resp.headers()
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("<missing or invalid>")
+        .to_string()
+}
+
+fn download_body_error(
+    url: &str,
+    status: reqwest::StatusCode,
+    content_type: &str,
+    content_encoding: &str,
+    error: io::Error,
+) -> anyhow::Error {
+    let message = format!(
+        "error reading CSV response body from {url} (HTTP status {status}, Content-Type: {content_type}, Content-Encoding: {content_encoding}): {error}"
+    );
+    anyhow::Error::new(error).context(message)
 }
 
 fn stream_download(reader: &mut impl Read, writer: &mut impl Write) -> io::Result<u64> {
@@ -346,6 +376,22 @@ mod tests {
 
         assert_eq!(writer.bytes, b"firstsecond");
         Ok(())
+    }
+
+    #[test]
+    fn download_body_error_includes_original_error_message() {
+        let error = download_body_error(
+            "https://example.test/data.csv",
+            reqwest::StatusCode::OK,
+            "text/csv",
+            "gzip",
+            io::Error::other("error decoding response body"),
+        );
+
+        let message = error.to_string();
+        assert!(message.contains("error reading CSV response body"));
+        assert!(message.contains("Content-Encoding: gzip"));
+        assert!(message.contains("error decoding response body"));
     }
 
     #[test]

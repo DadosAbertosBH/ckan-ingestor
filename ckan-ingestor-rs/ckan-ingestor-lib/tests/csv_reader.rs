@@ -109,6 +109,14 @@ fn returns_http_error_for_failed_remote_csv_download() -> Result<()> {
     };
     let message = error.to_string();
     assert!(message.contains("500"), "unexpected error: {message}");
+    assert!(
+        message.contains("Content-Type: text/html"),
+        "unexpected error: {message}"
+    );
+    assert!(
+        message.contains("Content-Encoding: <missing or invalid>"),
+        "unexpected error: {message}"
+    );
     Ok(())
 }
 
