@@ -30,15 +30,10 @@ use duckdb::arrow::{
 use reqwest::blocking::Client;
 use serde_json::Value;
 
-const MAX_RECORDS_FETCH: usize = 100_000;
+const MAX_RECORDS_FETCH: usize = 8_192;
 const MAX_ERROR_BODY_LENGTH: usize = 512;
 
-fn decode_json_response(resp: reqwest::blocking::Response, url: &str) -> Result<Value> {
-    let status = resp.status();
-    if !status.is_success() {
-        anyhow::bail!("datastore request failed with HTTP status {status}: {url}");
-    }
-    let body = resp.text()?;
+fn decode_json_body(body: String, url: &str) -> Result<Value> {
     let body_preview: String = body.chars().take(MAX_ERROR_BODY_LENGTH).collect();
     serde_json::from_str(&body).with_context(|| {
         format!(
@@ -76,8 +71,7 @@ impl DatastoreReader {
             "{}?resource_id={}&limit=0",
             self.datastore_metadata_url, resource_id
         );
-        let resp = self.client.get(&url).send()?;
-        let json = decode_json_response(resp, &url)?;
+        let json = self.fetch_json(&url)?;
         let json = json.get("result").unwrap_or(&json);
 
         let total = json
@@ -97,6 +91,16 @@ impl DatastoreReader {
         Ok((rows, columns))
     }
 
+    fn fetch_json(&self, url: &str) -> Result<Value> {
+        let response = self.client.get(url).send()?;
+        let status = response.status();
+        if !status.is_success() {
+            anyhow::bail!("datastore request failed with HTTP status {status}: {url}");
+        }
+        let body = response.text()?;
+        decode_json_body(body, url)
+    }
+
     /// Read datastore records and return Arrow batches.
     /// Returns empty vec for empty datastore (instead of Err).
     /// Mirrors Python's `DatastoreReader.read()`.
@@ -110,36 +114,34 @@ impl DatastoreReader {
                 "{}/{}?format=json&offset={}&limit={}",
                 self.datastore_url, resource_id, offset, MAX_RECORDS_FETCH
             );
-            let resp = self.client.get(&url).send()?;
-            let json = decode_json_response(resp, &url)?;
+            let json = self.fetch_json(&url)?;
             let json = json.get("result").unwrap_or(&json);
-
-            let recs = json.get("records").ok_or_else(|| {
+            let records = json.get("records").ok_or_else(|| {
                 FailedResult::from_string("records missing", self.reader_name().to_string())
             })?;
             let fields = json.get("fields").ok_or_else(|| {
                 FailedResult::from_string("fields missing", self.reader_name().to_string())
             })?;
-            let recs = recs.as_array().ok_or_else(|| {
+            let records = records.as_array().ok_or_else(|| {
                 FailedResult::from_string("records not array", self.reader_name().to_string())
             })?;
-
             let column_names: Vec<String> = fields
                 .as_array()
                 .ok_or_else(|| {
                     FailedResult::from_string("fields not array", self.reader_name().to_string())
                 })?
                 .iter()
-                .filter_map(|f| f.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                .filter_map(|field| field.get("id").and_then(Value::as_str).map(str::to_string))
                 .collect();
 
             if arrow_ipc.is_none() {
-                let schema_fields: Vec<Field> = column_names
-                    .iter()
-                    .map(|name| Field::new(name, DataType::Utf8, true))
-                    .collect();
-                let schema = Arc::new(Schema::new(schema_fields));
-                let empty_arrays: Vec<ArrayRef> = column_names
+                let schema = Arc::new(Schema::new(
+                    column_names
+                        .iter()
+                        .map(|name| Field::new(name, DataType::Utf8, true))
+                        .collect::<Vec<_>>(),
+                ));
+                let empty_arrays = column_names
                     .iter()
                     .map(|_| Arc::new(StringArray::from(Vec::<String>::new())) as ArrayRef)
                     .collect();
@@ -147,40 +149,33 @@ impl DatastoreReader {
                 arrow_ipc = Some(ArrowIpcOutput::try_new(&empty_batch)?);
             }
 
-            if recs.is_empty() {
+            if records.is_empty() {
                 break;
             }
 
-            let mut columns: Vec<Vec<String>> = vec![Vec::new(); column_names.len()];
-            for rec in recs {
-                let arr = rec.as_array().ok_or_else(|| {
+            let mut batch_columns = vec![Vec::with_capacity(records.len()); column_names.len()];
+            for record in records {
+                let values = record.as_array().ok_or_else(|| {
                     FailedResult::from_string("record not array", self.reader_name().to_string())
                 })?;
-                for (i, _name) in column_names.iter().enumerate() {
-                    let val = arr
-                        .get(i)
-                        .map(|v| match v {
-                            Value::String(s) => s.clone(),
-                            Value::Null => String::new(),
-                            _ => v.to_string(),
-                        })
-                        .unwrap_or_default();
-                    columns[i].push(val);
+                for (index, column) in batch_columns.iter_mut().enumerate() {
+                    column.push(match values.get(index) {
+                        Some(Value::String(value)) => value.clone(),
+                        Some(Value::Null) | None => String::new(),
+                        Some(value) => value.to_string(),
+                    });
                 }
             }
-
-            let arrays: Vec<ArrayRef> = columns
+            let arrays = batch_columns
                 .into_iter()
-                .map(|c| Arc::new(StringArray::from(c)) as ArrayRef)
+                .map(|column| Arc::new(StringArray::from(column)) as ArrayRef)
                 .collect();
-
             let schema = arrow_ipc
                 .as_ref()
                 .expect("Arrow IPC output initialized")
                 .writer
-                .schema()
-                .clone();
-            let batch = RecordBatch::try_new(schema, arrays)?;
+                .schema();
+            let batch = RecordBatch::try_new(schema.clone(), arrays)?;
             arrow_ipc
                 .as_mut()
                 .expect("Arrow IPC output initialized")

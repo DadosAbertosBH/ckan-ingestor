@@ -40,7 +40,7 @@ fn read_datastore() -> Result<()> {
             .path(format!("/datastore/dump/{id}"))
             .query_param("format", "json")
             .query_param("offset", "0")
-            .query_param("limit", "100000");
+            .query_param("limit", "8192");
         then.status(200)
             .header("Content-Type", "application/json")
             .body(body.clone());
@@ -49,8 +49,8 @@ fn read_datastore() -> Result<()> {
         when.method(GET)
             .path(format!("/datastore/dump/{id}"))
             .query_param("format", "json")
-            .query_param("offset", "100000")
-            .query_param("limit", "100000");
+            .query_param("offset", "8192")
+            .query_param("limit", "8192");
         then.status(200)
             .header("Content-Type", "application/json")
             .body("{\"fields\":[{\"id\":\"_id\"}],\"records\":[],\"total\":1}");
@@ -86,7 +86,7 @@ fn read_invalid_json() -> Result<()> {
     server.mock(|when, then| {
         when.method(GET)
             .path(format!("/datastore/dump/{id}"))
-            .query_param("limit", "100000");
+            .query_param("limit", "8192");
         then.status(200)
             .header("Content-Type", "application/json")
             .body(body.clone());
@@ -130,7 +130,7 @@ fn empty_datastore_returns_empty_vec() -> Result<()> {
             .path(format!("/datastore/dump/{id}"))
             .query_param("format", "json")
             .query_param("offset", "0")
-            .query_param("limit", "100000");
+            .query_param("limit", "8192");
         then.status(200)
             .header("Content-Type", "application/json")
             .body("{\"fields\":[{\"id\":\"_id\"}],\"records\":[],\"total\":0}");
@@ -200,7 +200,7 @@ fn returns_http_error_for_failed_datastore_dump() -> Result<()> {
             .path(format!("/datastore/dump/{resource_id}"))
             .query_param("format", "json")
             .query_param("offset", "0")
-            .query_param("limit", "100000");
+            .query_param("limit", "8192");
         then.status(500)
             .header("Content-Type", "text/html")
             .body("<html><title>Erro [500]</title></html>");
@@ -230,7 +230,7 @@ fn reproduce_datastore_response_decoding_error() -> Result<()> {
     let resource_id = "13cfc052-15bb-49cf-b7fa-ce02bc877e84";
     let base_url = format!("http://{}", server.address());
     let data_url =
-        format!("{base_url}/datastore/dump/{resource_id}?format=json&offset=0&limit=100000");
+        format!("{base_url}/datastore/dump/{resource_id}?format=json&offset=0&limit=8192");
     let long_invalid_body = format!("{{\"broken\": {}}}", "x".repeat(600));
 
     server.mock(|when, then| {
@@ -247,7 +247,7 @@ fn reproduce_datastore_response_decoding_error() -> Result<()> {
             .path(format!("/datastore/dump/{resource_id}"))
             .query_param("format", "json")
             .query_param("offset", "0")
-            .query_param("limit", "100000");
+            .query_param("limit", "8192");
         then.status(200)
             .header("Content-Type", "application/json")
             .body(long_invalid_body.clone());

@@ -19,6 +19,7 @@ use anyhow::Result;
 use ckan_ingestor_lib::ckan_resource::CkanResource;
 use ckan_ingestor_lib::readers::ckan_reader::CkanReader;
 use ckan_ingestor_lib::readers::json_reader::JsonReader;
+use httpmock::{Method::GET, MockServer};
 
 #[test]
 fn reads_multiple_json_objects() -> Result<()> {
@@ -45,6 +46,36 @@ fn reads_multiple_json_objects() -> Result<()> {
     assert_eq!(result.rows_processed, 2);
     assert_eq!(result.number_of_columns, 2);
     assert_eq!(result.preview[0]["name"], "Ana");
+    Ok(())
+}
+
+#[test]
+fn reads_remote_datapackage_json() -> Result<()> {
+    let server = MockServer::start();
+    let body = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/datapackage.json"
+    ))?;
+    let download = server.mock(|when, then| {
+        when.method(GET).path("/download/datapackage.json");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(body.clone());
+    });
+
+    let reader = JsonReader::new();
+    let resource = CkanResource {
+        id: "7b77f87c-f850-44e8-96d2-5bdcdbd88dd8".to_string(),
+        url: format!("{}/download/datapackage.json", server.base_url()),
+        format: "JSON".to_string(),
+        datastore_active: false,
+    };
+
+    let result = reader.read(&resource)?;
+
+    download.assert();
+    assert_eq!(result.rows_processed, 1);
+    assert_eq!(result.number_of_columns, 6);
     Ok(())
 }
 

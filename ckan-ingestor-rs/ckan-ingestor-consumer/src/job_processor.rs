@@ -170,10 +170,10 @@ fn run_ingestion(
             http_client.clone(),
         )),
         Box::new(CsvReader::with_delimiter(
-            http_client,
+            http_client.clone(),
             job.csv_delimiter.clone(),
         )),
-        Box::new(JsonReader::new()),
+        Box::new(JsonReader::with_client(http_client)),
         Box::new(DocumentReader::new(s3)),
     ]);
     let ingestor = DuckdbCkanDataIngestor::new(conn, &reader);

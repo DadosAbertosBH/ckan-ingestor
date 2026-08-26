@@ -1,0 +1,1 @@
+{"name":"dados-tuberculose","owner_org":"secretaria-de-estado-de-saude-ses","profile":"data-package","resources":[{"name":"dados_tuberculose","path":"data/dados_tuberculose.csv","format":"csv"}],"title":"Dados de tuberculose","version":"1.0"}

@@ -24,22 +24,42 @@ use std::sync::Arc;
 use crate::{
     arrow_ipc_output::ArrowIpcOutput,
     ckan_resource::CkanResource,
-    readers::ckan_reader::{CkanReader, FailedResult, ReadResult, SuccessResult},
+    readers::{
+        ckan_reader::{download_to_temp, CkanReader, FailedResult, ReadResult, SuccessResult},
+        temp_file_cleanup::TempFileCleanup,
+    },
 };
+use reqwest::blocking::Client;
 
 pub struct JsonReader {
+    client: Client,
     supported_formats: Vec<String>,
 }
 
 impl JsonReader {
     pub fn new() -> Self {
+        Self::with_client(Client::new())
+    }
+
+    pub fn with_client(client: Client) -> Self {
         Self {
+            client,
             supported_formats: vec!["JSON".to_string()],
         }
     }
 
     fn read_batches(&self, resource: &CkanResource) -> ReadResult {
-        let output = self.try_read_json(&resource.url)?;
+        let is_remote = resource.url.starts_with("http://") || resource.url.starts_with("https://");
+        let json_path = if is_remote {
+            download_to_temp(&self.client, &resource.url, ".json")?
+        } else {
+            resource.url.clone()
+        };
+        let mut cleanup = TempFileCleanup::from_path(json_path.clone().into());
+        if !is_remote {
+            cleanup.commit();
+        }
+        let output = self.try_read_json(&json_path)?;
         if output.rows == 0 {
             return Err(FailedResult::from_string(
                 "No data",

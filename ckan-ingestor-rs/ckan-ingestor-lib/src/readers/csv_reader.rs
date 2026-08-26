@@ -16,7 +16,7 @@ use crate::arrow_ipc_output::ArrowIpcOutput;
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 use crate::ckan_resource::CkanResource;
-use crate::readers::ckan_reader::{CkanReader, ReadResult, SuccessResult};
+use crate::readers::ckan_reader::{download_to_temp, CkanReader, ReadResult, SuccessResult};
 use crate::readers::temp_file_cleanup::TempFileCleanup;
 use anyhow::Result;
 use arrow_csv::reader::{Format, ReaderBuilder};
@@ -26,7 +26,9 @@ use encoding_rs_io::DecodeReaderBytesBuilder;
 use flate2::read::GzDecoder;
 use regex::Regex;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, Read, Write};
+#[cfg(test)]
+use std::io::Write;
+use std::io::{self, BufRead, BufReader, Read};
 use std::path::PathBuf;
 
 pub struct CsvReader {
@@ -60,7 +62,11 @@ impl CsvReader {
     pub fn read_batches(&self, resource: &CkanResource) -> ReadResult {
         let is_remote = resource.url.starts_with("http://") || resource.url.starts_with("https://");
         let csv_path = if is_remote {
-            self.download_to_temp(&resource.url)?
+            download_to_temp(
+                &self.client,
+                &resource.url,
+                downloaded_csv_suffix(&resource.url),
+            )?
         } else {
             resource.url.clone()
         };
@@ -91,44 +97,9 @@ impl CsvReader {
             self.reader_name().to_string(),
         ))
     }
-
-    /// Download a remote file to a temporary location.
-    fn download_to_temp(&self, url: &str) -> Result<String> {
-        let mut response = self.client.get(url).send()?;
-        let status = response.status();
-        let content_type = response_header(&response, reqwest::header::CONTENT_TYPE);
-        let content_encoding = response_header(&response, reqwest::header::CONTENT_ENCODING);
-        if !status.is_success() {
-            anyhow::bail!(
-                "CSV download failed with HTTP status {status}: {url} (Content-Type: {content_type}, Content-Encoding: {content_encoding})"
-            );
-        }
-        let temp_path = std::env::temp_dir().join(format!(
-            "{}{}",
-            uuid::Uuid::new_v4(),
-            downloaded_csv_suffix(url)
-        ));
-        let mut cleanup = TempFileCleanup::from_path(temp_path.clone());
-        let mut output = File::create(&temp_path)?;
-        stream_download(&mut response, &mut output).map_err(|error| {
-            download_body_error(url, status, &content_type, &content_encoding, error)
-        })?;
-        cleanup.commit();
-        Ok(temp_path.to_string_lossy().to_string())
-    }
 }
 
-fn response_header(
-    resp: &reqwest::blocking::Response,
-    name: reqwest::header::HeaderName,
-) -> String {
-    resp.headers()
-        .get(name)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("<missing or invalid>")
-        .to_string()
-}
-
+#[cfg(test)]
 fn download_body_error(
     url: &str,
     status: reqwest::StatusCode,
@@ -142,6 +113,7 @@ fn download_body_error(
     anyhow::Error::new(error).context(message)
 }
 
+#[cfg(test)]
 fn stream_download(reader: &mut impl Read, writer: &mut impl Write) -> io::Result<u64> {
     io::copy(reader, writer)
 }

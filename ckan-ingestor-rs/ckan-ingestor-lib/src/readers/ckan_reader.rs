@@ -17,7 +17,32 @@ use std::any;
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
+use crate::readers::temp_file_cleanup::TempFileCleanup;
 use crate::{arrow_ipc_output::ArrowIpcOutput, ckan_resource::CkanResource};
+use anyhow::Result;
+use reqwest::blocking::Client;
+use std::fs::File;
+use std::io::{self, Write};
+
+/// Download a remote resource to a temporary file.
+///
+/// The returned path is owned by the caller. Keep a `TempFileCleanup` guard
+/// alive for as long as the downloaded file is needed.
+pub fn download_to_temp(client: &Client, url: &str, suffix: &str) -> Result<String> {
+    let mut response = client.get(url).send()?;
+    let status = response.status();
+    if !status.is_success() {
+        anyhow::bail!("resource download failed with HTTP status {status}: {url}");
+    }
+
+    let temp_path = std::env::temp_dir().join(format!("{}{}", uuid::Uuid::new_v4(), suffix));
+    let mut cleanup = TempFileCleanup::from_path(temp_path.clone());
+    let mut output = File::create(&temp_path)?;
+    io::copy(&mut response, &mut output)?;
+    output.flush()?;
+    cleanup.commit();
+    Ok(temp_path.to_string_lossy().into_owned())
+}
 
 pub struct SuccessResult {
     pub arrow_ipc: ArrowIpcOutput,
