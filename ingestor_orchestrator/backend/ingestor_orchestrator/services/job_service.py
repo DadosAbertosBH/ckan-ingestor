@@ -26,6 +26,7 @@ from ingestor_orchestrator.json_utils import sanitize_json_preview
 from ingestor_orchestrator.models import (
     CkanDataJob,
     CkanDataJobResult,
+    CsvHint,
     JobStatus,
     LatestResourceJob,
     ResourceMetadataLabel,
@@ -186,6 +187,7 @@ class JobService:
         resource_size = result_data.get("resource_size")
         encoding = result_data.get("encoding")
         csv_strict_mode = result_data.get("csv_strict_mode")
+        csv_delimiter = result_data.get("csv_delimiter")
         reader = result_data.get("reader")
         datastore_active = result_data.get("datastore_active", False)
         expected_columns = result_data.get("expected_columns")
@@ -202,6 +204,8 @@ class JobService:
             encoding=encoding,
         )
         self.db.add(result)
+        if csv_delimiter:
+            await self._upsert_csv_hint(job.resource_id, csv_delimiter)
         job.status = JobStatus.COMPLETED
         job.completed_at = datetime.now(timezone.utc)
         logger.info(f"Job {job.id} completed ({rows_processed} rows)")
@@ -217,6 +221,7 @@ class JobService:
                 resource_size=resource_size,
                 encoding=encoding,
                 csv_strict_mode=csv_strict_mode,
+                csv_delimiter=csv_delimiter,
                 reader=reader,
                 datastore_active=datastore_active,
                 column_count=column_count,
@@ -282,6 +287,15 @@ class JobService:
         self.db.add(ResourceMetadataLabel(resource_id=resource_id, label=label))
         await self.db.flush()
 
+    async def _upsert_csv_hint(self, resource_id: str, delimiter: str) -> None:
+        """Create or update the CSV parsing hint for a resource."""
+        hint = await self.db.get(CsvHint, resource_id)
+        if hint:
+            hint.delimiter = delimiter
+        else:
+            self.db.add(CsvHint(resource_id=resource_id, delimiter=delimiter))
+        await self.db.flush()
+
     async def _unlabel_resource(self, resource_id: str, label: str) -> None:
         """Remove a label from a resource, if it exists."""
         result = await self.db.execute(
@@ -301,6 +315,7 @@ class JobService:
         resource_size: int | None = None,
         encoding: str | None = None,
         csv_strict_mode: bool | None = None,
+        csv_delimiter: str | None = None,
         reader: str | None = None,
         datastore_active: bool = False,
         column_count: int = 0,
@@ -353,6 +368,9 @@ class JobService:
             await self._label_resource(
                 resource_id, f"csv-strict-mode:{strict_mode_label}"
             )
+
+        if csv_delimiter:
+            await self._label_resource(resource_id, f"csv-delimiter:{csv_delimiter}")
 
         if reader:
             await self._label_resource(resource_id, f"reader:{reader}")

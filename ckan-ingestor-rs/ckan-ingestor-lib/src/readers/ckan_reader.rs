@@ -27,6 +27,7 @@ pub struct SuccessResult {
     pub reader: String,
     pub encoding: Option<String>,
     pub csv_strict_mode: Option<bool>,
+    pub csv_delimiter: Option<String>,
     pub expected_rows: Option<usize>,
     pub expected_columns: Option<usize>,
 }
@@ -49,6 +50,7 @@ impl SuccessResult {
             reader,
             encoding: None,
             csv_strict_mode: None,
+            csv_delimiter: None,
             expected_rows: None,
             expected_columns: None,
         }
@@ -58,11 +60,13 @@ impl SuccessResult {
         arrow_ipc: ArrowIpcOutput,
         encoding: String,
         csv_strict_mode: bool,
+        csv_delimiter: String,
         reader: String,
     ) -> Self {
         Self {
             encoding: Some(encoding),
             csv_strict_mode: Some(csv_strict_mode),
+            csv_delimiter: Some(csv_delimiter),
             ..Self::new(arrow_ipc, reader)
         }
     }
@@ -191,6 +195,22 @@ mod tests {
         assert_eq!(result.preview, vec![serde_json::json!({"value": "value"})]);
         assert_eq!(result.encoding, None);
         assert_eq!(result.csv_strict_mode, None);
+        assert_eq!(result.csv_delimiter, None);
+    }
+
+    #[test]
+    fn from_csv_keeps_csv_metadata() {
+        let result = SuccessResult::from_csv(
+            output(),
+            "UTF-8".to_string(),
+            true,
+            ";".to_string(),
+            "test".to_string(),
+        );
+
+        assert_eq!(result.encoding.as_deref(), Some("UTF-8"));
+        assert_eq!(result.csv_strict_mode, Some(true));
+        assert_eq!(result.csv_delimiter.as_deref(), Some(";"));
     }
 
     #[test]

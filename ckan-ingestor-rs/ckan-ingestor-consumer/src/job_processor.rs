@@ -102,6 +102,7 @@ impl JobProcessor for RealJobProcessor {
                     expected_rows: None,
                     encoding: None,
                     csv_strict_mode: None,
+                    csv_delimiter: None,
                     expected_columns: None,
                     datastore_active: false,
                     error_message: Some(truncated.to_string()),
@@ -135,6 +136,7 @@ fn job_result_from_outcome(
             .and_then(|value| i64::try_from(value).ok()),
         encoding: outcome.encoding,
         csv_strict_mode: outcome.csv_strict_mode,
+        csv_delimiter: outcome.csv_delimiter,
         expected_columns: outcome
             .expected_columns
             .and_then(|value| i64::try_from(value).ok()),
@@ -237,6 +239,7 @@ mod tests {
                 expected_rows: Some(50),
                 encoding: Some("latin-1".to_string()),
                 csv_strict_mode: Some(false),
+                csv_delimiter: Some(";".to_string()),
                 datastore_active: true,
                 expected_columns: Some(3),
                 error_message: None,
@@ -249,6 +252,7 @@ mod tests {
         assert_eq!(result.expected_rows, Some(50));
         assert_eq!(result.expected_columns, Some(3));
         assert_eq!(result.csv_strict_mode, Some(false));
+        assert_eq!(result.csv_delimiter.as_deref(), Some(";"));
         assert_eq!(
             result.preview,
             Some(vec![serde_json::json!({"name": "Ana"})])
@@ -266,6 +270,7 @@ mod tests {
                 expected_rows: None,
                 encoding: None,
                 csv_strict_mode: None,
+                csv_delimiter: None,
                 datastore_active: false,
                 expected_columns: None,
                 error_message: Some("No data to create table from".to_string()),

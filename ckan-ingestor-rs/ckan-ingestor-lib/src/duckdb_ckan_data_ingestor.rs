@@ -55,6 +55,7 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
                             expected_rows,
                             encoding,
                             csv_strict_mode,
+                            csv_delimiter,
                             expected_columns,
                             ..
                         } = result;
@@ -72,6 +73,7 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
                             expected_rows,
                             encoding,
                             csv_strict_mode,
+                            csv_delimiter,
                             datastore_active: resource.datastore_active,
                             expected_columns,
                             error_message: None,
@@ -141,6 +143,7 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
             expected_rows,
             encoding: None,
             csv_strict_mode: None,
+            csv_delimiter: None,
             datastore_active: resource.datastore_active,
             expected_columns,
             error_message: Some(error_message),

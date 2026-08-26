@@ -38,6 +38,8 @@ pub struct IngestionOutcome {
     pub encoding: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub csv_strict_mode: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub csv_delimiter: Option<String>,
     pub datastore_active: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expected_columns: Option<usize>,
@@ -59,6 +61,7 @@ mod tests {
             expected_rows: Some(50),
             encoding: Some("latin-1".to_string()),
             csv_strict_mode: Some(false),
+            csv_delimiter: Some(";".to_string()),
             datastore_active: true,
             expected_columns: Some(3),
             error_message: None,
@@ -72,6 +75,7 @@ mod tests {
         assert_eq!(json["expected_rows"], 50);
         assert_eq!(json["encoding"], "latin-1");
         assert_eq!(json["csv_strict_mode"], false);
+        assert_eq!(json["csv_delimiter"], ";");
         assert_eq!(json["datastore_active"], true);
         assert_eq!(json["expected_columns"], 3);
         assert_eq!(json["status"], "SUCCESS");

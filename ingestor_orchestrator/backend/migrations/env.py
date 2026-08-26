@@ -23,6 +23,7 @@ from ingestor_orchestrator.models import (  # noqa: F401 — register with Base.
     CkanDataJob,
     CkanDataJobResult,
     CkanInstance,
+    CsvHint,
     MetadataSync,
     ResourceMetadataLabel,
 )

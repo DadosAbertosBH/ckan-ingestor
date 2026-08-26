@@ -19,6 +19,7 @@ from ingestor_orchestrator.models.base import UTCDateTime, new_uuid, utcnow
 from ingestor_orchestrator.models.ckan_data_job import CkanDataJob
 from ingestor_orchestrator.models.ckan_data_job_result import CkanDataJobResult
 from ingestor_orchestrator.models.ckan_instance import CkanInstance
+from ingestor_orchestrator.models.csv_hint import CsvHint
 from ingestor_orchestrator.models.job_status import JobStatus
 from ingestor_orchestrator.models.latest_resource_job import LatestResourceJob
 from ingestor_orchestrator.models.metadata_sync import MetadataSync
@@ -28,6 +29,7 @@ __all__ = [
     "CkanDataJob",
     "CkanDataJobResult",
     "CkanInstance",
+    "CsvHint",
     "JobStatus",
     "LatestResourceJob",
     "MetadataSync",

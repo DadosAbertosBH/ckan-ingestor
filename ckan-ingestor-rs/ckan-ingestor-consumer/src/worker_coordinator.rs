@@ -195,6 +195,7 @@ mod tests {
                 expected_rows: None,
                 encoding: None,
                 csv_strict_mode: None,
+                csv_delimiter: None,
                 expected_columns: None,
                 datastore_active: false,
                 error_message: None,

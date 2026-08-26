@@ -15,11 +15,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
-use std::{
-    cmp::max,
-    fs::File,
-    path::{Path, PathBuf},
-};
+use std::fs::File;
+use std::path::{Path, PathBuf};
 
 use arrow::{array::RecordBatch, error::ArrowError};
 use arrow_ipc::writer::FileWriter;
@@ -59,7 +56,7 @@ impl ArrowIpcOutput {
             self.preview = Some(Self::generate_preview(batch));
         }
         self.rows += batch.num_rows();
-        self.columns += max(batch.num_columns(), self.columns);
+        self.columns = self.columns.max(batch.num_columns());
         Ok(())
     }
 
@@ -108,5 +105,31 @@ impl ArrowIpcOutput {
 impl Drop for ArrowIpcOutput {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::array::{Int32Array, RecordBatch};
+    use arrow::datatypes::{DataType, Field, Schema};
+    use std::sync::Arc;
+
+    #[test]
+    fn columns_count_is_stable_when_writing_multiple_batches() {
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "value",
+            DataType::Int32,
+            false,
+        )]));
+        let batch = RecordBatch::try_new(schema, vec![Arc::new(Int32Array::from(vec![1]))])
+            .expect("valid record batch");
+        let mut output = ArrowIpcOutput::try_new(&batch).expect("valid IPC output");
+
+        output.write(&batch).expect("first batch should write");
+        output.write(&batch).expect("second batch should write");
+
+        assert_eq!(output.rows, 2);
+        assert_eq!(output.columns, 1);
     }
 }

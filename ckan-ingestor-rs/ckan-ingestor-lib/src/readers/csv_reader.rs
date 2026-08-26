@@ -59,6 +59,7 @@ impl CsvReader {
 
         let metadata = sniff_metadata(&csv_path)?;
         let encoding = metadata.encoding.name.to_string();
+        let csv_delimiter = char::from(metadata.dialect.delimiter).to_string();
         let has_mixed_line_endings = has_mixed_line_endings(
             &csv_path,
             metadata.encoding.name,
@@ -73,6 +74,7 @@ impl CsvReader {
             arrow_ipc,
             encoding,
             strict_mode,
+            csv_delimiter,
             self.reader_name().to_string(),
         ))
     }
@@ -405,6 +407,35 @@ mod tests {
             sample_bytes,
             peak_growth as f64 / sample_bytes as f64,
         );
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "requires a large CSV path in CSV_MEMORY_TEST_FILE"]
+    fn measures_memory_for_large_semicolon_csv() -> Result<()> {
+        let Ok(path) = std::env::var("CSV_MEMORY_TEST_FILE") else {
+            eprintln!("set CSV_MEMORY_TEST_FILE to run the large CSV memory profile");
+            return Ok(());
+        };
+        let sample_bytes = std::fs::metadata(&path)?.len();
+        let reader = CsvReader::new(test_client());
+        let resource = CkanResource {
+            id: "csv-memory-profile".to_string(),
+            url: path,
+            format: "CSV".to_string(),
+            datastore_active: false,
+        };
+
+        let baseline = crate::test_alloc::reset_peak();
+        let result = reader.read(&resource)?;
+        let peak_growth = crate::test_alloc::peak_growth_since(baseline);
+
+        eprintln!(
+            "large CSV memory profile: input_bytes={sample_bytes} rows={} peak_allocated_bytes={peak_growth} peak_allocated_mb={:.2}",
+            result.rows_processed,
+            peak_growth as f64 / (1024.0 * 1024.0),
+        );
+        assert!(result.rows_processed > 0);
         Ok(())
     }
 
