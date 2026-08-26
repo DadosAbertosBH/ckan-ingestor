@@ -44,7 +44,7 @@ fn kafka_bootstrap() -> String {
 
 async fn start_kafka() -> anyhow::Result<ContainerAsync<GenericImage>> {
     let host = env::var("TESTCONTAINERS_HOST_OVERRIDE").unwrap_or_else(|_| "localhost".into());
-    Ok(GenericImage::new("apache/kafka-native", "4.2.1")
+    Ok(GenericImage::new("apache/kafka-native", "4.3.1")
         .with_env_var("KAFKA_NODE_ID", "1")
         .with_env_var("KAFKA_PROCESS_ROLES", "broker,controller")
         .with_env_var(
