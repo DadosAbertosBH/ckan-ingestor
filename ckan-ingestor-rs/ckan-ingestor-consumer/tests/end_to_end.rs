@@ -44,7 +44,7 @@ fn kafka_bootstrap() -> String {
 
 async fn start_kafka() -> anyhow::Result<ContainerAsync<GenericImage>> {
     let host = env::var("TESTCONTAINERS_HOST_OVERRIDE").unwrap_or_else(|_| "localhost".into());
-    Ok(GenericImage::new("apache/kafka", "4.3.1")
+    Ok(GenericImage::new("apache/kafka-native", "4.3.1")
         .with_env_var("KAFKA_NODE_ID", "1")
         .with_env_var("KAFKA_PROCESS_ROLES", "broker,controller")
         .with_env_var(
@@ -64,7 +64,7 @@ async fn start_kafka() -> anyhow::Result<ContainerAsync<GenericImage>> {
         .with_env_var("KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR", "1")
         .with_env_var("KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS", "0")
         .with_env_var("KAFKA_AUTO_CREATE_TOPICS_ENABLE", "true")
-        .with_mapped_port(9092, 9092.tcp())
+        .with_mapped_port(19092, 9092.tcp())
         .with_ready_conditions(vec![WaitFor::message_on_stdout("Kafka Server started")])
         .start()
         .await?)
