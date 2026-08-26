@@ -399,7 +399,7 @@ mod tests {
 
         assert_eq!(result.rows_processed, 10_001);
         assert!(
-            peak_growth <= sample_bytes * 194,
+            peak_growth <= sample_bytes * 37,
             "CsvReader API used {} bytes above baseline for a {}-byte sample ({:.1}x amplification)",
             peak_growth,
             sample_bytes,
