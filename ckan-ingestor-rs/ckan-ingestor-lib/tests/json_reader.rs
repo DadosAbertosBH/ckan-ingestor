@@ -50,6 +50,35 @@ fn reads_multiple_json_objects() -> Result<()> {
 }
 
 #[test]
+fn reads_regular_json_array() -> Result<()> {
+    let path = std::env::temp_dir().join(format!(
+        "ckan-ingestor-json-array-reader-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"[{"name":"Ana","age":30},{"name":"Bia","age":25}]"#,
+    )?;
+
+    let reader = JsonReader::new();
+    let resource = CkanResource {
+        id: "json-array-resource".to_string(),
+        url: path.to_string_lossy().to_string(),
+        format: "JSON".to_string(),
+        datastore_active: false,
+    };
+
+    let result = reader.read(&resource);
+    std::fs::remove_file(&path)?;
+    let result = result?;
+
+    assert_eq!(result.rows_processed, 2);
+    assert_eq!(result.number_of_columns, 2);
+    assert_eq!(result.preview[1]["name"], "Bia");
+    Ok(())
+}
+
+#[test]
 fn reads_remote_datapackage_json() -> Result<()> {
     let server = MockServer::start();
     let body = std::fs::read(concat!(

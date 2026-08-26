@@ -18,7 +18,7 @@
 use anyhow::Result;
 use arrow_json::reader::{infer_json_schema, ReaderBuilder};
 use std::fs::File;
-use std::io::{BufReader, Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Cursor, Seek, SeekFrom};
 use std::sync::Arc;
 
 use crate::{
@@ -70,8 +70,47 @@ impl JsonReader {
     }
 
     fn try_read_json(&self, path: &str) -> Result<ArrowIpcOutput> {
-        let file = File::open(path)?;
-        let mut schema_reader = BufReader::new(file);
+        match self.read_json(BufReader::new(File::open(path)?)) {
+            Ok(output) => Ok(output),
+            Err(line_delimited_error) => {
+                let document = match serde_json::from_reader(File::open(path)?) {
+                    Ok(document) => document,
+                    Err(_) => return Err(line_delimited_error),
+                };
+                self.read_json_document(document)
+            }
+        }
+    }
+
+    fn read_json_document(&self, document: serde_json::Value) -> Result<ArrowIpcOutput> {
+        let schema_data = json_lines(&document)?;
+        let (schema, _) = infer_json_schema(&mut Cursor::new(schema_data), None)?;
+        let mut decoder = ReaderBuilder::new(Arc::new(schema))
+            .with_batch_size(8192)
+            .build_decoder()?;
+        let records = match document {
+            serde_json::Value::Array(records) => records,
+            record => vec![record],
+        };
+        let mut output = None;
+        for records in records.chunks(8192) {
+            decoder.serialize(records)?;
+            if let Some(batch) = decoder.flush()? {
+                if output.is_none() {
+                    output = Some(ArrowIpcOutput::try_new(&batch)?);
+                }
+                output
+                    .as_mut()
+                    .expect("Arrow IPC output initialized")
+                    .write(&batch)?;
+            }
+        }
+        let mut output = output.ok_or_else(|| anyhow::anyhow!("No data"))?;
+        output.finish()?;
+        Ok(output)
+    }
+
+    fn read_json<R: BufRead + Seek>(&self, mut schema_reader: R) -> Result<ArrowIpcOutput> {
         let (schema, _) = infer_json_schema(&mut schema_reader, None)?;
         schema_reader.seek(SeekFrom::Start(0))?;
         let schema = Arc::new(schema);
@@ -93,6 +132,19 @@ impl JsonReader {
         output.finish()?;
         Ok(output)
     }
+}
+
+fn json_lines(document: &serde_json::Value) -> Result<Vec<u8>> {
+    let records = match document {
+        serde_json::Value::Array(records) => records.as_slice(),
+        record => std::slice::from_ref(record),
+    };
+    let mut bytes = Vec::new();
+    for record in records {
+        serde_json::to_writer(&mut bytes, record)?;
+        bytes.push(b'\n');
+    }
+    Ok(bytes)
 }
 
 impl Default for JsonReader {
