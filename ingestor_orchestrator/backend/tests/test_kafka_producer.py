@@ -50,6 +50,7 @@ async def test_publish_sends_job_id_and_ckan_url():
     assert payload["job_id"] == "test-job"
     assert payload["resource_id"] == "resource-1"
     assert payload["ckan_url"] == "https://dados.pbh.gov.br"
+    assert "csv_delimiter" not in payload
 
 
 @pytest.mark.asyncio
@@ -63,3 +64,18 @@ async def test_publish_retry_uses_retry_topic():
 
     args, _ = producer.send.call_args
     assert args[0] == "ckan.ingest.jobs.retry"
+
+
+@pytest.mark.asyncio
+async def test_publish_includes_optional_csv_delimiter():
+    producer = _mock_producer()
+
+    with patch(_FACTORY_PATH, return_value=producer):
+        service = JobService(AsyncMock())
+        await service._publish_job(
+            "test-job", "resource-1", csv_delimiter=";"
+        )
+
+    args, _kwargs = producer.send.call_args
+    payload = json.loads(args[1].decode())
+    assert payload["csv_delimiter"] == ";"

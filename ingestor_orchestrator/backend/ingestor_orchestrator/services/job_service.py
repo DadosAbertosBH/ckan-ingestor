@@ -58,10 +58,12 @@ class JobService:
         await self.db.flush()  # get job.id from DB-generated UUID
 
         # Publish to Kafka
+        csv_delimiter = await self._get_csv_delimiter(job.resource_id)
         record_meta = await self._publish_job(
             job.id, job.resource_id, data.ckan_url,
             resource_url=job.resource_url or "",
             resource_format=job.resource_format or "",
+            csv_delimiter=csv_delimiter,
         )
 
         # Store Kafka routing metadata for debugging
@@ -88,10 +90,12 @@ class JobService:
             )
 
         # Publish to retry topic
+        csv_delimiter = await self._get_csv_delimiter(job.resource_id)
         record_meta = await self._publish_job(
             job.id, job.resource_id, job.ckan_url or "",
             resource_url=job.resource_url or "",
             resource_format=job.resource_format or "",
+            csv_delimiter=csv_delimiter,
             retry=True,
         )
 
@@ -296,6 +300,10 @@ class JobService:
             self.db.add(CsvHint(resource_id=resource_id, delimiter=delimiter))
         await self.db.flush()
 
+    async def _get_csv_delimiter(self, resource_id: str) -> str | None:
+        hint = await self.db.get(CsvHint, resource_id)
+        return hint.delimiter if hint else None
+
     async def _unlabel_resource(self, resource_id: str, label: str) -> None:
         """Remove a label from a resource, if it exists."""
         result = await self.db.execute(
@@ -386,6 +394,7 @@ class JobService:
         ckan_url: str = "",
         resource_url: str = "",
         resource_format: str = "",
+        csv_delimiter: str | None = None,
         retry: bool = False,
     ):
         """Publish job to Kafka and return RecordMetadata."""
@@ -394,13 +403,16 @@ class JobService:
         from ingestor_orchestrator.kafka import get_kafka_producer
 
         topic = settings.kafka_topic_retry if retry else settings.kafka_topic
-        payload = json.dumps({
+        payload_data = {
             "job_id": job_id,
             "resource_id": resource_id,
             "ckan_url": ckan_url,
             "resource_url": resource_url or "",
             "resource_format": resource_format or "",
-        }).encode()
+        }
+        if csv_delimiter:
+            payload_data["csv_delimiter"] = csv_delimiter
+        payload = json.dumps(payload_data).encode()
 
         def _send():
             producer = get_kafka_producer()

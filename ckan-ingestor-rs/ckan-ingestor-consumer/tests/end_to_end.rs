@@ -190,6 +190,7 @@ async fn end_to_end_message_flow() -> anyhow::Result<()> {
         ckan_url: "http://ckan".to_string(),
         resource_url: "".to_string(),
         resource_format: "".to_string(),
+        csv_delimiter: None,
     };
     let payload = serde_json::to_vec(&job)?;
     producer
@@ -275,6 +276,7 @@ async fn restart_processes_messages_waiting_before_partition_queues_are_split() 
             ckan_url: "http://ckan".to_string(),
             resource_url: String::new(),
             resource_format: String::new(),
+            csv_delimiter: None,
         };
         let payload = serde_json::to_vec(&job)?;
         producer

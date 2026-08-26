@@ -169,7 +169,10 @@ fn run_ingestion(
             job.ckan_url.clone(),
             http_client.clone(),
         )),
-        Box::new(CsvReader::new(http_client)),
+        Box::new(CsvReader::with_delimiter(
+            http_client,
+            job.csv_delimiter.clone(),
+        )),
         Box::new(JsonReader::new()),
         Box::new(DocumentReader::new(s3)),
     ]);

@@ -282,6 +282,7 @@ mod tests {
             ckan_url: "http://ckan".into(),
             resource_url: "".into(),
             resource_format: "".into(),
+            csv_delimiter: None,
         };
         tx.send(MockMsg {
             payload: serde_json::to_vec(&job).unwrap(),
@@ -315,6 +316,7 @@ mod tests {
             ckan_url: "http://ckan".into(),
             resource_url: "".into(),
             resource_format: "".into(),
+            csv_delimiter: None,
         };
         tx.send(MockMsg {
             payload: serde_json::to_vec(&job).unwrap(),
@@ -343,6 +345,7 @@ mod tests {
             ckan_url: "http://ckan".into(),
             resource_url: "".into(),
             resource_format: "".into(),
+            csv_delimiter: None,
         };
         tx.send(MockMsg {
             payload: serde_json::to_vec(&job).unwrap(),
@@ -375,6 +378,7 @@ mod tests {
             ckan_url: "http://ckan".into(),
             resource_url: "".into(),
             resource_format: "".into(),
+            csv_delimiter: None,
         };
         tx.send(MockMsg {
             payload: serde_json::to_vec(&job).unwrap(),

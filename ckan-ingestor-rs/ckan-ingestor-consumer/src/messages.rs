@@ -48,6 +48,8 @@ pub struct JobMessage {
     pub resource_url: String,
     #[serde(default)]
     pub resource_format: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub csv_delimiter: Option<String>,
 }
 
 /// The result message published to `ckan.ingest.jobs_result`.

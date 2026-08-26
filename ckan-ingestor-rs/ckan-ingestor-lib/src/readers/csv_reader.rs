@@ -32,6 +32,7 @@ use std::path::PathBuf;
 pub struct CsvReader {
     client: reqwest::blocking::Client,
     supported_formats: Vec<String>,
+    csv_delimiter: Option<String>,
 }
 
 impl CsvReader {
@@ -39,6 +40,18 @@ impl CsvReader {
         Self {
             client,
             supported_formats: vec!["CSV".to_string()],
+            csv_delimiter: None,
+        }
+    }
+
+    pub fn with_delimiter(
+        client: reqwest::blocking::Client,
+        csv_delimiter: Option<String>,
+    ) -> Self {
+        Self {
+            client,
+            supported_formats: vec!["CSV".to_string()],
+            csv_delimiter,
         }
     }
 
@@ -57,7 +70,7 @@ impl CsvReader {
             cleanup.commit();
         }
 
-        let metadata = sniff_metadata(&csv_path)?;
+        let metadata = sniff_metadata(&csv_path, self.csv_delimiter.as_deref())?;
         let encoding = metadata.encoding.name.to_string();
         let csv_delimiter = char::from(metadata.dialect.delimiter).to_string();
         let has_mixed_line_endings = has_mixed_line_endings(
@@ -178,9 +191,15 @@ fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<Ar
     Ok(arrow_ipc)
 }
 
-fn sniff_metadata(path: &str) -> Result<Metadata> {
+fn sniff_metadata(path: &str, delimiter_hint: Option<&str>) -> Result<Metadata> {
     let mut sniffer = Sniffer::new();
     sniffer.sample_size(SampleSize::Records(900_000));
+    if let Some(delimiter_hint) = delimiter_hint {
+        let &[delimiter] = delimiter_hint.as_bytes() else {
+            anyhow::bail!("CSV delimiter hint must contain exactly one byte");
+        };
+        sniffer.delimiter(delimiter);
+    }
 
     if !path.to_ascii_lowercase().ends_with(".gz") {
         return Ok(sniffer.sniff_path(path)?);
@@ -335,6 +354,19 @@ mod tests {
         assert!(encoding("UTF-8").is_ok());
         assert!(encoding("windows-1252").is_ok());
         assert!(encoding("UTF-16LE").is_ok());
+    }
+
+    #[test]
+    fn sniff_metadata_uses_the_delimiter_hint() -> Result<()> {
+        let path =
+            std::env::temp_dir().join(format!("csv-delimiter-hint-{}.csv", uuid::Uuid::new_v4()));
+        let _cleanup = TempFileCleanup::from_path(path.clone());
+        std::fs::write(&path, "name;description\nAna;value, with comma\n")?;
+
+        let metadata = sniff_metadata(path.to_str().expect("valid temporary path"), Some(";"))?;
+
+        assert_eq!(metadata.dialect.delimiter, b';');
+        Ok(())
     }
 
     #[test]
