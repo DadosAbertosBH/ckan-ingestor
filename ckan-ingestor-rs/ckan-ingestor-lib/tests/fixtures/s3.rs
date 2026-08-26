@@ -19,40 +19,35 @@ use s3::creds::Credentials;
 use s3::region::Region;
 use s3::{Bucket, BucketConfiguration};
 use std::env;
-use std::sync::OnceLock;
-use testcontainers::{core::IntoContainerPort, runners::SyncRunner, GenericImage, ImageExt};
+use testcontainers::{
+    core::IntoContainerPort, runners::SyncRunner, Container, GenericImage, ImageExt,
+};
 
-static RUSTFS_ADDRESS: OnceLock<String> = OnceLock::new();
+fn start_rustfs() -> (String, Container<GenericImage>) {
+    let rustfs = GenericImage::new("rustfs/rustfs", "latest")
+        .with_exposed_port(9000.tcp())
+        .with_exposed_port(9001.tcp())
+        .with_env_var("RUSTFS_ACCESS_KEY", "admin")
+        .with_env_var("RUSTFS_SECRET_KEY", "password")
+        .with_cmd(vec![
+            "--access-key".to_string(),
+            "admin".to_string(),
+            "--secret-key".to_string(),
+            "password".to_string(),
+            "/data".to_string(),
+        ]);
 
-fn ensure_rustfs() -> &'static String {
-    RUSTFS_ADDRESS.get_or_init(|| {
-        let rustfs = GenericImage::new("rustfs/rustfs", "latest")
-            .with_exposed_port(9000.tcp())
-            .with_exposed_port(9001.tcp())
-            .with_env_var("RUSTFS_ACCESS_KEY", "admin")
-            .with_env_var("RUSTFS_SECRET_KEY", "password")
-            .with_cmd(vec![
-                "--access-key".to_string(),
-                "admin".to_string(),
-                "--secret-key".to_string(),
-                "password".to_string(),
-                "/data".to_string(),
-            ]);
+    let container = rustfs.start().expect("Can't start RustFS.");
+    let port = container
+        .get_host_port_ipv4(9000)
+        .expect("Failed to get host port for RustFS");
 
-        let container = rustfs.start().expect("Can't start RustFS.");
-        let port = container
-            .get_host_port_ipv4(9000)
-            .expect("Failed to get host port for RustFS");
-
-        std::mem::forget(container);
-
-        let host = env::var("TESTCONTAINERS_HOST_OVERRIDE").unwrap_or_else(|_| "127.0.0.1".into());
-        format!("{}:{}", host, port)
-    })
+    let host = env::var("TESTCONTAINERS_HOST_OVERRIDE").unwrap_or_else(|_| "127.0.0.1".into());
+    (format!("{}:{}", host, port), container)
 }
 
-pub fn s3_settings() -> S3Settings {
-    let address = ensure_rustfs();
+pub fn s3_settings() -> (S3Settings, Container<GenericImage>) {
+    let (address, container) = start_rustfs();
     let settings = S3Settings {
         endpoint: address.clone(),
         bucket: "warehouse".into(),
@@ -74,7 +69,7 @@ pub fn s3_settings() -> S3Settings {
         .exists()
         .unwrap_or(false)
     {
-        return settings;
+        return (settings, container);
     }
     let creds = Credentials::new(Some("admin"), Some("password"), None, None, None).unwrap();
     let _ = Bucket::create_with_path_style(
@@ -88,5 +83,5 @@ pub fn s3_settings() -> S3Settings {
     )
     .expect("Failed to create RustFS bucket");
 
-    settings
+    (settings, container)
 }

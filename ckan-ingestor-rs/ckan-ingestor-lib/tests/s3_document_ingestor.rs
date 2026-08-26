@@ -37,7 +37,7 @@ fn ingest_pdf() -> Result<()> {
             .body(body.clone());
     });
 
-    let s3_settings: S3Settings = s3_settings();
+    let (s3_settings, _rustfs) = s3_settings();
 
     let ingestor = S3DocumentIngestor::new(s3_settings.clone())?;
     let url = format!("{}/datastore/a_pdf_file?format=PDF", server.base_url());
