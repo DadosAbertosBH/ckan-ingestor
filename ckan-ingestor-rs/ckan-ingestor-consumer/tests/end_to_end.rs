@@ -65,7 +65,7 @@ async fn start_kafka() -> anyhow::Result<ContainerAsync<GenericImage>> {
         .with_env_var("KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS", "0")
         .with_env_var("KAFKA_AUTO_CREATE_TOPICS_ENABLE", "true")
         .with_mapped_port(9092, 9092.tcp())
-        .with_ready_conditions(vec![WaitFor::seconds(15)])
+        .with_ready_conditions(vec![WaitFor::message_on_stdout("Kafka Server started")])
         .start()
         .await?)
 }
