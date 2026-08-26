@@ -39,7 +39,7 @@ const RETRY_TOPIC: &str = "ckan.ingest.jobs.retry";
 
 fn kafka_bootstrap() -> String {
     let host = env::var("TESTCONTAINERS_HOST_OVERRIDE").unwrap_or_else(|_| "localhost".into());
-    format!("{host}:9092")
+    format!("{host}:19092")
 }
 
 async fn start_kafka() -> anyhow::Result<ContainerAsync<GenericImage>> {
@@ -49,23 +49,23 @@ async fn start_kafka() -> anyhow::Result<ContainerAsync<GenericImage>> {
         .with_env_var("KAFKA_PROCESS_ROLES", "broker,controller")
         .with_env_var(
             "KAFKA_LISTENERS",
-            "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093",
+            "PLAINTEXT://0.0.0.0:19092,CONTROLLER://0.0.0.0:19093",
         )
         .with_env_var(
             "KAFKA_ADVERTISED_LISTENERS",
-            format!("PLAINTEXT://{host}:9092"),
+            format!("PLAINTEXT://{host}:19092"),
         )
         .with_env_var("KAFKA_CONTROLLER_LISTENER_NAMES", "CONTROLLER")
         .with_env_var(
             "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP",
             "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT",
         )
-        .with_env_var("KAFKA_CONTROLLER_QUORUM_VOTERS", "1@localhost:9093")
+        .with_env_var("KAFKA_CONTROLLER_QUORUM_VOTERS", "1@localhost:19093")
         .with_env_var("KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR", "1")
         .with_env_var("KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS", "0")
         .with_env_var("KAFKA_AUTO_CREATE_TOPICS_ENABLE", "true")
-        .with_mapped_port(19092, 9092.tcp())
-        .with_ready_conditions(vec![WaitFor::message_on_stdout("Kafka Server started")])
+        .with_mapped_port(19092, 19092.tcp())
+        .with_ready_conditions(vec![WaitFor::seconds(20)])
         .start()
         .await?)
 }
