@@ -25,3 +25,6 @@ pub mod ingestor_outcome;
 pub(crate) mod memory_profile;
 pub mod readers;
 pub mod s3_document_ingestor;
+
+#[cfg(test)]
+pub(crate) mod test_alloc;

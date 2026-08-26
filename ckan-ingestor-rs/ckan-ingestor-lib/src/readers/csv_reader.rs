@@ -268,7 +268,7 @@ impl CkanReader for CsvReader {
 mod tests {
     use super::*;
     use std::cell::Cell;
-    use std::io::{Read, Write};
+    use std::io::{BufWriter, Read, Write};
     use std::path::PathBuf;
     use std::rc::Rc;
     use std::time::Duration;
@@ -361,6 +361,50 @@ mod tests {
         stream_download(&mut reader, &mut writer)?;
 
         assert_eq!(writer.bytes, b"firstsecond");
+        Ok(())
+    }
+
+    #[test]
+    fn csv_reader_api_stays_within_a_bounded_memory_amplification() -> Result<()> {
+        let path = std::env::temp_dir().join(format!(
+            "csv-sniff-memory-test-{}.csv",
+            uuid::Uuid::new_v4()
+        ));
+        let _cleanup = TempFileCleanup::from_path(path.clone());
+        {
+            let mut file = BufWriter::new(File::create(&path)?);
+            writeln!(
+                file,
+                "column_one,column_two,column_three,column_four,column_five,column_six"
+            )?;
+            for row in 0..10_000 {
+                writeln!(
+                    file,
+                    "value{row:05},value{row:05},value{row:05},value{row:05},value{row:05},value{row:05}"
+                )?;
+            }
+        }
+        let sample_bytes = usize::try_from(std::fs::metadata(&path)?.len())?;
+        let reader = CsvReader::new(test_client());
+        let resource = CkanResource {
+            id: "csv-reader-memory-test".to_string(),
+            url: path.to_string_lossy().into_owned(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+        };
+
+        let baseline = crate::test_alloc::reset_peak();
+        let result = reader.read(&resource)?;
+        let peak_growth = crate::test_alloc::peak_growth_since(baseline);
+
+        assert_eq!(result.rows_processed, 10_001);
+        assert!(
+            peak_growth <= sample_bytes * 194,
+            "CsvReader API used {} bytes above baseline for a {}-byte sample ({:.1}x amplification)",
+            peak_growth,
+            sample_bytes,
+            peak_growth as f64 / sample_bytes as f64,
+        );
         Ok(())
     }
 
