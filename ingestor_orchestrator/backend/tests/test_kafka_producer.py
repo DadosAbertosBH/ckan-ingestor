@@ -79,3 +79,18 @@ async def test_publish_includes_optional_csv_delimiter():
     args, _kwargs = producer.send.call_args
     payload = json.loads(args[1].decode())
     assert payload["csv_delimiter"] == ";"
+
+
+@pytest.mark.asyncio
+async def test_publish_includes_datastore_status_from_metadata():
+    producer = _mock_producer()
+
+    with patch(_FACTORY_PATH, return_value=producer):
+        service = JobService(AsyncMock())
+        await service._publish_job(
+            "test-job", "resource-1", datastore_active=True
+        )
+
+    args, _kwargs = producer.send.call_args
+    payload = json.loads(args[1].decode())
+    assert payload["datastore_active"] is True

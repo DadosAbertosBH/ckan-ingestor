@@ -161,13 +161,14 @@ async def enqueue_outdated_resources(
         # 3) Batch query DuckDB for resource metadata
         placeholders = ",".join(["?"] * len(to_enqueue))
         rows = conn.execute(
-            f"SELECT r.name, r.url, r.format, d.name AS dataset_name, r.id "
+            f"SELECT r.name, r.url, r.format, d.name AS dataset_name, r.id, "
+            f"COALESCE(r.datastore_active, false) AS datastore_active "
             f"FROM ckan_resource r "
             f"JOIN ckan_dataset d ON r.package_id = d.id "
             f"WHERE r.id IN ({placeholders})",
             to_enqueue,
         ).fetchall()
-        metadata_map = {r[4]: r[:4] for r in rows}
+        metadata_map = {r[4]: r[:4] + (r[5],) for r in rows}
 
         # 4) Create jobs
         service = JobService(db_session)
@@ -178,6 +179,7 @@ async def enqueue_outdated_resources(
                 resource_url = row[1] if row else None
                 resource_format = row[2] if row else None
                 dataset_name = row[3] if row else "unknown"
+                datastore_active = row[4] if row else False
 
                 await service.create_job(
                     JobCreate(
@@ -188,6 +190,7 @@ async def enqueue_outdated_resources(
                         resource_format=resource_format,
                         instance_id=instance_id,
                         ckan_url=ckan_url,
+                        datastore_active=datastore_active,
                     )
                 )
                 enqueued += 1

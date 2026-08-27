@@ -283,6 +283,7 @@ mod tests {
             resource_url: "".into(),
             resource_format: "".into(),
             csv_delimiter: None,
+            datastore_active: false,
         };
         tx.send(MockMsg {
             payload: serde_json::to_vec(&job).unwrap(),
@@ -317,6 +318,7 @@ mod tests {
             resource_url: "".into(),
             resource_format: "".into(),
             csv_delimiter: None,
+            datastore_active: false,
         };
         tx.send(MockMsg {
             payload: serde_json::to_vec(&job).unwrap(),
@@ -346,6 +348,7 @@ mod tests {
             resource_url: "".into(),
             resource_format: "".into(),
             csv_delimiter: None,
+            datastore_active: false,
         };
         tx.send(MockMsg {
             payload: serde_json::to_vec(&job).unwrap(),
@@ -379,6 +382,7 @@ mod tests {
             resource_url: "".into(),
             resource_format: "".into(),
             csv_delimiter: None,
+            datastore_active: false,
         };
         tx.send(MockMsg {
             payload: serde_json::to_vec(&job).unwrap(),

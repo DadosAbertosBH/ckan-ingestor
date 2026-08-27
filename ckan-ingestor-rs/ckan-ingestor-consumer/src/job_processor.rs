@@ -25,7 +25,6 @@ use ckan_ingestor_lib::readers::multiple_reader::MultipleReader;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
 use duckdb::Connection;
 use reqwest::blocking::Client;
-use serde_json::Value;
 use std::time::Duration;
 
 use crate::messages::{JobMessage, JobResultMessage, JobStatus};
@@ -84,11 +83,7 @@ impl Clone for RealJobProcessor {
 
 impl JobProcessor for RealJobProcessor {
     fn process(&self, job: JobMessage) -> JobResultMessage {
-        // Determine whether the CKAN resource has an active DataStore, so the
-        // ingestion can prefer the datastore endpoint over the raw file.
-        let datastore_active = fetch_datastore_active(&job);
-
-        match run_ingestion(&self.conn, &job, datastore_active, &self.s3) {
+        match run_ingestion(&self.conn, &job, &self.s3) {
             Ok(outcome) => job_result_from_outcome(job.job_id.clone(), outcome),
             Err(e) => {
                 let error_str = format!("{}", e);
@@ -149,14 +144,13 @@ fn job_result_from_outcome(
 fn run_ingestion(
     conn: &Connection,
     job: &JobMessage,
-    datastore_active: bool,
     s3: &S3DocumentIngestor,
 ) -> Result<ckan_ingestor_lib::ingestor_outcome::IngestionOutcome, anyhow::Error> {
     let resource = CkanResource {
         id: job.resource_id.clone(),
         url: job.resource_url.clone(),
         format: job.resource_format.clone(),
-        datastore_active,
+        datastore_active: job.datastore_active,
     };
     let http_client = Client::builder()
         .timeout(Duration::from_secs(1200))
@@ -179,49 +173,6 @@ fn run_ingestion(
     let ingestor = DuckdbCkanDataIngestor::new(conn, &reader);
 
     Ok(ingestor.ingest_ckan_data(&resource))
-}
-
-/// Query CKAN's `resource_show` action to learn whether the resource has an
-/// active DataStore (the `datastore_active` flag).
-///
-/// Returns `false` on any error — the datastore is an optimization, not a hard
-/// requirement, so failures must fall back to file-based ingestion.
-fn fetch_datastore_active(job: &JobMessage) -> bool {
-    if job.ckan_url.is_empty() || job.resource_id.is_empty() {
-        return false;
-    }
-
-    let url = format!(
-        "{}/api/action/resource_show?id={}",
-        job.ckan_url.trim_end_matches('/'),
-        job.resource_id
-    );
-
-    let client = match Client::builder()
-        .user_agent(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0",
-        )
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
-
-    let resp = match client.get(&url).send() {
-        Ok(r) => r,
-        Err(_) => return false,
-    };
-
-    let json: Value = match resp.json() {
-        Ok(j) => j,
-        Err(_) => return false,
-    };
-
-    json.get("result")
-        .and_then(|r| r.get("datastore_active"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
 }
 
 #[cfg(test)]

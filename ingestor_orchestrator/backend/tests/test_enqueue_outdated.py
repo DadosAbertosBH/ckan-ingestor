@@ -39,7 +39,8 @@ def duck_conn():
     con.execute("""
         CREATE TABLE ckan_resource (
             id VARCHAR, name VARCHAR, url VARCHAR, format VARCHAR,
-            package_id VARCHAR, last_modified VARCHAR, ckan_url VARCHAR
+            package_id VARCHAR, last_modified VARCHAR, ckan_url VARCHAR,
+            datastore_active BOOLEAN DEFAULT false
         )
     """)
     con.execute("""
@@ -89,8 +90,8 @@ class TestEnqueueOutdatedResources:
         duck_conn.execute("INSERT INTO ckan_dataset VALUES ('ds1', 'D1', '2025-01-01')")
         duck_conn.execute(
             "INSERT INTO ckan_resource VALUES "
-            "('r1', 'R1', 'http://a', 'CSV', 'ds1', '2025-01-01', ''),"
-            "('r2', 'R2', 'http://b', 'JSON', 'ds1', '2025-01-01', '')"
+            "('r1', 'R1', 'http://a', 'CSV', 'ds1', '2025-01-01', '', true),"
+            "('r2', 'R2', 'http://b', 'JSON', 'ds1', '2025-01-01', '', false)"
         )
 
         monkeypatch.setattr(
@@ -107,6 +108,10 @@ class TestEnqueueOutdatedResources:
         assert len(jobs) == 2
         assert all(j.instance_id == instance_id for j in jobs)
         assert {j.resource_id for j in jobs} == {"r1", "r2"}
+        assert {j.resource_id: j.datastore_active for j in jobs} == {
+            "r1": True,
+            "r2": False,
+        }
 
     async def test_skips_already_synced_resources(
         self, autocommit_session, instance_id, duck_conn, monkeypatch
@@ -114,7 +119,7 @@ class TestEnqueueOutdatedResources:
         """Resources with newer last_modified in last_update are skipped."""
         duck_conn.execute("INSERT INTO ckan_dataset VALUES ('ds1', 'D1', '2025-01-01')")
         duck_conn.execute(
-            "INSERT INTO ckan_resource VALUES "
+            "INSERT INTO ckan_resource (id, name, url, format, package_id, last_modified, ckan_url) VALUES "
             "('r1', 'R1', 'http://a', 'CSV', 'ds1', '2025-01-01', '')"
         )
         duck_conn.execute(
@@ -156,7 +161,7 @@ class TestEnqueueOutdatedResources:
 
         duck_conn.execute("INSERT INTO ckan_dataset VALUES ('ds1', 'D1', '2025-01-01')")
         duck_conn.execute(
-            "INSERT INTO ckan_resource VALUES "
+            "INSERT INTO ckan_resource (id, name, url, format, package_id, last_modified, ckan_url) VALUES "
             "('r1', 'R1', 'http://a', 'CSV', 'ds1', '2025-01-01', '"
             + instance_url
             + "'),"

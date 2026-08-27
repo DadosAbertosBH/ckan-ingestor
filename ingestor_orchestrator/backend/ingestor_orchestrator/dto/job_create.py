@@ -24,3 +24,4 @@ class JobCreate(BaseModel):
     resource_format: str | None = None
     instance_id: str | None = None
     ckan_url: str = ""
+    datastore_active: bool = False

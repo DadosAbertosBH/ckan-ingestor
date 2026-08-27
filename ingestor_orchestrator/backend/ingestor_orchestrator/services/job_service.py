@@ -53,6 +53,7 @@ class JobService:
             status=JobStatus.PENDING,
             instance_id=data.instance_id or "",
             ckan_url=data.ckan_url or "",
+            datastore_active=data.datastore_active,
         )
         self.db.add(job)
         await self.db.flush()  # get job.id from DB-generated UUID
@@ -64,6 +65,7 @@ class JobService:
             resource_url=job.resource_url or "",
             resource_format=job.resource_format or "",
             csv_delimiter=csv_delimiter,
+            datastore_active=job.datastore_active,
         )
 
         # Store Kafka routing metadata for debugging
@@ -96,6 +98,7 @@ class JobService:
             resource_url=job.resource_url or "",
             resource_format=job.resource_format or "",
             csv_delimiter=csv_delimiter,
+            datastore_active=job.datastore_active,
             retry=True,
         )
 
@@ -395,6 +398,7 @@ class JobService:
         resource_url: str = "",
         resource_format: str = "",
         csv_delimiter: str | None = None,
+        datastore_active: bool = False,
         retry: bool = False,
     ):
         """Publish job to Kafka and return RecordMetadata."""
@@ -409,6 +413,7 @@ class JobService:
             "ckan_url": ckan_url,
             "resource_url": resource_url or "",
             "resource_format": resource_format or "",
+            "datastore_active": datastore_active,
         }
         if csv_delimiter:
             payload_data["csv_delimiter"] = csv_delimiter
