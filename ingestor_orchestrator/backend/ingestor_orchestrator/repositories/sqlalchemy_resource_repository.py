@@ -15,7 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """SQLAlchemy implementation of ResourceRepository."""
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -48,11 +48,35 @@ class SqlAlchemyResourceRepository(ResourceRepository):
         query = (
             select(LatestResourceJob)
             .options(selectinload(LatestResourceJob.instance))
+            .join(CkanDataJob, CkanDataJob.id == LatestResourceJob.latest_job_id)
+            .outerjoin(
+                LastTerminalStatus,
+                LastTerminalStatus.resource_id == LatestResourceJob.resource_id,
+            )
             .order_by(LatestResourceJob.updated_at.desc())
         )
 
         if status:
-            query = query.where(LatestResourceJob.status == status)
+            status_filters = {
+                ResourceStatus.PENDING: and_(
+                    CkanDataJob.status == "pending",
+                    LastTerminalStatus.resource_id.is_(None),
+                ),
+                ResourceStatus.PROCESSING: CkanDataJob.status == "processing",
+                ResourceStatus.COMPLETED: CkanDataJob.status == "completed",
+                ResourceStatus.FAILED: or_(
+                    CkanDataJob.status == "failed",
+                    and_(
+                        CkanDataJob.status == "pending",
+                        LastTerminalStatus.last_terminal_status == "failed",
+                    ),
+                ),
+                ResourceStatus.OUTDATED: and_(
+                    CkanDataJob.status == "pending",
+                    LastTerminalStatus.last_terminal_status == "completed",
+                ),
+            }
+            query = query.where(status_filters[status])
         if instance_id:
             query = query.where(LatestResourceJob.instance_id == instance_id)
         if search:

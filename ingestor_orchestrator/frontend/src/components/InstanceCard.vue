@@ -59,7 +59,7 @@
         <div class="divider" />
 
         <div class="jobs-section">
-            <span class="jobs-title">Jobs</span>
+            <span class="jobs-title">Resources</span>
             <div class="job-stats">
                 <router-link
                     :to="{
@@ -76,7 +76,7 @@
                 </router-link>
                 <router-link
                     :to="{
-                        name: 'jobs',
+                        name: 'resources',
                         query: {
                             instance_id: stats.instance.id,
                             status: 'pending',
@@ -89,7 +89,7 @@
                 </router-link>
                 <router-link
                     :to="{
-                        name: 'jobs',
+                        name: 'resources',
                         query: {
                             instance_id: stats.instance.id,
                             status: 'processing',
@@ -102,7 +102,7 @@
                 </router-link>
                 <router-link
                     :to="{
-                        name: 'jobs',
+                        name: 'resources',
                         query: {
                             instance_id: stats.instance.id,
                             status: 'completed',
@@ -115,7 +115,7 @@
                 </router-link>
                 <router-link
                     :to="{
-                        name: 'jobs',
+                        name: 'resources',
                         query: {
                             instance_id: stats.instance.id,
                             status: 'failed',

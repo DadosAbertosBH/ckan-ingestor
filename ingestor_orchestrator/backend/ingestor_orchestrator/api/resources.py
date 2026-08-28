@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ingestor_orchestrator.api.jobs import _build_ckan_resource_url
 from ingestor_orchestrator.db import get_db
-from ingestor_orchestrator.models import CkanDataJob, JobStatus
+from ingestor_orchestrator.models import CkanDataJob, ResourceStatus
 from ingestor_orchestrator.dto import (
     JobListResponse,
     JobResponse,
@@ -56,7 +56,7 @@ async def get_resource_repo(
 
 @router.get("/", response_model=list[ResourceResponse])
 async def list_resources(
-    status: Optional[JobStatus] = None,
+    status: Optional[ResourceStatus] = None,
     instance_id: Optional[str] = None,
     search: Optional[str] = None,
     limit: int = Query(50, ge=1, le=500),

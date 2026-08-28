@@ -2,3 +2,4 @@ target/
 .aider*
 .git/
 .github/
+**/.DS_Store

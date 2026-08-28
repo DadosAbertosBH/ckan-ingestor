@@ -37,8 +37,10 @@ RUN mkdir -p ckan-ingestor-lib/src ckan-ingestor-consumer/src && \
 RUN cargo chef cook --release --recipe-path recipe.json
 
 # Now copy the actual source and build only our crates.
-COPY ckan-ingestor-lib/ ckan-ingestor-lib/
-COPY ckan-ingestor-consumer/ ckan-ingestor-consumer/
+# The production image only needs the application sources. Keeping tests,
+# fixtures, and local metadata out of this COPY preserves the build cache.
+COPY ckan-ingestor-lib/src/ ckan-ingestor-lib/src/
+COPY ckan-ingestor-consumer/src/ ckan-ingestor-consumer/src/
 
 # Build release binary. The shared /src/target can contain libduckdb.so for
 # more than one platform, so resolve the exact Rust target triple and copy

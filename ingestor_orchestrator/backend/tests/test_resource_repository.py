@@ -25,8 +25,10 @@ from ingestor_orchestrator.models import (
     CkanDataJobResult,
     CkanInstance,
     JobStatus,
+    LastTerminalStatus,
     LatestResourceJob,
     ResourceMetadataLabel,
+    ResourceStatus,
 )
 from ingestor_orchestrator.repositories.sqlalchemy_resource_repository import (
     SqlAlchemyResourceRepository,
@@ -298,3 +300,41 @@ class TestResourceRepositoryGetResource:
         repo = SqlAlchemyResourceRepository(db_session)
         detail = await repo.get_resource("nonexistent-id")
         assert detail is None
+
+    async def test_list_resources_filters_outdated_status(
+        self, db_session, default_instance
+    ):
+        """The resource status filter accepts outdated resources."""
+        job = CkanDataJob(
+            resource_id="r-outdated-filter",
+            dataset_name="dataset",
+            idempotency_key="r-outdated-filter",
+            instance_id=default_instance.id,
+            status=JobStatus.PENDING,
+        )
+        db_session.add(job)
+        await db_session.flush()
+        db_session.add(
+            LatestResourceJob(
+                resource_id=job.resource_id,
+                latest_job_id=job.id,
+                instance_id=default_instance.id,
+                dataset_name=job.dataset_name,
+                status=JobStatus.PENDING,
+            )
+        )
+        db_session.add(
+            LastTerminalStatus(
+                resource_id=job.resource_id,
+                last_terminal_job_id=job.id,
+                last_terminal_status=JobStatus.COMPLETED,
+                last_terminal_at=datetime.now(timezone.utc),
+            )
+        )
+        await db_session.flush()
+
+        resources, _, _ = await SqlAlchemyResourceRepository(db_session).list_resources(
+            status=ResourceStatus.OUTDATED
+        )
+
+        assert [resource.resource_id for resource in resources] == [job.resource_id]
