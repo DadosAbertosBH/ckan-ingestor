@@ -133,7 +133,11 @@ async def enqueue_outdated_resources(
         nonlocal enqueued
         from sqlalchemy import select
 
-        from ingestor_orchestrator.models import CkanDataJob, JobStatus
+        from ingestor_orchestrator.models import (
+            CkanDataJob,
+            JobStatus,
+            LatestResourceJob,
+        )
 
         # 1) Single MySQL query: all resource_ids already PENDING/PROCESSING
         in_flight = {
@@ -144,6 +148,23 @@ async def enqueue_outdated_resources(
                         CkanDataJob.status.in_(
                             [JobStatus.PENDING, JobStatus.PROCESSING]
                         )
+                    )
+                )
+            ).fetchall()
+        }
+
+        failed_resources = {
+            r[0]
+            for r in (
+                await db_session.execute(
+                    select(CkanDataJob.resource_id)
+                    .join(
+                        LatestResourceJob,
+                        LatestResourceJob.latest_job_id == CkanDataJob.id,
+                    )
+                    .where(
+                        LatestResourceJob.resource_id.in_(outdated_ids),
+                        CkanDataJob.status == JobStatus.FAILED,
                     )
                 )
             ).fetchall()
@@ -191,7 +212,8 @@ async def enqueue_outdated_resources(
                         instance_id=instance_id,
                         ckan_url=ckan_url,
                         datastore_active=datastore_active,
-                    )
+                    ),
+                    retry=resource_id in failed_resources,
                 )
                 enqueued += 1
             except Exception as e:

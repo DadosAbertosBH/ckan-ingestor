@@ -13,16 +13,21 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from pydantic import BaseModel
+from ingestor_orchestrator.models.job_status import JobStatus
+from ingestor_orchestrator.models.resource_status import ResourceStatus
 
-from ingestor_orchestrator.dto.ckan_instance_response import CkanInstanceResponse
 
-
-class InstanceStats(BaseModel):
-    instance: CkanInstanceResponse
-    pending: int = 0
-    processing: int = 0
-    completed: int = 0
-    failed: int = 0
-    outdated: int = 0
-    empty: int = 0
+def classify_resource_status(
+    current_status: JobStatus,
+    last_terminal_status: JobStatus | None,
+) -> ResourceStatus:
+    """Return the public operational status for a resource."""
+    if current_status == JobStatus.PROCESSING:
+        return ResourceStatus.PROCESSING
+    if current_status == JobStatus.PENDING:
+        if last_terminal_status == JobStatus.FAILED:
+            return ResourceStatus.FAILED
+        if last_terminal_status == JobStatus.COMPLETED:
+            return ResourceStatus.OUTDATED
+        return ResourceStatus.PENDING
+    return ResourceStatus(current_status.value)

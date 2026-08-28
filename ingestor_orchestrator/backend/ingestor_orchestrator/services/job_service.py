@@ -29,9 +29,12 @@ from ingestor_orchestrator.models import (
     CsvHint,
     JobStatus,
     LatestResourceJob,
+    LastTerminalStatus,
     ResourceMetadataLabel,
+    TerminalStatus,
 )
 from ingestor_orchestrator.dto import JobCreate
+from ingestor_orchestrator.resource_status import classify_resource_status
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +43,7 @@ class JobService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create_job(self, data: JobCreate) -> CkanDataJob:
+    async def create_job(self, data: JobCreate, *, retry: bool = False) -> CkanDataJob:
         idempotency_key = data.resource_id
 
         job = CkanDataJob(
@@ -66,6 +69,7 @@ class JobService:
             resource_format=job.resource_format or "",
             csv_delimiter=csv_delimiter,
             datastore_active=job.datastore_active,
+            retry=retry,
         )
 
         # Store Kafka routing metadata for debugging
@@ -91,34 +95,46 @@ class JobService:
                 f"Can only retry failed jobs, current status: {job.status}"
             )
 
+        # Preserve the failed attempt and create a new job for the retry.
+        retry_job = CkanDataJob(
+            resource_id=job.resource_id,
+            resource_name=job.resource_name,
+            resource_url=job.resource_url,
+            resource_format=job.resource_format,
+            dataset_name=job.dataset_name,
+            status=JobStatus.PENDING,
+            idempotency_key=job.idempotency_key,
+            instance_id=job.instance_id,
+            ckan_url=job.ckan_url,
+            datastore_active=job.datastore_active,
+        )
+        self.db.add(retry_job)
+        await self.db.flush()
+
         # Publish to retry topic
         csv_delimiter = await self._get_csv_delimiter(job.resource_id)
         record_meta = await self._publish_job(
-            job.id, job.resource_id, job.ckan_url or "",
-            resource_url=job.resource_url or "",
-            resource_format=job.resource_format or "",
+            retry_job.id, retry_job.resource_id, retry_job.ckan_url or "",
+            resource_url=retry_job.resource_url or "",
+            resource_format=retry_job.resource_format or "",
             csv_delimiter=csv_delimiter,
-            datastore_active=job.datastore_active,
+            datastore_active=retry_job.datastore_active,
             retry=True,
         )
 
         # Store Kafka routing metadata for debugging
-        job.kafka_topic = record_meta.topic
-        job.kafka_partition = record_meta.partition
-        job.kafka_offset = record_meta.offset
-
-        job.status = JobStatus.PENDING
-        job.started_at = None
-        job.completed_at = None
-        job.updated_at = datetime.now(timezone.utc)
-        await self._upsert_latest_resource(job)
+        retry_job.kafka_topic = record_meta.topic
+        retry_job.kafka_partition = record_meta.partition
+        retry_job.kafka_offset = record_meta.offset
+        retry_job.updated_at = datetime.now(timezone.utc)
+        await self._upsert_latest_resource(retry_job)
         await self.db.commit()
-        await self.db.refresh(job)
+        await self.db.refresh(retry_job)
 
         logger.info(
             f"Retrying job {job.id}"
         )
-        return job
+        return retry_job
 
     async def _get_job_with_retry(
         self,
@@ -183,6 +199,7 @@ class JobService:
             job.status = JobStatus.FAILED
             job.completed_at = datetime.now(timezone.utc)
             job.updated_at = datetime.now(timezone.utc)
+            await self._record_terminal_status(job, successful=False)
             await self._update_latest_resource_status(job)
             await self.db.commit()
             logger.error(f"Job {job.id} failed: {error_message}")
@@ -215,6 +232,7 @@ class JobService:
             await self._upsert_csv_hint(job.resource_id, csv_delimiter)
         job.status = JobStatus.COMPLETED
         job.completed_at = datetime.now(timezone.utc)
+        await self._record_terminal_status(job, successful=True)
         logger.info(f"Job {job.id} completed ({rows_processed} rows)")
 
         if rows_processed == 0:
@@ -241,6 +259,10 @@ class JobService:
 
     async def _upsert_latest_resource(self, job: CkanDataJob) -> None:
         """Create or update the LatestResourceJob entry for a given job."""
+        terminal = await self._get_terminal_status(job.resource_id)
+        resource_status = classify_resource_status(
+            job.status, terminal.last_terminal_status if terminal else None
+        )
         existing = await self.db.get(LatestResourceJob, job.resource_id)
         if existing:
             existing.latest_job_id = job.id
@@ -249,7 +271,7 @@ class JobService:
             existing.resource_url = job.resource_url
             existing.resource_format = job.resource_format
             existing.dataset_name = job.dataset_name
-            existing.status = job.status
+            existing.status = resource_status
             existing.updated_at = datetime.now(timezone.utc)
         else:
             latest = LatestResourceJob(
@@ -260,16 +282,56 @@ class JobService:
                 resource_url=job.resource_url,
                 resource_format=job.resource_format,
                 dataset_name=job.dataset_name,
-                status=job.status,
+                status=resource_status,
             )
             self.db.add(latest)
         await self.db.flush()
+
+    async def _record_terminal_status(
+        self, job: CkanDataJob, *, successful: bool
+    ) -> None:
+        """Persist the latest terminal outcome without losing an older success."""
+        now = job.completed_at or datetime.now(timezone.utc)
+        terminal = await self._get_terminal_status(job.resource_id)
+        if terminal is None:
+            terminal = LastTerminalStatus(
+                resource_id=job.resource_id,
+                last_terminal_job_id=job.id,
+                last_terminal_status=(
+                    TerminalStatus.COMPLETED
+                    if successful
+                    else TerminalStatus.FAILED
+                ),
+                last_terminal_at=now,
+                last_successful_job_id=job.id if successful else None,
+            )
+            self.db.add(terminal)
+        else:
+            terminal.last_terminal_job_id = job.id
+            terminal.last_terminal_status = (
+                TerminalStatus.COMPLETED if successful else TerminalStatus.FAILED
+            )
+            terminal.last_terminal_at = now
+            if successful:
+                terminal.last_successful_job_id = job.id
+        await self.db.flush()
+
+    async def _get_terminal_status(self, resource_id: str) -> LastTerminalStatus | None:
+        result = await self.db.execute(
+            select(LastTerminalStatus).where(
+                LastTerminalStatus.resource_id == resource_id
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def _update_latest_resource_status(self, job: CkanDataJob) -> None:
         """Update the status when this job is still the resource's latest one."""
         latest = await self.db.get(LatestResourceJob, job.resource_id)
         if latest and latest.latest_job_id == job.id:
-            latest.status = job.status
+            terminal = await self._get_terminal_status(job.resource_id)
+            latest.status = classify_resource_status(
+                job.status, terminal.last_terminal_status if terminal else None
+            )
             latest.resource_name = job.resource_name
             latest.resource_url = job.resource_url
             latest.resource_format = job.resource_format

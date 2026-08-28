@@ -165,6 +165,7 @@ describe("ResourcesView", () => {
     const statusSelect = selects[0]!;
     const options = statusSelect.findAll("option").map((o) => o.text());
     expect(options).toContain("All statuses");
+    expect(options).toContain("Outdated");
   });
 
   it("renders search input", async () => {

@@ -80,6 +80,7 @@ describe("DatasetsView", () => {
     expect(ths).toContain("Running");
     expect(ths).toContain("Completed");
     expect(ths).toContain("Failed");
+    expect(ths).toContain("Outdated");
     expect(ths).toContain("Success %");
     expect(ths).toContain("Sync");
     expect(ths).toContain("Updated");

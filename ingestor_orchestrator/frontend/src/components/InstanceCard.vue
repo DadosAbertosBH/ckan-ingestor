@@ -63,6 +63,19 @@
             <div class="job-stats">
                 <router-link
                     :to="{
+                        name: 'resources',
+                        query: {
+                            instance_id: stats.instance.id,
+                            status: 'outdated',
+                        },
+                    }"
+                    class="stat-pill stat-link"
+                    style="background: rgba(168, 85, 247, 0.15); color: #a855f7"
+                >
+                    Outdated {{ stats.outdated ?? 0 }}
+                </router-link>
+                <router-link
+                    :to="{
                         name: 'jobs',
                         query: {
                             instance_id: stats.instance.id,

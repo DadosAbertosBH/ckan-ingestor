@@ -24,6 +24,7 @@ from ingestor_orchestrator.models import (
     CkanDataJob,
     CkanInstance,
     JobStatus,
+    LastTerminalStatus,
     LatestResourceJob,
     ResourceMetadataLabel,
 )
@@ -170,6 +171,37 @@ class TestDashboardRepository:
         stats = result[0]
         assert stats.completed == 3
         assert stats.empty == 2
+
+    async def test_get_stats_classifies_requeued_resources(self, db_session, default_instance):
+        """A pending retry is outdated after success and remains failed after failure."""
+        completed = await _create_job(
+            db_session, default_instance, "r-outdated", JobStatus.PENDING
+        )
+        failed = await _create_job(
+            db_session, default_instance, "r-failed-retry", JobStatus.PENDING
+        )
+        db_session.add_all([
+            LastTerminalStatus(
+                resource_id="r-outdated",
+                last_terminal_job_id=completed.id,
+                last_terminal_status=JobStatus.COMPLETED,
+                last_terminal_at=datetime.now(timezone.utc),
+            ),
+            LastTerminalStatus(
+                resource_id="r-failed-retry",
+                last_terminal_job_id=failed.id,
+                last_terminal_status=JobStatus.FAILED,
+                last_terminal_at=datetime.now(timezone.utc),
+            ),
+        ])
+        await db_session.flush()
+
+        repo = SqlAlchemyDashboardRepository(db_session)
+        stats = (await repo.get_stats())[0]
+
+        assert stats.outdated == 1
+        assert stats.failed == 1
+        assert stats.pending == 0
 
     async def test_get_stats_multiple_instances(self, db_session, default_instance):
         """get_stats returns stats for all instances."""

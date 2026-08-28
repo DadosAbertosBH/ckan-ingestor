@@ -22,6 +22,7 @@ from ingestor_orchestrator.models import (
     CkanDataJob,
     CsvHint,
     JobStatus,
+    LastTerminalStatus,
     ResourceMetadataLabel,
 )
 from ingestor_orchestrator.services.job_service import JobService
@@ -40,6 +41,29 @@ def _make_success_result_data(preview=None):
     if preview is not None:
         data["preview"] = preview
     return data
+
+
+@pytest.mark.asyncio
+async def test_apply_result_records_last_terminal_status(db_session, default_instance):
+    job = CkanDataJob(
+        resource_id="r-terminal-state",
+        dataset_name="ds-terminal-state",
+        idempotency_key="r-terminal-state",
+        instance_id=default_instance.id,
+        status=JobStatus.PENDING,
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    data = _make_success_result_data()
+    data["job_id"] = job.id
+    await JobService(db_session).apply_result(data)
+
+    terminal = await db_session.get(LastTerminalStatus, job.resource_id)
+    assert terminal is not None
+    assert terminal.last_terminal_status == JobStatus.COMPLETED
+    assert terminal.last_terminal_job_id == job.id
+    assert terminal.last_successful_job_id == job.id
 
 
 @pytest.mark.asyncio

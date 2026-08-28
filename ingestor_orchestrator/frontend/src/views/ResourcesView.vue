@@ -15,6 +15,7 @@
                 <option value="processing">Processing</option>
                 <option value="completed">Completed</option>
                 <option value="failed">Failed</option>
+                <option value="outdated">Outdated</option>
             </select>
             <select
                 v-model="filterInstanceId"
@@ -113,7 +114,7 @@ import { useRouter, useRoute } from "vue-router";
 import JobStatusBadge from "@/components/JobStatusBadge.vue";
 import ResourceLabelBadge from "@/components/ResourceLabelBadge.vue";
 import { useApi } from "@/composables/useApi";
-import type { CkanInstance, JobStatus, Resource } from "@/types";
+import type { CkanInstance, ResourceStatus, Resource } from "@/types";
 
 const router = useRouter();
 const route = useRoute();
@@ -123,8 +124,8 @@ const resources = ref<Resource[]>([]);
 const instances = ref<CkanInstance[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
-const filterStatus = ref<JobStatus | "">(
-    (route.query.status as JobStatus) || "",
+const filterStatus = ref<ResourceStatus | "">(
+    (route.query.status as ResourceStatus) || "",
 );
 const filterInstanceId = ref((route.query.instance_id as string) || "");
 const filterSearch = ref((route.query.search as string) || "");

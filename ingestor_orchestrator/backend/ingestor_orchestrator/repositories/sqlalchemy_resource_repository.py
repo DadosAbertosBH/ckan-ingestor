@@ -21,14 +21,16 @@ from sqlalchemy.orm import selectinload
 
 from ingestor_orchestrator.models import (
     CkanDataJob,
-    JobStatus,
     LatestResourceJob,
+    LastTerminalStatus,
     ResourceMetadataLabel,
+    ResourceStatus,
 )
 from ingestor_orchestrator.repositories.resource_repository import (
     ResourceDetail,
     ResourceRepository,
 )
+from ingestor_orchestrator.resource_status import classify_resource_status
 
 
 class SqlAlchemyResourceRepository(ResourceRepository):
@@ -37,7 +39,7 @@ class SqlAlchemyResourceRepository(ResourceRepository):
 
     async def list_resources(
         self,
-        status: JobStatus | None = None,
+        status: ResourceStatus | None = None,
         instance_id: str | None = None,
         search: str | None = None,
         limit: int = 50,
@@ -67,6 +69,8 @@ class SqlAlchemyResourceRepository(ResourceRepository):
 
         if not resources:
             return [], {}, {}
+
+        await self._apply_operational_status(resources)
 
         resource_ids = [r.resource_id for r in resources]
 
@@ -115,6 +119,7 @@ class SqlAlchemyResourceRepository(ResourceRepository):
         )
         job_result = await self._session.execute(job_query)
         latest_job = job_result.scalar_one_or_none()
+        await self._apply_operational_status([latest])
 
         # Get all jobs for this resource
         all_jobs_query = (
@@ -146,3 +151,32 @@ class SqlAlchemyResourceRepository(ResourceRepository):
             all_jobs=all_jobs,
             labels=labels,
         )
+
+    async def _apply_operational_status(
+        self, resources: list[LatestResourceJob]
+    ) -> None:
+        """Keep resource responses correct for rows created before the projection."""
+        job_ids = [resource.latest_job_id for resource in resources]
+        resource_ids = [resource.resource_id for resource in resources]
+        jobs = (
+            await self._session.execute(
+                select(CkanDataJob).where(CkanDataJob.id.in_(job_ids))
+            )
+        ).scalars().all()
+        jobs_by_id = {job.id: job for job in jobs}
+        terminals = (
+            await self._session.execute(
+                select(LastTerminalStatus).where(
+                    LastTerminalStatus.resource_id.in_(resource_ids)
+                )
+            )
+        ).scalars().all()
+        terminals_by_resource = {row.resource_id: row for row in terminals}
+        for resource in resources:
+            job = jobs_by_id.get(resource.latest_job_id)
+            terminal = terminals_by_resource.get(resource.resource_id)
+            if job:
+                resource.status = classify_resource_status(
+                    job.status,
+                    terminal.last_terminal_status if terminal else None,
+                )

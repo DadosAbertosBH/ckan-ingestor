@@ -17,7 +17,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from ingestor_orchestrator.models import JobStatus
+from ingestor_orchestrator.models import ResourceStatus
 
 
 class ResourceResponse(BaseModel):
@@ -26,7 +26,7 @@ class ResourceResponse(BaseModel):
     resource_url: str | None
     resource_format: str | None
     dataset_name: str
-    status: JobStatus
+    status: ResourceStatus
     instance_id: str
     ckan_resource_url: str = ""
     labels: list[str] = []

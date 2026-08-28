@@ -5,15 +5,16 @@
 </template>
 
 <script setup lang="ts">
-import type { JobStatus } from "@/types";
+import type { ResourceStatus } from "@/types";
 
-defineProps<{ status: JobStatus }>();
+defineProps<{ status: ResourceStatus }>();
 
-const colors: Record<JobStatus, string> = {
+const colors: Record<ResourceStatus, string> = {
     pending: "#f59e0b",
     processing: "#3b82f6",
     completed: "#10b981",
     failed: "#ef4444",
+    outdated: "#a855f7",
 };
 </script>
 

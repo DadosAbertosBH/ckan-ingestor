@@ -16,11 +16,18 @@
 """Tests for enqueue_outdated_resources — sync endpoint must create jobs."""
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock
 
 import duckdb
 import pytest
 import pytest_asyncio
-from ingestor_orchestrator.models import CkanDataJob, CkanInstance
+from ingestor_orchestrator.models import (
+    CkanDataJob,
+    CkanInstance,
+    JobStatus,
+    LatestResourceJob,
+)
+from ingestor_orchestrator.services.job_service import JobService
 from ingestor_orchestrator.services.metadata_sync import enqueue_outdated_resources
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -83,6 +90,49 @@ async def autocommit_session(engine, _create_tables):
 
 
 class TestEnqueueOutdatedResources:
+    async def test_failed_resource_is_published_to_retry_topic(
+        self, autocommit_session, instance_id, duck_conn, monkeypatch
+    ):
+        """An automatically re-enqueued failed resource uses the retry topic."""
+        duck_conn.execute("INSERT INTO ckan_dataset VALUES ('ds1', 'D1', '2025-01-01')")
+        duck_conn.execute(
+            "INSERT INTO ckan_resource VALUES "
+            "('r1', 'R1', 'http://a', 'CSV', 'ds1', '2025-01-01', '', false)"
+        )
+        failed = CkanDataJob(
+            resource_id="r1",
+            dataset_name="D1",
+            idempotency_key="r1",
+            instance_id=instance_id,
+            status=JobStatus.FAILED,
+        )
+        autocommit_session.add(failed)
+        await autocommit_session.flush()
+        autocommit_session.add(
+            LatestResourceJob(
+                resource_id="r1",
+                latest_job_id=failed.id,
+                instance_id=instance_id,
+                dataset_name="D1",
+                status=JobStatus.FAILED,
+            )
+        )
+        await autocommit_session.commit()
+
+        publish = AsyncMock(return_value=MagicMock(topic="retry", partition=0, offset=1))
+        monkeypatch.setattr(JobService, "_publish_job", publish)
+        monkeypatch.setattr(
+            "ckan_ingestor.duckdb_connection_factory.from_settings",
+            lambda _: duck_conn,
+        )
+
+        count = await enqueue_outdated_resources(
+            instance_id, "test", db=autocommit_session
+        )
+
+        assert count == 1
+        assert publish.await_args.kwargs["retry"] is True
+
     async def test_enqueues_jobs_for_outdated_resources(
         self, autocommit_session, instance_id, duck_conn, monkeypatch
     ):

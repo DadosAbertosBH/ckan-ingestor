@@ -24,7 +24,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ingestor_orchestrator.db import Base
 from ingestor_orchestrator.models.base import UTCDateTime, utcnow
-from ingestor_orchestrator.models.job_status import JobStatus
+from ingestor_orchestrator.models.resource_status import ResourceStatus
 
 if TYPE_CHECKING:
     from ingestor_orchestrator.models.ckan_data_job import CkanDataJob
@@ -45,8 +45,8 @@ class LatestResourceJob(Base):
     resource_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     resource_format: Mapped[str | None] = mapped_column(String(50), nullable=True)
     dataset_name: Mapped[str] = mapped_column(String(512), nullable=False)
-    status: Mapped[JobStatus] = mapped_column(
-        SAEnum(JobStatus, values_callable=lambda obj: [e.value for e in obj]),
+    status: Mapped[ResourceStatus] = mapped_column(
+        SAEnum(ResourceStatus, values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(

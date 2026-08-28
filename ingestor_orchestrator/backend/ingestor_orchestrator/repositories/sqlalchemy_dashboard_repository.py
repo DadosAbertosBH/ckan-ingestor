@@ -23,10 +23,13 @@ from ingestor_orchestrator.models import (
     CkanDataJob,
     CkanInstance,
     JobStatus,
+    LastTerminalStatus,
     LatestResourceJob,
+    ResourceStatus,
     ResourceMetadataLabel,
 )
 from ingestor_orchestrator.repositories.dashboard_repository import DashboardRepository
+from ingestor_orchestrator.resource_status import classify_resource_status
 
 
 class SqlAlchemyDashboardRepository(DashboardRepository):
@@ -43,23 +46,32 @@ class SqlAlchemyDashboardRepository(DashboardRepository):
         if not instances:
             return []
 
-        # Fetch latest job counts grouped by instance_id and status
+        # Fetch resource counts from the latest-resource projection.
         job_counts = await self._session.execute(
             select(
                 LatestResourceJob.instance_id,
                 CkanDataJob.status,
-                func.count(CkanDataJob.id),
+                LastTerminalStatus.last_terminal_status,
+                func.count(LatestResourceJob.resource_id),
             )
-            .join(
-                CkanDataJob,
-                CkanDataJob.id == LatestResourceJob.latest_job_id,
+            .join(CkanDataJob, CkanDataJob.id == LatestResourceJob.latest_job_id)
+            .outerjoin(
+                LastTerminalStatus,
+                LastTerminalStatus.resource_id == LatestResourceJob.resource_id,
             )
-            .group_by(LatestResourceJob.instance_id, CkanDataJob.status)
+            .group_by(
+                LatestResourceJob.instance_id,
+                CkanDataJob.status,
+                LastTerminalStatus.last_terminal_status,
+            )
         )
         counts_by_instance: dict[str, dict[JobStatus, int]] = {}
         for row in job_counts:
-            inst_id, status, count = row
-            counts_by_instance.setdefault(inst_id, {})[status] = count
+            inst_id, current_status, terminal_status, count = row
+            status = classify_resource_status(current_status, terminal_status)
+            counts_by_instance.setdefault(inst_id, {})[status] = (
+                counts_by_instance.setdefault(inst_id, {}).get(status, 0) + count
+            )
 
         # Fetch empty resource counts grouped by instance_id
         empty_counts_result = await self._session.execute(
@@ -84,10 +96,11 @@ class SqlAlchemyDashboardRepository(DashboardRepository):
             result.append(
                 InstanceStats(
                     instance=CkanInstanceResponse.model_validate(inst),
-                    pending=counts.get(JobStatus.PENDING, 0),
-                    processing=counts.get(JobStatus.PROCESSING, 0),
-                    completed=counts.get(JobStatus.COMPLETED, 0),
-                    failed=counts.get(JobStatus.FAILED, 0),
+                    pending=counts.get(ResourceStatus.PENDING, 0),
+                    processing=counts.get(ResourceStatus.PROCESSING, 0),
+                    completed=counts.get(ResourceStatus.COMPLETED, 0),
+                    failed=counts.get(ResourceStatus.FAILED, 0),
+                    outdated=counts.get(ResourceStatus.OUTDATED, 0),
                     empty=empty_counts.get(inst.id, 0),
                 )
             )

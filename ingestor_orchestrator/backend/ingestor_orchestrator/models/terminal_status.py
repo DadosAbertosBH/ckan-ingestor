@@ -13,16 +13,9 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from pydantic import BaseModel
-
-from ingestor_orchestrator.dto.ckan_instance_response import CkanInstanceResponse
+from enum import Enum
 
 
-class InstanceStats(BaseModel):
-    instance: CkanInstanceResponse
-    pending: int = 0
-    processing: int = 0
-    completed: int = 0
-    failed: int = 0
-    outdated: int = 0
-    empty: int = 0
+class TerminalStatus(str, Enum):
+    COMPLETED = "completed"
+    FAILED = "failed"

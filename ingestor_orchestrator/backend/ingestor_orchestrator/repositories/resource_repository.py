@@ -19,7 +19,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ingestor_orchestrator.models import CkanDataJob, JobStatus, LatestResourceJob
+from ingestor_orchestrator.models import CkanDataJob, ResourceStatus, LatestResourceJob
 
 
 @dataclass
@@ -36,7 +36,7 @@ class ResourceRepository(ABC):
     @abstractmethod
     async def list_resources(
         self,
-        status: Optional[JobStatus] = None,
+        status: Optional[ResourceStatus] = None,
         instance_id: Optional[str] = None,
         search: Optional[str] = None,
         limit: int = 50,

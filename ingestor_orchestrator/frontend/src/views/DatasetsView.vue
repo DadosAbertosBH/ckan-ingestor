@@ -43,6 +43,7 @@
                     <th>Running</th>
                     <th>Completed</th>
                     <th>Failed</th>
+                    <th>Outdated</th>
                     <th>Success %</th>
                     <th>Sync</th>
                     <th>Updated</th>
@@ -73,6 +74,7 @@
                     <td class="mono">{{ dataset.processing_resources }}</td>
                     <td class="mono">{{ dataset.completed_resources }}</td>
                     <td class="mono">{{ dataset.failed_resources }}</td>
+                    <td class="mono">{{ dataset.outdated_resources ?? 0 }}</td>
                     <td>
                         <div class="success-rate">
                             <div class="progress-bar">
@@ -107,7 +109,7 @@
                     <td>{{ formatTime(dataset.updated_at) }}</td>
                 </tr>
                 <tr v-if="datasets.length === 0">
-                    <td colspan="10" class="empty-state">No datasets found</td>
+                    <td colspan="11" class="empty-state">No datasets found</td>
                 </tr>
             </tbody>
         </table>
