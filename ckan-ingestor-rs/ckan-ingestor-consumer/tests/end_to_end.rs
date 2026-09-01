@@ -17,12 +17,17 @@ use tokio::time::{Duration, timeout};
 
 async fn start_iggy() -> anyhow::Result<ContainerAsync<GenericImage>> {
     Ok(GenericImage::new("apache/iggy", "0.8.0")
+        .with_wait_for(WaitFor::message_on_stdout(
+            "Iggy TCP server has started on: 0.0.0.0:8090",
+        ))
         .with_mapped_port(0, 8090.tcp())
         .with_security_opt("seccomp=unconfined")
+        .with_cap_add("IPC_LOCK")
+        .with_cap_add("SYS_NICE")
+        .with_ulimit("memlock", -1, Some(-1))
         .with_env_var("IGGY_ROOT_USERNAME", "iggy")
         .with_env_var("IGGY_ROOT_PASSWORD", "iggy")
         .with_env_var("IGGY_TCP_ADDRESS", "0.0.0.0:8090")
-        .with_ready_conditions(vec![WaitFor::seconds(5)])
         .start()
         .await?)
 }
