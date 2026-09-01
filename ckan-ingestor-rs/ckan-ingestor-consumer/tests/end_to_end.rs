@@ -17,7 +17,7 @@ use tokio::time::{Duration, timeout};
 
 async fn start_iggy() -> anyhow::Result<ContainerAsync<GenericImage>> {
     Ok(GenericImage::new("apache/iggy", "0.8.0")
-        .with_mapped_port(18090, 8090.tcp())
+        .with_exposed_port(8090.tcp())
         .with_security_opt("seccomp=unconfined")
         .with_env_var("IGGY_ROOT_USERNAME", "iggy")
         .with_env_var("IGGY_ROOT_PASSWORD", "iggy")
