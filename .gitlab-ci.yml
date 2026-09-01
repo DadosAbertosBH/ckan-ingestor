@@ -99,6 +99,7 @@ test-rust:
     - cd ckan-ingestor-rs
     - cargo fmt --all -- --check
     - cargo clippy --all-targets -- -D warnings
+    - cargo test --all --no-run
     # Iggy integration tests run serially against their Testcontainers instance.
     - cargo test --all -- --include-ignored --test-threads=1
   rules:

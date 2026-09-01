@@ -52,10 +52,10 @@ class TestIggyConnectionString:
     def test_credentials_are_url_encoded(self):
         settings = Settings(
             iggy_address="iggy:8090",
-            iggy_username="root@example.com",
-            iggy_password="p@ss:/word",
+            iggy_username="iggy",
+            iggy_password="password*with*asterisk",
         )
 
         assert settings.iggy_connection_string == (
-            "iggy+tcp://root%40example.com:p%40ss%3A%2Fword@iggy:8090"
+            "iggy+tcp://iggy:password*with*asterisk@iggy:8090"
         )

@@ -55,10 +55,7 @@ class Settings(BaseSettings):
 
     @property
     def iggy_connection_string(self) -> str:
-        return (
-            f"iggy+tcp://{quote(self.iggy_username, safe='')}:"
-            f"{quote(self.iggy_password, safe='')}@{self.iggy_address}"
-        )
+        return f"iggy+tcp://{self.iggy_username}:{self.iggy_password}@{self.iggy_address}"
 
 
 settings = Settings()

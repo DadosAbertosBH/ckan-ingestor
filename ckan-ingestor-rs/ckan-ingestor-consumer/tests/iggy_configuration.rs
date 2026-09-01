@@ -29,15 +29,15 @@ fn defaults_use_the_approved_iggy_topology() {
 }
 
 #[test]
-fn connection_string_encodes_credentials() {
+fn connection_string_preserves_non_delimiter_credentials() {
     let settings = IggySettings {
-        username: "root@example.com".into(),
-        password: "p@ss:/word".into(),
+        username: "iggy".into(),
+        password: "password*with*asterisk".into(),
         ..IggySettings::default()
     };
 
     assert_eq!(
         settings.connection_string(),
-        "iggy://root%40example.com:p%40ss%3A%2Fword@localhost:8090"
+        "iggy://iggy:password*with*asterisk@localhost:8090"
     );
 }
