@@ -281,7 +281,9 @@ class TestJobServiceUpsertsLatestResource:
         lrj = await sess.get(LatestResourceJob, "r-proc")
         assert lrj.status == JobStatus.COMPLETED
 
-    async def test_processing_result_updates_latest_resource_status(self, sess, instance):
+    async def test_processing_result_updates_latest_resource_status(
+        self, sess, instance
+    ):
         """A processing result keeps the latest-resource status in sync."""
         service = JobService(sess)
         job = await service.create_job(

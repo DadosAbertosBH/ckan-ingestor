@@ -47,8 +47,7 @@ def upgrade() -> None:
         existing_nullable=True,
     )
     op.execute(
-        "UPDATE ckan_data_job SET broker_type = 'kafka' "
-        "WHERE message_topic IS NOT NULL"
+        "UPDATE ckan_data_job SET broker_type = 'kafka' WHERE message_topic IS NOT NULL"
     )
 
 

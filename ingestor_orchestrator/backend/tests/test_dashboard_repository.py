@@ -96,10 +96,16 @@ class TestDashboardRepository:
     async def test_get_stats_with_job_counts(self, db_session, default_instance):
         """get_stats returns correct job counts per instance."""
         await _create_job(db_session, default_instance, "r-pending", JobStatus.PENDING)
-        await _create_job(db_session, default_instance, "r-completed-1", JobStatus.COMPLETED)
-        await _create_job(db_session, default_instance, "r-completed-2", JobStatus.COMPLETED)
+        await _create_job(
+            db_session, default_instance, "r-completed-1", JobStatus.COMPLETED
+        )
+        await _create_job(
+            db_session, default_instance, "r-completed-2", JobStatus.COMPLETED
+        )
         await _create_job(db_session, default_instance, "r-failed", JobStatus.FAILED)
-        await _create_job(db_session, default_instance, "r-processing", JobStatus.PROCESSING)
+        await _create_job(
+            db_session, default_instance, "r-processing", JobStatus.PROCESSING
+        )
 
         repo = SqlAlchemyDashboardRepository(db_session)
         result = await repo.get_stats()
@@ -160,7 +166,9 @@ class TestDashboardRepository:
 
     async def test_get_stats_includes_empty_count(self, db_session, default_instance):
         """get_stats includes empty resource count."""
-        await _create_job(db_session, default_instance, "r-completed", JobStatus.COMPLETED)
+        await _create_job(
+            db_session, default_instance, "r-completed", JobStatus.COMPLETED
+        )
         await _create_empty_label(db_session, default_instance, "r-empty-1")
         await _create_empty_label(db_session, default_instance, "r-empty-2")
 
@@ -172,7 +180,9 @@ class TestDashboardRepository:
         assert stats.completed == 3
         assert stats.empty == 2
 
-    async def test_get_stats_classifies_requeued_resources(self, db_session, default_instance):
+    async def test_get_stats_classifies_requeued_resources(
+        self, db_session, default_instance
+    ):
         """A pending retry is outdated after success and remains failed after failure."""
         completed = await _create_job(
             db_session, default_instance, "r-outdated", JobStatus.PENDING
@@ -180,20 +190,22 @@ class TestDashboardRepository:
         failed = await _create_job(
             db_session, default_instance, "r-failed-retry", JobStatus.PENDING
         )
-        db_session.add_all([
-            LastTerminalStatus(
-                resource_id="r-outdated",
-                last_terminal_job_id=completed.id,
-                last_terminal_status=JobStatus.COMPLETED,
-                last_terminal_at=datetime.now(timezone.utc),
-            ),
-            LastTerminalStatus(
-                resource_id="r-failed-retry",
-                last_terminal_job_id=failed.id,
-                last_terminal_status=JobStatus.FAILED,
-                last_terminal_at=datetime.now(timezone.utc),
-            ),
-        ])
+        db_session.add_all(
+            [
+                LastTerminalStatus(
+                    resource_id="r-outdated",
+                    last_terminal_job_id=completed.id,
+                    last_terminal_status=JobStatus.COMPLETED,
+                    last_terminal_at=datetime.now(timezone.utc),
+                ),
+                LastTerminalStatus(
+                    resource_id="r-failed-retry",
+                    last_terminal_job_id=failed.id,
+                    last_terminal_status=JobStatus.FAILED,
+                    last_terminal_at=datetime.now(timezone.utc),
+                ),
+            ]
+        )
         await db_session.flush()
 
         repo = SqlAlchemyDashboardRepository(db_session)

@@ -214,9 +214,7 @@ class TestApplyResultLabels:
 
 @pytest.mark.asyncio
 class TestApplyResultRetry:
-    async def test_retries_when_job_not_found(
-        self, db_session, default_instance
-    ):
+    async def test_retries_when_job_not_found(self, db_session, default_instance):
         """RED: apply_result must retry with backoff when the job
         hasn't been committed yet (race condition fix).
         """
@@ -263,9 +261,5 @@ class TestApplyResultRetry:
             await service.apply_result(data)
 
         # Should stop after max retries (not infinite loop)
-        assert mock_get.call_count > 1, (
-            "apply_result should retry at least once"
-        )
-        assert mock_get.call_count <= 10, (
-            "apply_result must not retry forever"
-        )
+        assert mock_get.call_count > 1, "apply_result should retry at least once"
+        assert mock_get.call_count <= 10, "apply_result must not retry forever"

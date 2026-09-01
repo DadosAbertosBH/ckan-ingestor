@@ -35,8 +35,10 @@ pytestmark = pytest.mark.asyncio
 @pytest_asyncio.fixture
 async def client(db_session):
     """TestClient with get_db overridden to use the in-memory test session."""
+
     async def override_get_db():
         yield db_session
+
     app.dependency_overrides[get_db] = override_get_db
     yield TestClient(app)
     app.dependency_overrides.clear()

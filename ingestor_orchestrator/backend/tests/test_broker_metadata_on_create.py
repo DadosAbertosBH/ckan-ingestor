@@ -58,9 +58,7 @@ async def autocommit_session(engine, _create_tables):
 
 
 class TestMessageMetadataOnCreate:
-    async def test_create_job_stores_iggy_metadata(
-        self, autocommit_session, instance
-    ):
+    async def test_create_job_stores_iggy_metadata(self, autocommit_session, instance):
         """create_job stores broker, stream, topic and partition metadata."""
         service = JobService(autocommit_session)
 
@@ -103,9 +101,7 @@ class TestMessageMetadataOnCreate:
         assert retried.message_topic == "jobs-retry"
         assert retried.message_partition is not None
 
-    async def test_new_jobs_have_metadata_for_debug(
-        self, autocommit_session, instance
-    ):
+    async def test_new_jobs_have_metadata_for_debug(self, autocommit_session, instance):
         """All newly created jobs have generic broker metadata for debugging."""
         service = JobService(autocommit_session)
 

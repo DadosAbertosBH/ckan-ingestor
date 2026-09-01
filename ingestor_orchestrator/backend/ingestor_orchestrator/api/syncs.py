@@ -43,9 +43,7 @@ async def list_syncs(
     repo: SyncRepository = Depends(get_sync_repository),
 ):
     """List metadata sync runs, most recent first."""
-    syncs = await repo.list_syncs(
-        instance_id=instance_id, limit=limit, offset=offset
-    )
+    syncs = await repo.list_syncs(instance_id=instance_id, limit=limit, offset=offset)
 
     return [
         MetadataSyncResponse(

@@ -15,7 +15,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """Tests for ingestion metadata — expected_rows, resource_size, encoding, labels."""
 
-
 import pytest
 import pytest_asyncio
 from ingestor_orchestrator.models import (
@@ -630,7 +629,6 @@ class TestIngestionLabels:
             .all()
         )
         assert "column-count-mismatch" not in labels
-
 
 
 # ---------------------------------------------------------------------------

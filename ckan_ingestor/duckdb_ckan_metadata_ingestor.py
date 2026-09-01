@@ -156,9 +156,7 @@ class DuckdbCkanMetadataIngestor:
         # Sync target table schema with new_packages
         target_types = {
             r[1]: r[2]
-            for r in self.conn.execute(
-                f"PRAGMA table_info('{table_name}')"
-            ).fetchall()
+            for r in self.conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
         }
         for c in new_packages.column_names:
             src_type = self._arrow_to_duckdb(new_packages.schema.field(c).type)
@@ -169,9 +167,7 @@ class DuckdbCkanMetadataIngestor:
                 target_types[c] = src_type
             elif target_types[c] != src_type and src_type == "VARCHAR":
                 # Widen the column type — DuckDB allows promotion to VARCHAR
-                self.conn.execute(
-                    f'ALTER TABLE {table_name} ALTER "{c}" TYPE VARCHAR'
-                )
+                self.conn.execute(f'ALTER TABLE {table_name} ALTER "{c}" TYPE VARCHAR')
                 target_types[c] = "VARCHAR"
 
         cols = ", ".join(f'"{c}"' for c in new_packages.column_names)

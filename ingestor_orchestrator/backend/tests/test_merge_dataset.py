@@ -209,9 +209,7 @@ class TestMergeDatasetCounts:
         data = self._data(["a"], ["2024-01-01"])
 
         ingestor.merge_dataset(data, "test_counts_same", "metadata_modified")
-        result = ingestor.merge_dataset(
-            data, "test_counts_same", "metadata_modified"
-        )
+        result = ingestor.merge_dataset(data, "test_counts_same", "metadata_modified")
 
         assert result.new == 0
         assert result.updated == 0

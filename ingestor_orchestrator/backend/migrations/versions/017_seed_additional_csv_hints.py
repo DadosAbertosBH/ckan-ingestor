@@ -3278,4 +3278,3 @@ def downgrade():
         ),
         {"resource_ids": resource_ids},
     )
-

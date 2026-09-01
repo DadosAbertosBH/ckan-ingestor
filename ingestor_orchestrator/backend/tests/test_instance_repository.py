@@ -34,12 +34,8 @@ class TestListInstances:
         )
 
         # Create extra instances to verify ordering
-        db_session.add(
-            CkanInstance(name="Zulu", url="https://z.example.com")
-        )
-        db_session.add(
-            CkanInstance(name="Alpha", url="https://a.example.com")
-        )
+        db_session.add(CkanInstance(name="Zulu", url="https://z.example.com"))
+        db_session.add(CkanInstance(name="Alpha", url="https://a.example.com"))
         await db_session.flush()
 
         repo = SqlAlchemyInstanceRepository(db_session)
@@ -139,9 +135,7 @@ class TestDeleteInstance:
 
 
 class TestGetInstancesByIds:
-    async def test_returns_instances_for_given_ids(
-        self, db_session, default_instance
-    ):
+    async def test_returns_instances_for_given_ids(self, db_session, default_instance):
         """get_instances_by_ids returns only matching instances."""
         from ingestor_orchestrator.repositories.sqlalchemy_instance_repository import (
             SqlAlchemyInstanceRepository,
@@ -154,9 +148,7 @@ class TestGetInstancesByIds:
 
         repo = SqlAlchemyInstanceRepository(db_session)
 
-        result = await repo.get_instances_by_ids(
-            [default_instance.id, inst2.id]
-        )
+        result = await repo.get_instances_by_ids([default_instance.id, inst2.id])
 
         ids = {i.id for i in result}
         assert default_instance.id in ids
@@ -193,24 +185,18 @@ class TestGetInstancesByIds:
         def capture(conn, cursor, statement, parameters, context, executemany):
             captured_sql.append(str(statement))
 
-        event.listen(
-            db_session.bind.sync_engine, "before_cursor_execute", capture
-        )
+        event.listen(db_session.bind.sync_engine, "before_cursor_execute", capture)
 
         try:
-            await repo.get_instances_by_ids(
-                [default_instance.id, inst2.id]
-            )
+            await repo.get_instances_by_ids([default_instance.id, inst2.id])
 
             select_queries = [
-                sql for sql in captured_sql
-                if sql.strip().upper().startswith("SELECT")
-                and "ckan_instance" in sql
+                sql
+                for sql in captured_sql
+                if sql.strip().upper().startswith("SELECT") and "ckan_instance" in sql
             ]
             assert len(select_queries) == 1, (
                 f"Expected 1 SELECT query, got {len(select_queries)}: {select_queries}"
             )
         finally:
-            event.remove(
-                db_session.bind.sync_engine, "before_cursor_execute", capture
-            )
+            event.remove(db_session.bind.sync_engine, "before_cursor_execute", capture)

@@ -70,9 +70,7 @@ async def test_publish_includes_optional_csv_delimiter():
 
     with patch(_FACTORY_PATH, return_value=bus):
         service = JobService(AsyncMock())
-        await service._publish_job(
-            "test-job", "resource-1", csv_delimiter=";"
-        )
+        await service._publish_job("test-job", "resource-1", csv_delimiter=";")
 
     args, _kwargs = bus.publish.await_args
     payload = json.loads(args[1].decode())
@@ -85,9 +83,7 @@ async def test_publish_includes_datastore_status_from_metadata():
 
     with patch(_FACTORY_PATH, return_value=bus):
         service = JobService(AsyncMock())
-        await service._publish_job(
-            "test-job", "resource-1", datastore_active=True
-        )
+        await service._publish_job("test-job", "resource-1", datastore_active=True)
 
     args, _kwargs = bus.publish.await_args
     payload = json.loads(args[1].decode())

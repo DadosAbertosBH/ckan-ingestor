@@ -116,7 +116,9 @@ class TestSyncService:
 
         with (
             patch.object(SyncService, "_run_metadata_sync") as mock_run,
-            patch.object(asyncio, "to_thread", new_callable=AsyncMock) as mock_to_thread,
+            patch.object(
+                asyncio, "to_thread", new_callable=AsyncMock
+            ) as mock_to_thread,
         ):
             mock_to_thread.return_value = {"dataset_count": 2, "resource_count": 5}
             result = await service.sync_metadata_for_instance(
@@ -190,11 +192,7 @@ class TestSyncsApi:
         assert "error" in result
 
         # The record created by start_sync must have end_time and status set
-        record = (
-            (await sess.execute(select(MetadataSync).limit(1)))
-            .scalars()
-            .one()
-        )
+        record = (await sess.execute(select(MetadataSync).limit(1))).scalars().one()
         assert record.end_time is not None
         assert record.status == "failure"
 

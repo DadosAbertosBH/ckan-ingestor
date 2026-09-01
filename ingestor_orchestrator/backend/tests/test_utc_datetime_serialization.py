@@ -119,7 +119,9 @@ class TestDateTimeColumnsReturnAwareDatetimes:
         self._assert_aware(default_instance.created_at, "CkanInstance.created_at")
         self._assert_aware(default_instance.updated_at, "CkanInstance.updated_at")
 
-    async def test_instance_last_metadata_synced_is_aware_or_none(self, db_session, default_instance):
+    async def test_instance_last_metadata_synced_is_aware_or_none(
+        self, db_session, default_instance
+    ):
         default_instance.last_metadata_synced = datetime.now(timezone.utc)
         await db_session.flush()
         await db_session.refresh(default_instance)
@@ -131,7 +133,9 @@ class TestDateTimeColumnsReturnAwareDatetimes:
 
     # ── LatestResourceJob ────────────────────────────────────────
 
-    async def test_latest_resource_job_dates_are_aware(self, db_session, default_instance):
+    async def test_latest_resource_job_dates_are_aware(
+        self, db_session, default_instance
+    ):
         job = CkanDataJob(
             resource_id="r-4",
             dataset_name="ds",
@@ -173,7 +177,9 @@ class TestDateTimeColumnsReturnAwareDatetimes:
         # end_time is None by default
         assert sync.end_time is None
 
-    async def test_metadata_sync_end_time_is_aware_when_set(self, db_session, default_instance):
+    async def test_metadata_sync_end_time_is_aware_when_set(
+        self, db_session, default_instance
+    ):
         now = datetime.now(timezone.utc)
         sync = MetadataSync(
             instance_id=default_instance.id,

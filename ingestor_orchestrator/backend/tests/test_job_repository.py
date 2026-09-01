@@ -20,8 +20,15 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import event
 
-from ingestor_orchestrator.models import CkanDataJob, CkanDataJobResult, CkanInstance, JobStatus
-from ingestor_orchestrator.repositories.sqlalchemy_job_repository import SqlAlchemyJobRepository
+from ingestor_orchestrator.models import (
+    CkanDataJob,
+    CkanDataJobResult,
+    CkanInstance,
+    JobStatus,
+)
+from ingestor_orchestrator.repositories.sqlalchemy_job_repository import (
+    SqlAlchemyJobRepository,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -75,9 +82,7 @@ class TestJobRepositoryListJobsDoesNotLoadDatasetPreview:
         def capture(conn, cursor, statement, parameters, context, executemany):
             captured_sql.append(str(statement))
 
-        event.listen(
-            db_session.bind.sync_engine, "before_cursor_execute", capture
-        )
+        event.listen(db_session.bind.sync_engine, "before_cursor_execute", capture)
 
         try:
             jobs, _ = await repo.list_jobs(limit=50, offset=0)
@@ -87,17 +92,12 @@ class TestJobRepositoryListJobsDoesNotLoadDatasetPreview:
             # Check ALL captured SQL — none should include dataset_preview
             for sql in captured_sql:
                 assert "dataset_preview" not in sql, (
-                    f"list_jobs must NOT select dataset_preview. "
-                    f"Captured SQL: {sql}"
+                    f"list_jobs must NOT select dataset_preview. Captured SQL: {sql}"
                 )
         finally:
-            event.remove(
-                db_session.bind.sync_engine, "before_cursor_execute", capture
-            )
+            event.remove(db_session.bind.sync_engine, "before_cursor_execute", capture)
 
-    async def test_list_jobs_lazy_loading_results(
-        self, db_session, default_instance
-    ):
+    async def test_list_jobs_lazy_loading_results(self, db_session, default_instance):
         """GREEN: list_jobs must NOT eagerly load results at all."""
         await _create_job_with_result(db_session, default_instance, "r-lazy")
 
@@ -108,9 +108,7 @@ class TestJobRepositoryListJobsDoesNotLoadDatasetPreview:
         def capture(conn, cursor, statement, parameters, context, executemany):
             captured_sql.append(str(statement))
 
-        event.listen(
-            db_session.bind.sync_engine, "before_cursor_execute", capture
-        )
+        event.listen(db_session.bind.sync_engine, "before_cursor_execute", capture)
 
         try:
             jobs, _ = await repo.list_jobs(limit=50, offset=0)
@@ -124,13 +122,9 @@ class TestJobRepositoryListJobsDoesNotLoadDatasetPreview:
                 f"Captured: {result_queries}"
             )
         finally:
-            event.remove(
-                db_session.bind.sync_engine, "before_cursor_execute", capture
-            )
+            event.remove(db_session.bind.sync_engine, "before_cursor_execute", capture)
 
-    async def test_get_job_eagerly_loads_results(
-        self, db_session, default_instance
-    ):
+    async def test_get_job_eagerly_loads_results(self, db_session, default_instance):
         """get_job must load results via selectinload (for the detail page)."""
         job = await _create_job_with_result(db_session, default_instance, "r-detail")
 
@@ -141,9 +135,7 @@ class TestJobRepositoryListJobsDoesNotLoadDatasetPreview:
         def capture(conn, cursor, statement, parameters, context, executemany):
             captured_sql.append(str(statement))
 
-        event.listen(
-            db_session.bind.sync_engine, "before_cursor_execute", capture
-        )
+        event.listen(db_session.bind.sync_engine, "before_cursor_execute", capture)
 
         try:
             result = await repo.get_job(job.id)
@@ -161,6 +153,4 @@ class TestJobRepositoryListJobsDoesNotLoadDatasetPreview:
                 "get_job must use selectinload to load results"
             )
         finally:
-            event.remove(
-                db_session.bind.sync_engine, "before_cursor_execute", capture
-            )
+            event.remove(db_session.bind.sync_engine, "before_cursor_execute", capture)

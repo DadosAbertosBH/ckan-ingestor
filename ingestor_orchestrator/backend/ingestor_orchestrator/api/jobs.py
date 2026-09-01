@@ -51,7 +51,9 @@ async def list_jobs(
     instance_id: Optional[str] = None,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    order_by: Optional[str] = Query(None, description="Sort field: created_at or duration"),
+    order_by: Optional[str] = Query(
+        None, description="Sort field: created_at or duration"
+    ),
     order_dir: Optional[str] = Query(None, description="Sort direction: asc or desc"),
     tags: Optional[str] = Query(None, description="Comma-separated tags to filter by"),
     db: AsyncSession = Depends(get_db),
@@ -74,9 +76,7 @@ async def list_jobs(
                 .where(ResourceMetadataLabel.label.in_(tag_list))
                 .distinct()
             )
-            query = query.where(
-                CkanDataJob.resource_id.in_(matching_resource_ids_subq)
-            )
+            query = query.where(CkanDataJob.resource_id.in_(matching_resource_ids_subq))
 
     # Apply ordering
     effective_order_by = order_by if order_by in VALID_ORDER_FIELDS else "created_at"

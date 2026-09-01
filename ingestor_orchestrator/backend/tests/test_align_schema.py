@@ -107,4 +107,3 @@ class TestAlignSchema:
         )
         with pytest.raises(TypeError, match="Cannot align column"):
             CkanDatasetFetcher._align_schema(table, base_schema)
-

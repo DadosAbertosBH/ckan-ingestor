@@ -36,9 +36,7 @@ async def test_result_is_processed_by_the_commit_after_callback():
     result_consumer = ResultConsumer()
     result_consumer._process = AsyncMock()
 
-    with patch(
-        "ingestor_orchestrator.result_consumer.get_iggy_bus", return_value=bus
-    ):
+    with patch("ingestor_orchestrator.result_consumer.get_iggy_bus", return_value=bus):
         await result_consumer.start()
 
     result_consumer._process.assert_awaited_once_with(received)

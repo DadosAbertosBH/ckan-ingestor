@@ -115,9 +115,7 @@ class TestResourceRepositoryListResourcesDoesNotLoadJobResults:
         def capture(conn, cursor, statement, parameters, context, executemany):
             captured_sql.append(str(statement))
 
-        event.listen(
-            db_session.bind.sync_engine, "before_cursor_execute", capture
-        )
+        event.listen(db_session.bind.sync_engine, "before_cursor_execute", capture)
 
         try:
             resources, _, _ = await repo.list_resources(limit=50, offset=0)
@@ -127,17 +125,13 @@ class TestResourceRepositoryListResourcesDoesNotLoadJobResults:
             # selectinload emits a separate SELECT against ckan_instance.
             # Verify that query was issued (first query is the main select,
             # second is the eager load of the instance relationship).
-            instance_queries = [
-                sql for sql in captured_sql if "ckan_instance" in sql
-            ]
+            instance_queries = [sql for sql in captured_sql if "ckan_instance" in sql]
             assert len(instance_queries) >= 1, (
                 "list_resources must eagerly load instance via selectinload. "
                 f"Captured SQL: {captured_sql}"
             )
         finally:
-            event.remove(
-                db_session.bind.sync_engine, "before_cursor_execute", capture
-            )
+            event.remove(db_session.bind.sync_engine, "before_cursor_execute", capture)
 
     async def test_list_resources_sql_excludes_job_results(
         self, db_session, default_instance
@@ -154,9 +148,7 @@ class TestResourceRepositoryListResourcesDoesNotLoadJobResults:
         def capture(conn, cursor, statement, parameters, context, executemany):
             captured_sql.append(str(statement))
 
-        event.listen(
-            db_session.bind.sync_engine, "before_cursor_execute", capture
-        )
+        event.listen(db_session.bind.sync_engine, "before_cursor_execute", capture)
 
         try:
             resources, _, _ = await repo.list_resources(limit=50, offset=0)
@@ -172,9 +164,7 @@ class TestResourceRepositoryListResourcesDoesNotLoadJobResults:
                 f"Captured: {result_queries}"
             )
         finally:
-            event.remove(
-                db_session.bind.sync_engine, "before_cursor_execute", capture
-            )
+            event.remove(db_session.bind.sync_engine, "before_cursor_execute", capture)
 
     async def test_list_resources_returns_labels(self, db_session, default_instance):
         """list_resources must return labels mapped by resource_id."""
@@ -225,9 +215,7 @@ class TestResourceRepositoryGetResource:
         def capture(conn, cursor, statement, parameters, context, executemany):
             captured_sql.append(str(statement))
 
-        event.listen(
-            db_session.bind.sync_engine, "before_cursor_execute", capture
-        )
+        event.listen(db_session.bind.sync_engine, "before_cursor_execute", capture)
 
         try:
             detail = await repo.get_resource(latest.resource_id)
@@ -246,9 +234,7 @@ class TestResourceRepositoryGetResource:
                 "get_resource must use selectinload to load results on latest_job"
             )
         finally:
-            event.remove(
-                db_session.bind.sync_engine, "before_cursor_execute", capture
-            )
+            event.remove(db_session.bind.sync_engine, "before_cursor_execute", capture)
 
     async def test_get_resource_returns_all_jobs(self, db_session, default_instance):
         """get_resource must return all jobs for the resource."""

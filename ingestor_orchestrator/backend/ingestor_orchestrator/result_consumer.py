@@ -24,6 +24,7 @@ from ingestor_orchestrator.services.job_service import JobService
 
 logger = logging.getLogger(__name__)
 
+
 class ResultConsumer:
     """Consumes Iggy job results and updates the database."""
 
@@ -74,6 +75,7 @@ async def run():
 
 if __name__ == "__main__":
     import logging
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",

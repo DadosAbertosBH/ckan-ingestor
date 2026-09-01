@@ -64,7 +64,9 @@ class CkanDataJob(Base):
         CHAR(36), ForeignKey("ckan_instance.id"), nullable=False, index=True
     )
     ckan_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
-    datastore_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    datastore_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime, default=utcnow, nullable=False
     )

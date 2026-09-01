@@ -164,9 +164,7 @@ class TestJobServiceUnlabelResource:
 
 
 class TestApplyIngestionLabelsRemovesEmpty:
-    async def test_empty_label_removed_when_rows_processed_gt_zero(
-        self, db_session
-    ):
+    async def test_empty_label_removed_when_rows_processed_gt_zero(self, db_session):
         """When rows_processed > 0, the 'empty' label must be removed."""
         service = JobService(db_session)
         await service._label_resource("r-rempty", "empty")
@@ -202,13 +200,17 @@ class TestApplyIngestionLabelsSingleColumn:
         )
 
         rows = (
-            await db_session.execute(
-                select(ResourceMetadataLabel).where(
-                    ResourceMetadataLabel.resource_id == "r-reader",
-                    ResourceMetadataLabel.label == "reader:CsvReader",
+            (
+                await db_session.execute(
+                    select(ResourceMetadataLabel).where(
+                        ResourceMetadataLabel.resource_id == "r-reader",
+                        ResourceMetadataLabel.label == "reader:CsvReader",
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(rows) == 1
 
     async def test_single_column_label_applied(self, db_session):

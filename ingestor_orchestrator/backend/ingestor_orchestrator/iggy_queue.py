@@ -67,7 +67,9 @@ class IggyMessageBus:
             await self._client.connect()
             await self._ensure_topology()
             self._connected = True
-            logger.info("Iggy client connected to stream %s", self._settings.iggy_stream)
+            logger.info(
+                "Iggy client connected to stream %s", self._settings.iggy_stream
+            )
 
     async def _ensure_topology(self) -> None:
         stream = self._settings.iggy_stream
@@ -123,9 +125,7 @@ class IggyMessageBus:
             topic=self._settings.iggy_topic_results,
             polling_strategy=PollingStrategy.Next(),
             batch_length=10,
-            auto_commit=AutoCommit.After(
-                AutoCommitAfter.ConsumingEachMessage()
-            ),
+            auto_commit=AutoCommit.After(AutoCommitAfter.ConsumingEachMessage()),
             create_consumer_group_if_not_exists=True,
             auto_join_consumer_group=True,
         )

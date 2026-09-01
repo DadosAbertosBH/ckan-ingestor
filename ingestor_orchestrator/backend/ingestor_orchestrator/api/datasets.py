@@ -48,24 +48,24 @@ async def list_datasets(
             LatestResourceJob.instance_id,
             LatestResourceJob.dataset_name,
             func.count(LatestResourceJob.resource_id).label("total_resources"),
-            func.sum(
-                case((LatestResourceJob.status == "pending", 1), else_=0)
-            ).label("pending_resources"),
+            func.sum(case((LatestResourceJob.status == "pending", 1), else_=0)).label(
+                "pending_resources"
+            ),
             func.sum(
                 case((LatestResourceJob.status == "processing", 1), else_=0)
             ).label("processing_resources"),
-            func.sum(
-                case((LatestResourceJob.status == "completed", 1), else_=0)
-            ).label("completed_resources"),
-            func.sum(
-                case((LatestResourceJob.status == "failed", 1), else_=0)
-            ).label("failed_resources"),
-            func.sum(
-                case((LatestResourceJob.status == "outdated", 1), else_=0)
-            ).label("outdated_resources"),
-            func.sum(
-                case((ResourceMetadataLabel.label == "empty", 1), else_=0)
-            ).label("empty_resources"),
+            func.sum(case((LatestResourceJob.status == "completed", 1), else_=0)).label(
+                "completed_resources"
+            ),
+            func.sum(case((LatestResourceJob.status == "failed", 1), else_=0)).label(
+                "failed_resources"
+            ),
+            func.sum(case((LatestResourceJob.status == "outdated", 1), else_=0)).label(
+                "outdated_resources"
+            ),
+            func.sum(case((ResourceMetadataLabel.label == "empty", 1), else_=0)).label(
+                "empty_resources"
+            ),
             func.max(LatestResourceJob.updated_at).label("updated_at"),
         )
         .outerjoin(
@@ -79,13 +79,9 @@ async def list_datasets(
     if instance_id:
         agg_subq = agg_subq.where(LatestResourceJob.instance_id == instance_id)
     if search:
-        agg_subq = agg_subq.where(
-            LatestResourceJob.dataset_name.ilike(f"%{search}%")
-        )
+        agg_subq = agg_subq.where(LatestResourceJob.dataset_name.ilike(f"%{search}%"))
 
-    agg_subq = agg_subq.order_by(
-        func.max(LatestResourceJob.updated_at).desc()
-    )
+    agg_subq = agg_subq.order_by(func.max(LatestResourceJob.updated_at).desc())
     agg_subq = agg_subq.limit(limit).offset(offset)
 
     agg_result = await db.execute(agg_subq)
@@ -96,13 +92,15 @@ async def list_datasets(
 
     # Fetch instance names and URLs in one query
     instance_ids = {row.instance_id for row in agg_rows}
-    instance_query = select(CkanInstance).where(
-        CkanInstance.id.in_(instance_ids)
-    )
+    instance_query = select(CkanInstance).where(CkanInstance.id.in_(instance_ids))
     inst_result = await db.execute(instance_query)
     instances = inst_result.scalars().all()
     instance_info_map = {
-        inst.id: {"name": inst.name, "url": inst.url, "last_synced": inst.last_metadata_synced}
+        inst.id: {
+            "name": inst.name,
+            "url": inst.url,
+            "last_synced": inst.last_metadata_synced,
+        }
         for inst in instances
     }
 
@@ -123,7 +121,9 @@ async def list_datasets(
             outdated_resources=row.outdated_resources,
             empty_resources=row.empty_resources,
             updated_at=row.updated_at,
-            instance_last_synced_at=instance_info_map.get(row.instance_id, {}).get("last_synced"),
+            instance_last_synced_at=instance_info_map.get(row.instance_id, {}).get(
+                "last_synced"
+            ),
         )
         for row in agg_rows
     ]

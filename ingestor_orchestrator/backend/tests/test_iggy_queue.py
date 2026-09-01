@@ -63,9 +63,7 @@ async def test_connect_accepts_topology_created_concurrently(iggy_settings):
     client.connect = AsyncMock()
     client.get_stream = AsyncMock(side_effect=[None, object()])
     client.create_stream = AsyncMock(side_effect=RuntimeError("already exists"))
-    client.get_topic = AsyncMock(
-        side_effect=[None, object(), object(), object()]
-    )
+    client.get_topic = AsyncMock(side_effect=[None, object(), object(), object()])
     client.create_topic = AsyncMock(side_effect=RuntimeError("already exists"))
 
     with patch(

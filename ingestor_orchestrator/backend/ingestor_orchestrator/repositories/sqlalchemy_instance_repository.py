@@ -47,9 +47,7 @@ class SqlAlchemyInstanceRepository(InstanceRepository):
         await self._session.flush()
         return True
 
-    async def get_instances_by_ids(
-        self, instance_ids: list[str]
-    ) -> list[CkanInstance]:
+    async def get_instances_by_ids(self, instance_ids: list[str]) -> list[CkanInstance]:
         query = select(CkanInstance).where(CkanInstance.id.in_(instance_ids))
         result = await self._session.execute(query)
         return list(result.scalars().all())

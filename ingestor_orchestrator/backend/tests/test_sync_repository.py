@@ -28,9 +28,7 @@ from ingestor_orchestrator.repositories.sqlalchemy_sync_repository import (
 pytestmark = pytest.mark.asyncio
 
 
-async def _create_sync(
-    sess, instance: CkanInstance, *, start_delta: int = 0, **kwargs
-):
+async def _create_sync(sess, instance: CkanInstance, *, start_delta: int = 0, **kwargs):
     """Helper to create a MetadataSync record."""
     sync = MetadataSync(
         instance_id=instance.id,
@@ -67,9 +65,7 @@ class TestSyncRepository:
         assert result[1].id == s2.id
         assert result[2].id == s1.id
 
-    async def test_list_syncs_filter_by_instance_id(
-        self, db_session, default_instance
-    ):
+    async def test_list_syncs_filter_by_instance_id(self, db_session, default_instance):
         """list_syncs filters by instance_id when provided."""
         other = CkanInstance(
             id="inst-other",
@@ -127,9 +123,7 @@ class TestSyncRepository:
         def capture(conn, cursor, statement, parameters, context, executemany):
             captured_sql.append(str(statement))
 
-        event.listen(
-            db_session.bind.sync_engine, "before_cursor_execute", capture
-        )
+        event.listen(db_session.bind.sync_engine, "before_cursor_execute", capture)
 
         try:
             result = await repo.list_syncs()
@@ -140,20 +134,14 @@ class TestSyncRepository:
             assert result[0].instance.name == "Default"
 
             # There should be a second query loading ckan_instance
-            instance_queries = [
-                sql for sql in captured_sql if "ckan_instance" in sql
-            ]
+            instance_queries = [sql for sql in captured_sql if "ckan_instance" in sql]
             assert len(instance_queries) >= 1, (
                 "list_syncs must use selectinload to eagerly load instance"
             )
         finally:
-            event.remove(
-                db_session.bind.sync_engine, "before_cursor_execute", capture
-            )
+            event.remove(db_session.bind.sync_engine, "before_cursor_execute", capture)
 
-    async def test_list_syncs_empty_when_no_syncs(
-        self, db_session, default_instance
-    ):
+    async def test_list_syncs_empty_when_no_syncs(self, db_session, default_instance):
         """list_syncs returns empty list when no syncs exist."""
         repo = SqlAlchemySyncRepository(db_session)
         result = await repo.list_syncs()

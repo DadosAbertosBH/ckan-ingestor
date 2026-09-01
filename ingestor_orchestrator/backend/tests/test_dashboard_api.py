@@ -149,68 +149,72 @@ class TestDashboardStats:
 
         now = datetime.now(timezone.utc)
         # Instance A: 2 resources (both empty)
-        db_session.add_all([
-            CkanDataJob(
-                resource_id="res-a1",
-                dataset_name="ds-a",
-                idempotency_key="ik-a1",
-                instance_id="inst-a",
-                status=JobStatus.COMPLETED,
-                created_at=now,
-                updated_at=now,
-            ),
-            CkanDataJob(
-                resource_id="res-a2",
-                dataset_name="ds-a",
-                idempotency_key="ik-a2",
-                instance_id="inst-a",
-                status=JobStatus.COMPLETED,
-                created_at=now,
-                updated_at=now,
-            ),
-            LatestResourceJob(
-                resource_id="res-a1",
-                latest_job_id="job-a1",
-                instance_id="inst-a",
-                dataset_name="ds-a",
-                status=JobStatus.COMPLETED,
-                created_at=now,
-                updated_at=now,
-            ),
-            LatestResourceJob(
-                resource_id="res-a2",
-                latest_job_id="job-a2",
-                instance_id="inst-a",
-                dataset_name="ds-a",
-                status=JobStatus.COMPLETED,
-                created_at=now,
-                updated_at=now,
-            ),
-            ResourceMetadataLabel(resource_id="res-a1", label="empty"),
-            ResourceMetadataLabel(resource_id="res-a2", label="empty"),
-        ])
+        db_session.add_all(
+            [
+                CkanDataJob(
+                    resource_id="res-a1",
+                    dataset_name="ds-a",
+                    idempotency_key="ik-a1",
+                    instance_id="inst-a",
+                    status=JobStatus.COMPLETED,
+                    created_at=now,
+                    updated_at=now,
+                ),
+                CkanDataJob(
+                    resource_id="res-a2",
+                    dataset_name="ds-a",
+                    idempotency_key="ik-a2",
+                    instance_id="inst-a",
+                    status=JobStatus.COMPLETED,
+                    created_at=now,
+                    updated_at=now,
+                ),
+                LatestResourceJob(
+                    resource_id="res-a1",
+                    latest_job_id="job-a1",
+                    instance_id="inst-a",
+                    dataset_name="ds-a",
+                    status=JobStatus.COMPLETED,
+                    created_at=now,
+                    updated_at=now,
+                ),
+                LatestResourceJob(
+                    resource_id="res-a2",
+                    latest_job_id="job-a2",
+                    instance_id="inst-a",
+                    dataset_name="ds-a",
+                    status=JobStatus.COMPLETED,
+                    created_at=now,
+                    updated_at=now,
+                ),
+                ResourceMetadataLabel(resource_id="res-a1", label="empty"),
+                ResourceMetadataLabel(resource_id="res-a2", label="empty"),
+            ]
+        )
 
         # Instance B: 1 resource (not empty)
-        db_session.add_all([
-            CkanDataJob(
-                resource_id="res-b1",
-                dataset_name="ds-b",
-                idempotency_key="ik-b1",
-                instance_id="inst-b",
-                status=JobStatus.COMPLETED,
-                created_at=now,
-                updated_at=now,
-            ),
-            LatestResourceJob(
-                resource_id="res-b1",
-                latest_job_id="job-b1",
-                instance_id="inst-b",
-                dataset_name="ds-b",
-                status=JobStatus.COMPLETED,
-                created_at=now,
-                updated_at=now,
-            ),
-        ])
+        db_session.add_all(
+            [
+                CkanDataJob(
+                    resource_id="res-b1",
+                    dataset_name="ds-b",
+                    idempotency_key="ik-b1",
+                    instance_id="inst-b",
+                    status=JobStatus.COMPLETED,
+                    created_at=now,
+                    updated_at=now,
+                ),
+                LatestResourceJob(
+                    resource_id="res-b1",
+                    latest_job_id="job-b1",
+                    instance_id="inst-b",
+                    dataset_name="ds-b",
+                    status=JobStatus.COMPLETED,
+                    created_at=now,
+                    updated_at=now,
+                ),
+            ]
+        )
         await db_session.flush()
 
         stats = await _query_dashboard_stats(db_session)
@@ -240,29 +244,31 @@ class TestDashboardStats:
         await db_session.flush()
 
         now = datetime.now(timezone.utc)
-        db_session.add_all([
-            CkanDataJob(
-                resource_id="res-1",
-                dataset_name="ds-1",
-                idempotency_key="ik-1",
-                instance_id="inst-1",
-                status=JobStatus.COMPLETED,
-                created_at=now,
-                updated_at=now,
-            ),
-            LatestResourceJob(
-                resource_id="res-1",
-                latest_job_id="job-1",
-                instance_id="inst-1",
-                dataset_name="ds-1",
-                status=JobStatus.COMPLETED,
-                created_at=now,
-                updated_at=now,
-            ),
-            # res-1 has "empty" AND "stale" labels — should still count as 1 empty
-            ResourceMetadataLabel(resource_id="res-1", label="empty"),
-            ResourceMetadataLabel(resource_id="res-1", label="stale"),
-        ])
+        db_session.add_all(
+            [
+                CkanDataJob(
+                    resource_id="res-1",
+                    dataset_name="ds-1",
+                    idempotency_key="ik-1",
+                    instance_id="inst-1",
+                    status=JobStatus.COMPLETED,
+                    created_at=now,
+                    updated_at=now,
+                ),
+                LatestResourceJob(
+                    resource_id="res-1",
+                    latest_job_id="job-1",
+                    instance_id="inst-1",
+                    dataset_name="ds-1",
+                    status=JobStatus.COMPLETED,
+                    created_at=now,
+                    updated_at=now,
+                ),
+                # res-1 has "empty" AND "stale" labels — should still count as 1 empty
+                ResourceMetadataLabel(resource_id="res-1", label="empty"),
+                ResourceMetadataLabel(resource_id="res-1", label="stale"),
+            ]
+        )
         await db_session.flush()
 
         stats = await _query_dashboard_stats(db_session)

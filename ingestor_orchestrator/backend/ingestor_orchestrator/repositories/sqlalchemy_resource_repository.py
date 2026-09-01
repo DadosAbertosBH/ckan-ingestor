@@ -183,18 +183,26 @@ class SqlAlchemyResourceRepository(ResourceRepository):
         job_ids = [resource.latest_job_id for resource in resources]
         resource_ids = [resource.resource_id for resource in resources]
         jobs = (
-            await self._session.execute(
-                select(CkanDataJob).where(CkanDataJob.id.in_(job_ids))
-            )
-        ).scalars().all()
-        jobs_by_id = {job.id: job for job in jobs}
-        terminals = (
-            await self._session.execute(
-                select(LastTerminalStatus).where(
-                    LastTerminalStatus.resource_id.in_(resource_ids)
+            (
+                await self._session.execute(
+                    select(CkanDataJob).where(CkanDataJob.id.in_(job_ids))
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
+        jobs_by_id = {job.id: job for job in jobs}
+        terminals = (
+            (
+                await self._session.execute(
+                    select(LastTerminalStatus).where(
+                        LastTerminalStatus.resource_id.in_(resource_ids)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
         terminals_by_resource = {row.resource_id: row for row in terminals}
         for resource in resources:
             job = jobs_by_id.get(resource.latest_job_id)

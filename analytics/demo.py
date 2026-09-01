@@ -44,7 +44,9 @@ def _():
     import time
 
     # Altere para o caminho do seu banco
-    con = duckdb.connect("/Users/guilhermecastro/Documents/gmt-gateway-backend/despesas.duckdb")
+    con = duckdb.connect(
+        "/Users/guilhermecastro/Documents/gmt-gateway-backend/despesas.duckdb"
+    )
 
     con.execute("""
     CREATE TABLE IF NOT EXISTS despesas AS
@@ -79,9 +81,7 @@ async def _(asyncio, con, mo, px, texto_completo, time):
     digitado = ""
     for char in texto_completo:
         digitado += char
-        mo.output.replace(
-            mo.md(f"💬 `{digitado}_`")
-        )
+        mo.output.replace(mo.md(f"💬 `{digitado}_`"))
         if char in (" ", ",", "?"):
             await asyncio.sleep(PAUSA_LONGA)
         else:
@@ -188,9 +188,7 @@ async def _(asyncio, con, mo, px, texto_completo, time):
 
     mo.output.append(fig)
 
-    mo.output.append(
-        mo.md(f"✅ Consulta executada em **{elapsed_ms} ms**")
-    )
+    mo.output.append(mo.md(f"✅ Consulta executada em **{elapsed_ms} ms**"))
 
 
 if __name__ == "__main__":

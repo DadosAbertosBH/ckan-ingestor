@@ -30,28 +30,30 @@ from ingestor_orchestrator.models import (
 pytestmark = pytest.mark.asyncio
 
 
-async def _query_datasets(db_session, instance_id=None, search=None, limit=50, offset=0):
+async def _query_datasets(
+    db_session, instance_id=None, search=None, limit=50, offset=0
+):
     """Run the dataset aggregation query (mirrors the API endpoint logic)."""
     subq = (
         select(
             LatestResourceJob.instance_id,
             LatestResourceJob.dataset_name,
             func.count(LatestResourceJob.resource_id).label("total_resources"),
-            func.sum(
-                case((LatestResourceJob.status == "pending", 1), else_=0)
-            ).label("pending_resources"),
+            func.sum(case((LatestResourceJob.status == "pending", 1), else_=0)).label(
+                "pending_resources"
+            ),
             func.sum(
                 case((LatestResourceJob.status == "processing", 1), else_=0)
             ).label("processing_resources"),
-            func.sum(
-                case((LatestResourceJob.status == "completed", 1), else_=0)
-            ).label("completed_resources"),
-            func.sum(
-                case((LatestResourceJob.status == "failed", 1), else_=0)
-            ).label("failed_resources"),
-            func.sum(
-                case((ResourceMetadataLabel.label == "empty", 1), else_=0)
-            ).label("empty_resources"),
+            func.sum(case((LatestResourceJob.status == "completed", 1), else_=0)).label(
+                "completed_resources"
+            ),
+            func.sum(case((LatestResourceJob.status == "failed", 1), else_=0)).label(
+                "failed_resources"
+            ),
+            func.sum(case((ResourceMetadataLabel.label == "empty", 1), else_=0)).label(
+                "empty_resources"
+            ),
             func.max(LatestResourceJob.updated_at).label("updated_at"),
         )
         .outerjoin(
@@ -282,26 +284,28 @@ class TestDatasetAggregation:
         early = datetime(2025, 1, 1, tzinfo=timezone.utc)
         later = datetime(2025, 6, 1, tzinfo=timezone.utc)
 
-        db_session.add_all([
-            LatestResourceJob(
-                resource_id="r-1",
-                latest_job_id="j-1",
-                instance_id="inst-1",
-                dataset_name="old-dataset",
-                status=JobStatus.COMPLETED,
-                created_at=early,
-                updated_at=early,
-            ),
-            LatestResourceJob(
-                resource_id="r-2",
-                latest_job_id="j-2",
-                instance_id="inst-1",
-                dataset_name="new-dataset",
-                status=JobStatus.COMPLETED,
-                created_at=later,
-                updated_at=later,
-            ),
-        ])
+        db_session.add_all(
+            [
+                LatestResourceJob(
+                    resource_id="r-1",
+                    latest_job_id="j-1",
+                    instance_id="inst-1",
+                    dataset_name="old-dataset",
+                    status=JobStatus.COMPLETED,
+                    created_at=early,
+                    updated_at=early,
+                ),
+                LatestResourceJob(
+                    resource_id="r-2",
+                    latest_job_id="j-2",
+                    instance_id="inst-1",
+                    dataset_name="new-dataset",
+                    status=JobStatus.COMPLETED,
+                    created_at=later,
+                    updated_at=later,
+                ),
+            ]
+        )
         await db_session.flush()
 
         rows = await _query_datasets(db_session)
@@ -323,26 +327,28 @@ class TestDatasetAggregation:
         t1 = datetime(2025, 3, 1, tzinfo=timezone.utc)
         t2 = datetime(2025, 5, 1, tzinfo=timezone.utc)
 
-        db_session.add_all([
-            LatestResourceJob(
-                resource_id="r-1",
-                latest_job_id="j-1",
-                instance_id="inst-1",
-                dataset_name="my-dataset",
-                status=JobStatus.COMPLETED,
-                created_at=t1,
-                updated_at=t1,
-            ),
-            LatestResourceJob(
-                resource_id="r-2",
-                latest_job_id="j-2",
-                instance_id="inst-1",
-                dataset_name="my-dataset",
-                status=JobStatus.COMPLETED,
-                created_at=t2,
-                updated_at=t2,
-            ),
-        ])
+        db_session.add_all(
+            [
+                LatestResourceJob(
+                    resource_id="r-1",
+                    latest_job_id="j-1",
+                    instance_id="inst-1",
+                    dataset_name="my-dataset",
+                    status=JobStatus.COMPLETED,
+                    created_at=t1,
+                    updated_at=t1,
+                ),
+                LatestResourceJob(
+                    resource_id="r-2",
+                    latest_job_id="j-2",
+                    instance_id="inst-1",
+                    dataset_name="my-dataset",
+                    status=JobStatus.COMPLETED,
+                    created_at=t2,
+                    updated_at=t2,
+                ),
+            ]
+        )
         await db_session.flush()
 
         rows = await _query_datasets(db_session)
@@ -355,18 +361,14 @@ class TestDatasetAggregation:
         """Verify ckan_dataset_url is built from instance URL + dataset name."""
         from ingestor_orchestrator.api.datasets import _build_ckan_dataset_url
 
-        url = _build_ckan_dataset_url(
-            "https://dados.example.com/", "my-dataset"
-        )
+        url = _build_ckan_dataset_url("https://dados.example.com/", "my-dataset")
         assert url == "https://dados.example.com/dataset/my-dataset"
 
     async def test_ckan_dataset_url_trailing_slash(self, db_session):
         """Instance URL trailing slash should be normalized."""
         from ingestor_orchestrator.api.datasets import _build_ckan_dataset_url
 
-        url = _build_ckan_dataset_url(
-            "https://dados.example.com", "my-dataset"
-        )
+        url = _build_ckan_dataset_url("https://dados.example.com", "my-dataset")
         assert url == "https://dados.example.com/dataset/my-dataset"
 
     async def test_ckan_dataset_url_empty_instance(self, db_session):
@@ -405,6 +407,7 @@ class TestDatasetAggregation:
         await db_session.flush()
 
         from ingestor_orchestrator.api.datasets import _build_ckan_dataset_url
+
         # Test that the API endpoint includes last_metadata_synced
         rows = await _query_datasets(db_session)
         assert len(rows) == 1
@@ -465,16 +468,10 @@ class TestDatasetAggregation:
             db_session.add(r)
 
         # res-1 and res-3 have the "empty" label
-        db_session.add(
-            ResourceMetadataLabel(resource_id="res-1", label="empty")
-        )
-        db_session.add(
-            ResourceMetadataLabel(resource_id="res-3", label="empty")
-        )
+        db_session.add(ResourceMetadataLabel(resource_id="res-1", label="empty"))
+        db_session.add(ResourceMetadataLabel(resource_id="res-3", label="empty"))
         # res-1 also has another label (should not affect empty count)
-        db_session.add(
-            ResourceMetadataLabel(resource_id="res-1", label="stale")
-        )
+        db_session.add(ResourceMetadataLabel(resource_id="res-1", label="stale"))
         await db_session.flush()
 
         rows = await _query_datasets(db_session)

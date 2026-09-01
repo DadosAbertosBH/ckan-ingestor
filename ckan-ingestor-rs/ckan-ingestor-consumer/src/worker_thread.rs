@@ -226,5 +226,4 @@ mod tests {
             .collect();
         assert_eq!(statuses, vec![JobStatus::Processing, JobStatus::Success]);
     }
-
 }

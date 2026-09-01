@@ -40,12 +40,12 @@ def upgrade():
         sa.Column("new_datasets", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("new_resources", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("updated_datasets", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("updated_resources", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column(
+            "updated_resources", sa.Integer(), nullable=False, server_default="0"
+        ),
         sa.ForeignKeyConstraint(["instance_id"], ["ckan_instance.id"]),
     )
-    op.create_index(
-        "ix_metadata_sync_instance_id", "metadata_sync", ["instance_id"]
-    )
+    op.create_index("ix_metadata_sync_instance_id", "metadata_sync", ["instance_id"])
 
 
 def downgrade():

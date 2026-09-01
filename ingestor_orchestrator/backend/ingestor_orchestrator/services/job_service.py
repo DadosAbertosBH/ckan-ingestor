@@ -64,7 +64,9 @@ class JobService:
         # Publish to the message broker
         csv_delimiter = await self._get_csv_delimiter(job.resource_id)
         record_meta = await self._publish_job(
-            job.id, job.resource_id, data.ckan_url,
+            job.id,
+            job.resource_id,
+            data.ckan_url,
             resource_url=job.resource_url or "",
             resource_format=job.resource_format or "",
             csv_delimiter=csv_delimiter,
@@ -83,9 +85,7 @@ class JobService:
         await self.db.commit()
         await self.db.refresh(job)
 
-        logger.debug(
-            f"Created job {job.id} for resource {data.resource_id}"
-        )
+        logger.debug(f"Created job {job.id} for resource {data.resource_id}")
         return job
 
     async def retry_job(self, job_id: str) -> CkanDataJob:
@@ -116,7 +116,9 @@ class JobService:
         # Publish to retry topic
         csv_delimiter = await self._get_csv_delimiter(job.resource_id)
         record_meta = await self._publish_job(
-            retry_job.id, retry_job.resource_id, retry_job.ckan_url or "",
+            retry_job.id,
+            retry_job.resource_id,
+            retry_job.ckan_url or "",
             resource_url=retry_job.resource_url or "",
             resource_format=retry_job.resource_format or "",
             csv_delimiter=csv_delimiter,
@@ -135,9 +137,7 @@ class JobService:
         await self.db.commit()
         await self.db.refresh(retry_job)
 
-        logger.info(
-            f"Retrying job {job.id}"
-        )
+        logger.info(f"Retrying job {job.id}")
         return retry_job
 
     async def _get_job_with_retry(
@@ -156,7 +156,7 @@ class JobService:
             if job is not None:
                 return job
             if attempt < max_retries - 1:
-                delay = base_delay * (2 ** attempt)
+                delay = base_delay * (2**attempt)
                 logger.warning(
                     f"Job {job_id} not found, retrying in {delay:.2f}s "
                     f"(attempt {attempt + 1}/{max_retries})"
@@ -302,9 +302,7 @@ class JobService:
                 resource_id=job.resource_id,
                 last_terminal_job_id=job.id,
                 last_terminal_status=(
-                    TerminalStatus.COMPLETED
-                    if successful
-                    else TerminalStatus.FAILED
+                    TerminalStatus.COMPLETED if successful else TerminalStatus.FAILED
                 ),
                 last_terminal_at=now,
                 last_successful_job_id=job.id if successful else None,

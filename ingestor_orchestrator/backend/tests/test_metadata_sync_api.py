@@ -35,8 +35,9 @@ async def test_sync_instance_dispatches_to_thread():
     with (
         patch.object(api_module, "MetadataService") as mock_service_cls,
         patch.object(api_module, "SyncService") as mock_sync_service_cls,
-        patch.object(api_module, "enqueue_outdated_resources",
-                     new_callable=AsyncMock) as mock_enqueue,
+        patch.object(
+            api_module, "enqueue_outdated_resources", new_callable=AsyncMock
+        ) as mock_enqueue,
     ):
         mock_service = AsyncMock()
         mock_service.get_instance.return_value = FakeInstance()

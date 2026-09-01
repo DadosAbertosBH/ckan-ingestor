@@ -35,7 +35,9 @@ depends_on = None
 def upgrade():
     op.add_column(
         "ckan_data_job",
-        sa.Column("datastore_active", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column(
+            "datastore_active", sa.Boolean(), nullable=False, server_default=sa.false()
+        ),
     )
 
 
