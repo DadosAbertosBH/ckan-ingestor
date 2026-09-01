@@ -89,9 +89,24 @@ test-rust:
         - $CARGO_HOME
         - ckan-ingestor-rs/target
   script:
-    - apt-get update && apt-get install -y --no-install-recommends build-essential cmake curl libssl-dev libcurl4-openssl-dev pkg-config && rm -rf /var/lib/apt/lists/*
+    - apt-get update && apt-get install -y --no-install-recommends build-essential cmake curl libssl-dev libcurl4-openssl-dev musl-tools pkg-config && rm -rf /var/lib/apt/lists/*
     - until curl -fsS http://docker:2375/_ping; do sleep 1; done
     - rustup component add rustfmt clippy
+    # Capture the kernel result for the exact io_uring flags used by Iggy shards.
+    # The probe runs in DinD with the same security options as the Iggy container.
+    - |
+      musl-gcc -static ckan-ingestor-rs/ckan-ingestor-consumer/tests/io_uring_probe.c -o /tmp/io_uring_probe
+      PROBE_CONTAINER="io-uring-probe-${CI_JOB_ID}"
+      trap 'docker rm -f "$PROBE_CONTAINER" >/dev/null 2>&1 || true' EXIT
+      docker create --name "$PROBE_CONTAINER" \
+        --security-opt seccomp=unconfined \
+        --cap-add IPC_LOCK \
+        --cap-add SYS_NICE \
+        --ulimit memlock=-1:-1 \
+        --entrypoint /io_uring_probe \
+        apache/iggy:0.8.0
+      docker cp /tmp/io_uring_probe "$PROBE_CONTAINER":/io_uring_probe
+      docker start -a "$PROBE_CONTAINER"
     - cd ckan-ingestor-rs
     - cargo fmt --all -- --check
     - cargo clippy --all-targets -- -D warnings
