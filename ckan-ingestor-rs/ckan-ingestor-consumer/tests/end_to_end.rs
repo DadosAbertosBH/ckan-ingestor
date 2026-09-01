@@ -34,7 +34,7 @@ async fn creates_the_approved_stream_and_topics() -> anyhow::Result<()> {
         .await
         .context("timed out while starting the Iggy container")??;
     let host = container.get_host().await?;
-    let port = 18090;
+    let port = container.get_host_port_ipv4(8090.tcp()).await?;
     let connection_string = format!("iggy://iggy:iggy@{host}:{port}");
     let client = IggyClient::from_connection_string(&connection_string)?;
     timeout(Duration::from_secs(10), client.connect())
