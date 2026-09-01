@@ -19,7 +19,7 @@ Uses in-memory SQLite (aiosqlite) so tests don't need a real MySQL server.
 """
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
@@ -29,19 +29,44 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 
 @pytest.fixture(autouse=True)
-def _mock_kafka():
-    """Mock Kafka producer so tests don't need a real Kafka."""
-    mock_producer = MagicMock()
-    mock_future = MagicMock()
-    record_meta = MagicMock()
-    record_meta.topic = "ckan.ingest.jobs"
-    record_meta.partition = 0
-    record_meta.offset = 0
-    mock_future.get.return_value = record_meta
-    mock_producer.send.return_value = mock_future
-    with patch(
-        "ingestor_orchestrator.kafka_queue.get_kafka_producer",
-        return_value=mock_producer,
+def _mock_iggy():
+    """Mock Iggy publisher so unit tests don't need a real broker."""
+    from ingestor_orchestrator.iggy_queue import PublishMetadata
+
+    mock_bus = AsyncMock()
+    mock_bus.publish.return_value = PublishMetadata(
+        broker_type="iggy",
+        stream="ckan-ingestor",
+        topic="jobs",
+        partition=0,
+        offset=None,
+    )
+
+    async def publish(topic, _payload, *, key):
+        return PublishMetadata(
+            broker_type="iggy",
+            stream="ckan-ingestor",
+            topic=topic,
+            partition=0,
+            offset=None,
+        )
+
+    mock_bus.publish.side_effect = publish
+    mock_consumer = AsyncMock()
+    mock_bus.result_consumer.return_value = mock_consumer
+    with (
+        patch(
+            "ingestor_orchestrator.iggy_queue.get_iggy_bus",
+            return_value=mock_bus,
+        ),
+        patch(
+            "ingestor_orchestrator.result_consumer.get_iggy_bus",
+            return_value=mock_bus,
+        ),
+        patch(
+            "ingestor_orchestrator.main.get_iggy_bus",
+            return_value=mock_bus,
+        ),
     ):
         yield
 

@@ -13,7 +13,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-"""Test that kafka_topic/partition/offset are populated on job creation."""
+"""Test that generic broker routing metadata is populated on job creation."""
 
 from datetime import datetime, timezone
 
@@ -35,8 +35,8 @@ async def instance(engine, _create_tables):
     )
     async with async_session() as session:
         inst = CkanInstance(
-            id="inst-kafka-md",
-            name="Kafka Metadata Test",
+            id="inst-broker-md",
+            name="Broker Metadata Test",
             url="https://test.example.com",
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
@@ -57,11 +57,11 @@ async def autocommit_session(engine, _create_tables):
         await session.rollback()
 
 
-class TestKafkaMetadataOnCreate:
-    async def test_create_job_stores_kafka_metadata(
+class TestMessageMetadataOnCreate:
+    async def test_create_job_stores_iggy_metadata(
         self, autocommit_session, instance
     ):
-        """create_job must populate kafka_topic, partition, and offset."""
+        """create_job stores broker, stream, topic and partition metadata."""
         service = JobService(autocommit_session)
 
         job = await service.create_job(
@@ -73,11 +73,13 @@ class TestKafkaMetadataOnCreate:
             )
         )
 
-        assert job.kafka_topic == "ckan.ingest.jobs"
-        assert job.kafka_partition == 0
-        assert job.kafka_offset == 0
+        assert job.broker_type == "iggy"
+        assert job.message_stream == "ckan-ingestor"
+        assert job.message_topic == "jobs"
+        assert job.message_partition == 0
+        assert job.message_offset is None
 
-    async def test_retry_job_stores_kafka_metadata(
+    async def test_retry_job_stores_generic_metadata(
         self, autocommit_session, instance
     ):
         """retry_job republishes to retry topic and updates metadata."""
@@ -96,14 +98,15 @@ class TestKafkaMetadataOnCreate:
 
         retried = await service.retry_job(job.id)
 
-        assert retried.kafka_topic is not None, "kafka_topic must be set on retry"
-        assert retried.kafka_partition is not None, "kafka_partition must be set on retry"
-        assert retried.kafka_offset is not None, "kafka_offset must be set on retry"
+        assert retried.broker_type == "iggy"
+        assert retried.message_stream == "ckan-ingestor"
+        assert retried.message_topic == "jobs-retry"
+        assert retried.message_partition is not None
 
     async def test_new_jobs_have_metadata_for_debug(
         self, autocommit_session, instance
     ):
-        """All newly created jobs must have kafka metadata for debugging."""
+        """All newly created jobs have generic broker metadata for debugging."""
         service = JobService(autocommit_session)
 
         job = await service.create_job(
@@ -119,12 +122,7 @@ class TestKafkaMetadataOnCreate:
 
         await autocommit_session.refresh(job)
 
-        assert job.kafka_topic is not None, (
-            "kafka_topic must be set on job creation for debugging"
-        )
-        assert job.kafka_partition is not None, (
-            "kafka_partition must be set on job creation for debugging"
-        )
-        assert job.kafka_offset is not None, (
-            "kafka_offset must be set on job creation for debugging"
-        )
+        assert job.broker_type == "iggy"
+        assert job.message_stream is not None
+        assert job.message_topic is not None
+        assert job.message_partition is not None

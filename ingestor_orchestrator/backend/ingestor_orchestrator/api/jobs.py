@@ -146,9 +146,11 @@ async def list_jobs(
             "started_at": j.started_at,
             "completed_at": j.completed_at,
             "labels": labels_map.get(j.resource_id, []),
-            "kafka_topic": j.kafka_topic,
-            "kafka_partition": j.kafka_partition,
-            "kafka_offset": j.kafka_offset,
+            "broker_type": j.broker_type,
+            "message_stream": j.message_stream,
+            "message_topic": j.message_topic,
+            "message_partition": j.message_partition,
+            "message_offset": j.message_offset,
         }
         response_jobs.append(JobListResponse(**job_dict))
 
@@ -202,9 +204,11 @@ async def get_job(job_id: str, db: AsyncSession = Depends(get_db)):
         completed_at=job.completed_at,
         labels=labels,
         results=job.results,
-        kafka_topic=job.kafka_topic,
-        kafka_partition=job.kafka_partition,
-        kafka_offset=job.kafka_offset,
+        broker_type=job.broker_type,
+        message_stream=job.message_stream,
+        message_topic=job.message_topic,
+        message_partition=job.message_partition,
+        message_offset=job.message_offset,
     )
 
 
@@ -235,9 +239,11 @@ async def create_job(data: JobCreate, db: AsyncSession = Depends(get_db)):
         completed_at=job.completed_at,
         labels=[],
         results=[],
-        kafka_topic=job.kafka_topic,
-        kafka_partition=job.kafka_partition,
-        kafka_offset=job.kafka_offset,
+        broker_type=job.broker_type,
+        message_stream=job.message_stream,
+        message_topic=job.message_topic,
+        message_partition=job.message_partition,
+        message_offset=job.message_offset,
     )
 
 
@@ -267,9 +273,11 @@ async def retry_job(job_id: str, db: AsyncSession = Depends(get_db)):
         completed_at=job.completed_at,
         labels=[],
         results=[],
-        kafka_topic=job.kafka_topic,
-        kafka_partition=job.kafka_partition,
-        kafka_offset=job.kafka_offset,
+        broker_type=job.broker_type,
+        message_stream=job.message_stream,
+        message_topic=job.message_topic,
+        message_partition=job.message_partition,
+        message_offset=job.message_offset,
     )
 
 

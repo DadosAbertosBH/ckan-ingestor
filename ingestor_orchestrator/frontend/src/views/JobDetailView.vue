@@ -86,11 +86,20 @@
                         job.completed_at ? formatTime(job.completed_at) : "—"
                     }}</span>
                 </div>
-                <div v-if="job.kafka_topic" class="info-item info-item-kafka">
-                    <span class="info-label">Kafka</span>
-                    <span class="info-value mono kafka-meta">
-                        {{ job.kafka_topic }}<br />[{{ job.kafka_partition }}]
-                        @{{ job.kafka_offset }}
+                <div v-if="job.message_topic" class="info-item info-item-broker">
+                    <span class="info-label">Broker</span>
+                    <span class="info-value mono broker-meta">
+                        {{ job.broker_type }}<br />{{ job.message_stream }}/{{
+                            job.message_topic
+                        }}<br />[{{ job.message_partition }}]
+                        <template
+                            v-if="
+                                job.message_offset !== null &&
+                                job.message_offset !== undefined
+                            "
+                        >
+                            @{{ job.message_offset }}
+                        </template>
                     </span>
                 </div>
                 <div class="info-item">
@@ -356,7 +365,7 @@ onMounted(loadJob);
     border-radius: 8px;
 }
 
-.kafka-meta {
+.broker-meta {
     color: #a78bfa;
     font-size: 13px;
     word-break: break-all;

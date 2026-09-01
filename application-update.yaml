@@ -28,22 +28,12 @@ spec:
           value: orchestrator
         - name: existingSecret
           value: ingestor-orchestrator-csi
-        - name: kafka.deploy
-          value: "true"
-        - name: kafka.strimzi.replicas
-          value: "1"
-        - name: kafka.strimzi.storage.type
-          value: "persistent-claim"
-        - name: kafka.strimzi.storage.size
-          value: "5Gi"
-        - name: kafka.strimzi.resources.requests.memory
-          value: "512Mi"
-        - name: kafka.strimzi.resources.requests.cpu
-          value: "200m"
-        - name: kafka.strimzi.resources.limits.memory
-          value: "1Gi"
-        - name: kafka.strimzi.resources.limits.cpu
-          value: "500m"
+        - name: iggy.address
+          value: "iggy:8090"
+        - name: iggy.username
+          value: "iggy"
+        - name: iggy.partitions
+          value: "10"
 
   destination:
     server: https://kubernetes.default.svc

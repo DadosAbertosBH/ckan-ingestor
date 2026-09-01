@@ -156,7 +156,13 @@ class TestJobHistory:
         await sess.commit()
 
         service = JobService(sess)
-        record_meta = MagicMock(topic="ckan.ingest.jobs.retry", partition=0, offset=0)
+        record_meta = MagicMock(
+            broker_type="iggy",
+            stream="ckan-ingestor",
+            topic="jobs-retry",
+            partition=0,
+            offset=None,
+        )
         mock_publish = AsyncMock(return_value=record_meta)
         with patch.object(service, "_publish_job", mock_publish):
             await service.retry_job(job.id)

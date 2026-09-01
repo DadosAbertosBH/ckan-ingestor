@@ -37,8 +37,10 @@ class JobListResponse(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     labels: list[str] = []
-    kafka_topic: str | None = None
-    kafka_partition: int | None = None
-    kafka_offset: int | None = None
+    broker_type: str | None = None
+    message_stream: str | None = None
+    message_topic: str | None = None
+    message_partition: int | None = None
+    message_offset: int | None = None
 
     model_config = {"from_attributes": True}

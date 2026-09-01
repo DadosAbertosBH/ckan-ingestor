@@ -358,7 +358,8 @@ describe("JobsView — sortable column headers", () => {
     await durationHeader.trigger("click");
     await flushPromises();
     // After third click, order params should NOT be in the call
-    const lastCall = mockFetchJobs.mock.calls[mockFetchJobs.mock.calls.length - 1][0];
+    const lastCall =
+      mockFetchJobs.mock.calls[mockFetchJobs.mock.calls.length - 1]![0]!;
     expect(lastCall.order_by).toBeUndefined();
   });
 
@@ -401,23 +402,23 @@ describe("JobsView — sortable column headers", () => {
   });
 });
 
-describe("JobsView — Kafka column", () => {
+describe("JobsView — Broker column", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("renders Kafka column header", async () => {
+  it("renders Broker column header", async () => {
     mockFetchJobs.mockResolvedValue([]);
 
     const { wrapper } = await mountWithRouter();
     await flushPromises();
 
     const ths = wrapper.findAll("th");
-    const kafkaHeader = ths.find((th) => th.text() === "Kafka");
-    expect(kafkaHeader).toBeTruthy();
+    const brokerHeader = ths.find((th) => th.text() === "Broker");
+    expect(brokerHeader).toBeTruthy();
   });
 
-  it("renders Kafka metadata when job has kafka_topic", async () => {
+  it("renders generic Iggy metadata", async () => {
     mockFetchJobs.mockResolvedValue([
       {
         id: "job-1",
@@ -436,22 +437,23 @@ describe("JobsView — Kafka column", () => {
           "https://dados.pbh.gov.br/dataset/my-dataset/resource/abc-123",
         labels: [],
         instance_name: "PBH",
-        kafka_topic: "ckan.resource.sync",
-        kafka_partition: 2,
-        kafka_offset: 150,
+        broker_type: "iggy",
+        message_stream: "ckan-ingestor",
+        message_topic: "jobs",
+        message_partition: 2,
+        message_offset: null,
       },
     ]);
 
     const { wrapper } = await mountWithRouter();
     await flushPromises();
 
-    // The Kafka cell should contain topic, partition, and offset
-    expect(wrapper.text()).toContain("ckan.resource.sync");
+    expect(wrapper.text()).toContain("iggy");
+    expect(wrapper.text()).toContain("ckan-ingestor/jobs");
     expect(wrapper.text()).toContain("2");
-    expect(wrapper.text()).toContain("150");
   });
 
-  it("shows — when job has no kafka_topic", async () => {
+  it("shows — when job has no message topic", async () => {
     mockFetchJobs.mockResolvedValue([
       {
         id: "job-1",
@@ -470,9 +472,11 @@ describe("JobsView — Kafka column", () => {
           "https://dados.pbh.gov.br/dataset/my-dataset/resource/abc-123",
         labels: [],
         instance_name: "PBH",
-        kafka_topic: null,
-        kafka_partition: null,
-        kafka_offset: null,
+        broker_type: null,
+        message_stream: null,
+        message_topic: null,
+        message_partition: null,
+        message_offset: null,
       },
     ]);
 

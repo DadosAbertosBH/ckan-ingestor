@@ -8,28 +8,38 @@ tests:
           path: spec.template.spec.containers[0].image
           pattern: "/worker:"
 
-  - it: injects Kafka configuration
+  - it: injects Apache Iggy configuration
     asserts:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
-            name: KAFKA_BOOTSTRAP_SERVERS
-            value: "kafka:9092"
+            name: IGGY_ADDRESS
+            value: "iggy:8090"
       - contains:
           path: spec.template.spec.containers[0].env
           content:
-            name: KAFKA_TOPIC
-            value: "ckan.ingest.jobs"
+            name: IGGY_TOPIC
+            value: "jobs"
       - contains:
           path: spec.template.spec.containers[0].env
           content:
-            name: KAFKA_TOPIC_RETRY
-            value: "ckan.ingest.jobs.retry"
+            name: IGGY_TOPIC_RETRY
+            value: "jobs-retry"
       - contains:
           path: spec.template.spec.containers[0].env
           content:
-            name: KAFKA_GROUP_ID
+            name: IGGY_TOPIC_RESULTS
+            value: "job-results"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: IGGY_GROUP_ID
             value: "ckan-worker"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: IGGY_PARTITIONS
+            value: "10"
 
   - it: injects S3 configuration
     asserts:

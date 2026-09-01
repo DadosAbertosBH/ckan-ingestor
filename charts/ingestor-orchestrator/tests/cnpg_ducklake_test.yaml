@@ -5,9 +5,8 @@ templates:
 tests:
   - it: should not render DUCKLAKE_HOST when postgres is not deployed
     asserts:
-      - notContains:
+      - isNull:
           path: spec.template.spec.containers[0].env
-          content: DUCKLAKE_HOST
         template: deployment-api.yaml
 
   - it: should render DUCKLAKE_HOST from CNPG secret when deploy is true

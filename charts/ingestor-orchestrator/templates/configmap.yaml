@@ -9,10 +9,15 @@ data:
   INGEST_ORCH_MYSQL_PORT: {{ .Values.mysql.port | quote }}
   INGEST_ORCH_MYSQL_USER: {{ .Values.mysql.user | quote }}
   INGEST_ORCH_MYSQL_DATABASE: {{ .Values.mysql.database | quote }}
-  INGEST_ORCH_KAFKA_BOOTSTRAP_SERVERS: {{ .Values.kafka.bootstrapServers | quote }}
-  INGEST_ORCH_KAFKA_TOPIC: {{ .Values.kafka.topic | quote }}
-  INGEST_ORCH_KAFKA_TOPIC_RETRY: {{ .Values.kafka.topicRetry | quote }}
-  INGEST_ORCH_KAFKA_GROUP_ID: {{ .Values.kafka.groupId | quote }}
+  INGEST_ORCH_IGGY_ADDRESS: {{ .Values.iggy.address | quote }}
+  INGEST_ORCH_IGGY_USERNAME: {{ .Values.iggy.username | quote }}
+  INGEST_ORCH_IGGY_STREAM: {{ .Values.iggy.stream | quote }}
+  INGEST_ORCH_IGGY_TOPIC: {{ .Values.iggy.topic | quote }}
+  INGEST_ORCH_IGGY_TOPIC_RETRY: {{ .Values.iggy.topicRetry | quote }}
+  INGEST_ORCH_IGGY_TOPIC_RESULTS: {{ .Values.iggy.topicResults | quote }}
+  INGEST_ORCH_IGGY_GROUP_ID: {{ .Values.iggy.groupId | quote }}
+  INGEST_ORCH_IGGY_RESULT_GROUP_ID: {{ .Values.iggy.resultGroupId | quote }}
+  INGEST_ORCH_IGGY_PARTITIONS: {{ .Values.iggy.partitions | quote }}
   INGEST_ORCH_DEBUG: {{ .Values.debug | quote }}
   DUCKLAKE_DATABASE: {{ .Values.ducklake.database | quote }}
   {{- if .Values.ducklake.dataPath.endpoint }}

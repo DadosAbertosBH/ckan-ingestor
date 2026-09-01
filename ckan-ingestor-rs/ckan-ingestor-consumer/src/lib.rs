@@ -3,158 +3,220 @@
 // This file is part of ckan-ingestor-rs.
 //
 // ckan-ingestor-rs is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as published
-// by the Free Software Foundation, either version 3 of the License, or
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
-// ckan-ingestor-rs is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
-pub mod coordinator_consumer_context;
 pub mod job_processor;
 pub mod message_source;
 pub mod messages;
 pub mod result_publisher;
-pub mod worker_coordinator;
 pub mod worker_thread;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use ckan_ingestor_lib::config::S3Settings;
+use ckan_ingestor_lib::duckdb_factory::DuckdbFactory;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
+use iggy::prelude::{
+    AutoCommit, Client, CompressionAlgorithm, DirectConfig, IggyClient, IggyDuration, IggyExpiry,
+    MaxTopicSize, PollingStrategy, StreamClient, TopicClient,
+};
 use log::{info, warn};
-use rdkafka::ClientConfig;
-use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
-use rdkafka::consumer::{Consumer, StreamConsumer};
-use rdkafka::producer::FutureProducer;
 use std::env;
 use std::sync::Arc;
-use tokio::sync::{Notify, mpsc};
+use std::time::Duration;
+use tokio::sync::Notify;
 
-use crate::coordinator_consumer_context::CoordinatorConsumerContext;
 use crate::job_processor::RealJobProcessor;
-use crate::worker_coordinator::WorkerCoordinator;
-use ckan_ingestor_lib::duckdb_factory::DuckdbFactory;
+use crate::message_source::IggySource;
+use crate::result_publisher::IggyResultPublisher;
+use crate::worker_thread::WorkerThread;
 
-const RESULT_TOPIC: &str = "ckan.ingest.jobs_result";
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IggySettings {
+    pub address: String,
+    pub username: String,
+    pub password: String,
+    pub stream: String,
+    pub job_topic: String,
+    pub retry_topic: String,
+    pub result_topic: String,
+    pub consumer_group: String,
+    pub partitions: u32,
+}
 
-pub async fn run() -> Result<()> {
-    let bootstrap =
-        env::var("KAFKA_BOOTSTRAP_SERVERS").unwrap_or_else(|_| "localhost:9092".to_string());
-    let topic = env::var("KAFKA_TOPIC").unwrap_or_else(|_| "ckan.ingest.jobs".to_string());
-    let retry_topic =
-        env::var("KAFKA_TOPIC_RETRY").unwrap_or_else(|_| "ckan.ingest.jobs.retry".to_string());
-    let group_id = env::var("KAFKA_GROUP_ID").unwrap_or_else(|_| "ckan-worker-rs".to_string());
+impl Default for IggySettings {
+    fn default() -> Self {
+        Self {
+            address: "localhost:8090".into(),
+            username: "iggy".into(),
+            password: "iggy".into(),
+            stream: "ckan-ingestor".into(),
+            job_topic: "jobs".into(),
+            retry_topic: "jobs-retry".into(),
+            result_topic: "job-results".into(),
+            consumer_group: "ckan-worker".into(),
+            partitions: 10,
+        }
+    }
+}
 
-    info!(
-        "Worker started, bootstrap={}, topics: {}, {}",
-        bootstrap, topic, retry_topic
-    );
-
-    ensure_topics(&bootstrap, &topic, &retry_topic).await;
-
-    // Shutdown signal
-    let shutdown = Arc::new(Notify::new());
-    {
-        let shutdown = shutdown.clone();
-        tokio::spawn(async move {
-            let mut sigterm =
-                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                    .expect("failed to register SIGTERM handler");
-            let mut sigint =
-                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
-                    .expect("failed to register SIGINT handler");
-
-            tokio::select! {
-                _ = sigterm.recv() => {},
-                _ = sigint.recv() => {},
-            }
-            shutdown.notify_waiters();
-        });
+impl IggySettings {
+    pub fn connection_string(&self) -> String {
+        format!(
+            "iggy://{}:{}@{}",
+            urlencoding::encode(&self.username),
+            urlencoding::encode(&self.password),
+            self.address
+        )
     }
 
-    let producer: FutureProducer = ClientConfig::new()
-        .set("bootstrap.servers", &bootstrap)
-        .set("acks", "all")
-        .set("retries", "5")
-        .set("message.timeout.ms", "10000")
-        .create()?;
-    let producer = Arc::new(producer);
+    pub fn from_env() -> Result<Self> {
+        let defaults = Self::default();
+        let partitions = env::var("IGGY_PARTITIONS")
+            .ok()
+            .map(|value| value.parse::<u32>())
+            .transpose()
+            .context("IGGY_PARTITIONS must be a positive integer")?
+            .unwrap_or(defaults.partitions);
+        anyhow::ensure!(partitions > 0, "IGGY_PARTITIONS must be greater than zero");
+        Ok(Self {
+            address: env::var("IGGY_ADDRESS").unwrap_or(defaults.address),
+            username: env::var("IGGY_USERNAME").unwrap_or(defaults.username),
+            password: env::var("IGGY_PASSWORD").unwrap_or(defaults.password),
+            stream: env::var("IGGY_STREAM").unwrap_or(defaults.stream),
+            job_topic: env::var("IGGY_TOPIC").unwrap_or(defaults.job_topic),
+            retry_topic: env::var("IGGY_TOPIC_RETRY").unwrap_or(defaults.retry_topic),
+            result_topic: env::var("IGGY_TOPIC_RESULTS").unwrap_or(defaults.result_topic),
+            consumer_group: env::var("IGGY_GROUP_ID").unwrap_or(defaults.consumer_group),
+            partitions,
+        })
+    }
+}
+
+pub async fn run() -> Result<()> {
+    let settings = IggySettings::from_env()?;
+    info!(
+        "Worker starting with Iggy stream={}, topics=[{}, {}, {}], partitions={}",
+        settings.stream,
+        settings.job_topic,
+        settings.retry_topic,
+        settings.result_topic,
+        settings.partitions
+    );
+
+    let connection_string = settings.connection_string();
+    let admin = connected_client(&connection_string).await?;
+    ensure_topology(&admin, &settings).await?;
+
+    let result_producer = admin
+        .producer(&settings.stream, &settings.result_topic)?
+        .direct(DirectConfig::builder().batch_length(1).build())
+        .build();
+    result_producer.init().await?;
+    let publisher = IggyResultPublisher::new(result_producer);
 
     let s3 = create_s3_ingestor().await?;
+    let processor = RealJobProcessor::new(s3, DuckdbFactory::from_env())?;
+    let mut workers = Vec::with_capacity((settings.partitions * 2) as usize);
 
-    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
-    let context = CoordinatorConsumerContext::new(cmd_tx);
+    for topic in [&settings.job_topic, &settings.retry_topic] {
+        for slot in 0..settings.partitions {
+            let client = connected_client(&connection_string).await?;
+            let mut consumer = client
+                .consumer_group(&settings.consumer_group, &settings.stream, topic)?
+                .auto_commit(AutoCommit::Disabled)
+                .create_consumer_group_if_not_exists()
+                .auto_join_consumer_group()
+                .polling_strategy(PollingStrategy::next())
+                .poll_interval(IggyDuration::from(Duration::from_millis(10)))
+                .batch_length(1)
+                .build();
+            consumer.init().await?;
+            let source = IggySource::new(consumer);
+            let mut worker = WorkerThread::new(
+                topic.clone(),
+                slot as usize,
+                source,
+                publisher.clone(),
+                processor.clone(),
+            );
+            worker.run();
+            workers.push(worker);
+        }
+    }
 
-    let consumer: StreamConsumer<CoordinatorConsumerContext> = ClientConfig::new()
-        .set("bootstrap.servers", &bootstrap)
-        .set("group.id", &group_id)
-        .set("auto.offset.reset", "earliest")
-        .set("enable.auto.commit", "false")
-        .set("enable.auto.offset.store", "false")
-        .set("max.poll.interval.ms", "1800000")
-        .set("session.timeout.ms", "45000")
-        .set("heartbeat.interval.ms", "15000")
-        .set("partition.assignment.strategy", "cooperative-sticky")
-        .create_with_context(context)?;
-    let consumer = Arc::new(consumer);
-    consumer.subscribe(&[&topic, &retry_topic])?;
+    let shutdown = Arc::new(Notify::new());
+    install_shutdown_handler(shutdown.clone());
+    info!("CKAN Iggy consumer started with {} workers", workers.len());
+    shutdown.notified().await;
 
-    let factory = DuckdbFactory::from_env();
-    let processor = RealJobProcessor::new(s3, factory)?;
-    let mut coordinator = WorkerCoordinator::new(consumer, processor, cmd_rx);
-
-    info!("CKAN Ingestor Consumer started");
-    coordinator.run(producer, shutdown.clone()).await;
-
-    info!("CKAN Ingestor Consumer stopped");
+    for worker in workers {
+        tokio::task::spawn_blocking(move || worker.shutdown()).await?;
+    }
+    info!("CKAN Iggy consumer stopped");
     Ok(())
 }
 
-pub async fn ensure_topics(bootstrap: &str, topic: &str, retry_topic: &str) {
-    let admin: AdminClient<_> = match ClientConfig::new()
-        .set("bootstrap.servers", bootstrap)
-        .create()
+async fn connected_client(connection_string: &str) -> Result<IggyClient> {
+    let client = IggyClient::from_connection_string(connection_string)?;
+    client.connect().await?;
+    Ok(client)
+}
+
+pub async fn ensure_topology(client: &IggyClient, settings: &IggySettings) -> Result<()> {
+    let stream = settings.stream.as_str().try_into()?;
+    if client.get_stream(&stream).await?.is_none()
+        && let Err(error) = client.create_stream(&settings.stream).await
     {
-        Ok(a) => a,
-        Err(e) => {
-            warn!("Failed to create admin client: {}", e);
-            return;
+        if client.get_stream(&stream).await?.is_none() {
+            return Err(error.into());
         }
-    };
-    let topics: Vec<NewTopic> = [topic, retry_topic, RESULT_TOPIC]
-        .iter()
-        .map(|t| NewTopic {
-            name: t,
-            num_partitions: 10,
-            replication: TopicReplication::Fixed(1),
-            config: vec![],
-        })
-        .collect();
-    match admin.create_topics(&topics, &AdminOptions::new()).await {
-        Ok(results) => {
-            for res in results {
-                match res {
-                    Ok(topic_name) => info!("Topic {} ready", topic_name),
-                    Err((topic_name, err)) => {
-                        if err.to_string().contains("ALREADY_EXISTS") {
-                            info!("Topic {} already exists", topic_name);
-                        } else {
-                            warn!("Failed to create topic {}: {}", topic_name, err);
-                        }
-                    }
-                }
-            }
-        }
-        Err(e) => warn!("Failed to create topics: {}", e),
+        warn!("Iggy stream was created concurrently: {error}");
     }
+
+    for topic_name in [
+        &settings.job_topic,
+        &settings.retry_topic,
+        &settings.result_topic,
+    ] {
+        let topic = topic_name.as_str().try_into()?;
+        if client.get_topic(&stream, &topic).await?.is_none()
+            && let Err(error) = client
+                .create_topic(
+                    &stream,
+                    topic_name,
+                    settings.partitions,
+                    CompressionAlgorithm::None,
+                    Some(1),
+                    IggyExpiry::NeverExpire,
+                    MaxTopicSize::ServerDefault,
+                )
+                .await
+        {
+            if client.get_topic(&stream, &topic).await?.is_none() {
+                return Err(error.into());
+            }
+            warn!("Iggy topic was created concurrently: {error}");
+        }
+    }
+    Ok(())
+}
+
+fn install_shutdown_handler(shutdown: Arc<Notify>) {
+    tokio::spawn(async move {
+        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to register SIGTERM handler");
+        let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+            .expect("failed to register SIGINT handler");
+        tokio::select! {
+            _ = sigterm.recv() => {},
+            _ = sigint.recv() => {},
+        }
+        shutdown.notify_waiters();
+    });
 }
 
 async fn create_s3_ingestor() -> Result<S3DocumentIngestor> {
-    let settings = S3Settings::from_env();
-    S3DocumentIngestor::new(settings)
+    S3DocumentIngestor::new(S3Settings::from_env())
 }

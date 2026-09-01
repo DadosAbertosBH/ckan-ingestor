@@ -5,7 +5,7 @@ Pipeline de ingestão de dados do portal [CKAN](https://ckan.org) para um lakeho
 O projeto é composto por dois serviços principais:
 
 - **`ingestor_orchestrator`** — API (FastAPI), frontend (Vue 3), scheduler de sincronização de metadados e consumer de resultados.
-- **`ckan-ingestor-rs`** — worker em Rust que consome jobs do Kafka e executa a ingestão de dados.
+- **`ckan-ingestor-rs`** — worker em Rust que consome jobs do Apache Iggy e executa a ingestão de dados.
 
 ## Arquitetura
 
@@ -14,12 +14,12 @@ graph TD
     UI[Frontend Vue.js] -->|HTTP| API[API FastAPI]
     API -->|SQL| MYSQL[(MySQL)]
     SCHED[Scheduler] -->|sync de metadados| LAKE[(DuckLake)]
-    SCHED -->|publica jobs| KAFKA{{Kafka}}
-    API -->|publica jobs| KAFKA
-    KAFKA -->|consome jobs| WORKER[Worker Rust]
+    SCHED -->|publica jobs| IGGY{{Apache Iggy}}
+    API -->|publica jobs| IGGY
+    IGGY -->|consome jobs| WORKER[Worker Rust]
     WORKER -->|ingestão de dados| LAKE
-    WORKER -->|publica resultados| KAFKA
-    KAFKA -->|consome resultados| RESULT[Result Consumer]
+    WORKER -->|publica resultados| IGGY
+    IGGY -->|consome resultados| RESULT[Result Consumer]
     RESULT -->|atualiza estado| MYSQL
     LAKE -->|catálogo| PG[(Postgres)]
     LAKE -->|dados| S3[(RustFS / S3)]
@@ -32,19 +32,21 @@ graph TD
 | API | FastAPI + SQLAlchemy async | Endpoints REST para jobs, datasets, instâncias, sync e dashboard |
 | Frontend | Vue.js 3 + TypeScript + Vite | Dashboard para visualizar e gerenciar jobs |
 | Scheduler | asyncio | Sincroniza metadados do CKAN e enfileira recursos desatualizados |
-| Result Consumer | Python + Kafka | Consome `ckan.ingest.jobs_result` e atualiza o MySQL |
-| Worker | Rust + rdkafka + DuckDB | Consome jobs e executa a ingestão de dados |
-| Fila | Kafka (Strimzi) | Comunicação assíncrona entre API/scheduler, worker e result consumer |
+| Result Consumer | Python + Apache Iggy | Consome `ckan-ingestor/job-results` e atualiza o MySQL |
+| Worker | Rust + Iggy SDK + DuckDB | Consome jobs e executa a ingestão de dados |
+| Fila | Apache Iggy 0.8.0 | Comunicação assíncrona entre API/scheduler, worker e result consumer |
 | Estado | MySQL 8.0 | Persistência do estado dos jobs |
 | Lakehouse | DuckLake | DuckDB + catálogo Postgres + dados em S3/RustFS |
 
-### Fluxo de mensagens (Kafka)
+### Fluxo de mensagens (Apache Iggy)
+
+Todos os tópicos pertencem ao stream `ckan-ingestor` e têm 10 partições.
 
 | Tópico | Direção | Descrição |
 |---|---|---|
-| `ckan.ingest.jobs` | API/scheduler → worker | Jobs de ingestão |
-| `ckan.ingest.jobs.retry` | API → worker | Jobs com retry |
-| `ckan.ingest.jobs_result` | worker → result consumer | Resultados da ingestão |
+| `jobs` | API/scheduler → worker | Jobs de ingestão |
+| `jobs-retry` | API → worker | Jobs com retry |
+| `job-results` | worker → result consumer | Resultados da ingestão |
 
 ## Estrutura do repositório
 
@@ -75,10 +77,10 @@ Serviços disponíveis:
 | Serviço | URL |
 |---|---|
 | API | http://localhost:8000 (docs em `/docs`) |
-| Redpanda Console (Kafka) | http://localhost:8080 |
+| Apache Iggy HTTP | http://localhost:3000 |
 | RustFS Console | http://localhost:9101 |
 
-O compose sobe MySQL, Kafka, RustFS, Postgres (catálogo DuckLake), a API, o worker Rust e o `db-init` (migrações Alembic).
+O compose sobe MySQL, Apache Iggy, RustFS, Postgres (catálogo DuckLake), a API, o worker Rust e o `db-init` (migrações Alembic).
 
 ## Testes
 
@@ -124,10 +126,15 @@ O `.gitlab-ci.yml` constrói e publica as imagens no registry do GitLab:
 | `INGEST_ORCH_MYSQL_USER` | `root` | Usuário do MySQL |
 | `INGEST_ORCH_MYSQL_PASSWORD` | (vazio) | Senha do MySQL |
 | `INGEST_ORCH_MYSQL_DATABASE` | `ingestor_orchestrator` | Database do MySQL |
-| `INGEST_ORCH_KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Bootstrap servers do Kafka |
-| `INGEST_ORCH_KAFKA_TOPIC` | `ckan.ingest.jobs` | Tópico principal de jobs |
-| `INGEST_ORCH_KAFKA_TOPIC_RETRY` | `ckan.ingest.jobs.retry` | Tópico de retry |
-| `INGEST_ORCH_KAFKA_GROUP_ID` | `ckan-worker` | Group ID do Kafka |
+| `INGEST_ORCH_IGGY_ADDRESS` | `localhost:8090` | Endpoint TCP do Iggy |
+| `INGEST_ORCH_IGGY_USERNAME` | `iggy` | Usuário do Iggy |
+| `INGEST_ORCH_IGGY_PASSWORD` | `iggy` | Senha do Iggy |
+| `INGEST_ORCH_IGGY_STREAM` | `ckan-ingestor` | Stream da aplicação |
+| `INGEST_ORCH_IGGY_TOPIC` | `jobs` | Tópico principal de jobs |
+| `INGEST_ORCH_IGGY_TOPIC_RETRY` | `jobs-retry` | Tópico de retry |
+| `INGEST_ORCH_IGGY_TOPIC_RESULTS` | `job-results` | Tópico de resultados |
+| `INGEST_ORCH_IGGY_RESULT_GROUP_ID` | `ckan-result-consumer` | Consumer group de resultados |
+| `INGEST_ORCH_IGGY_PARTITIONS` | `10` | Partições por tópico |
 | `INGEST_ORCH_SCHEDULER_INTERVAL_MINUTES` | `480` | Intervalo do scheduler (minutos) |
 | `INGEST_ORCH_DEBUG` | `false` | Modo debug |
 
@@ -135,10 +142,15 @@ O `.gitlab-ci.yml` constrói e publica as imagens no registry do GitLab:
 
 | Variável | Padrão | Descrição |
 |---|---|---|
-| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Bootstrap servers do Kafka |
-| `KAFKA_TOPIC` | `ckan.ingest.jobs` | Tópico principal |
-| `KAFKA_TOPIC_RETRY` | `ckan.ingest.jobs.retry` | Tópico de retry |
-| `KAFKA_GROUP_ID` | `ckan-worker-rs` | Group ID do Kafka |
+| `IGGY_ADDRESS` | `localhost:8090` | Endpoint TCP do Iggy |
+| `IGGY_USERNAME` | `iggy` | Usuário do Iggy |
+| `IGGY_PASSWORD` | `iggy` | Senha do Iggy |
+| `IGGY_STREAM` | `ckan-ingestor` | Stream da aplicação |
+| `IGGY_TOPIC` | `jobs` | Tópico principal |
+| `IGGY_TOPIC_RETRY` | `jobs-retry` | Tópico de retry |
+| `IGGY_TOPIC_RESULTS` | `job-results` | Tópico de resultados |
+| `IGGY_GROUP_ID` | `ckan-worker` | Consumer group do worker |
+| `IGGY_PARTITIONS` | `10` | Consumer slots e partições por tópico |
 | `DUCKLAKE_DATABASE` | (obrigatório) | Database DuckDB local |
 | `DUCKLAKE_CATALOG_URI` | (obrigatório) | URI do catálogo DuckLake (Postgres) |
 | `S3_ENDPOINT` | `rustfs:9000` | Endpoint S3/RustFS |
@@ -151,6 +163,11 @@ O `.gitlab-ci.yml` constrói e publica as imagens no registry do GitLab:
 ## Deploy
 
 O deploy é feito via GitOps com ArgoCD, usando o Helm chart em `charts/ingestor-orchestrator`. A configuração de deploy (Application, ExternalSecret, Crossplane) fica no repositório `argocd-applications` (`noctcloud/argocd-applications`).
+
+Antes do primeiro sync, crie `IGGY_ROOT_PASSWORD` no OCI Vault. No cutover
+Kafka → Iggy, pause API e worker, registre jobs `PENDING`/`PROCESSING`, sincronize
+Iggy e a nova versão da aplicação e recrie os jobs inventariados pelo fluxo
+normal de sincronização.
 
 ## Licença
 

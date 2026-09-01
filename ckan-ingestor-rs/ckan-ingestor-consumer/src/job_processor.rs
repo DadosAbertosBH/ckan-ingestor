@@ -64,7 +64,7 @@ impl Clone for RealJobProcessor {
     fn clone(&self) -> Self {
         // Clone the underlying connection and re-apply session settings, which
         // are per-connection and not inherited by `try_clone`. Each clone runs
-        // on its own OS thread (one per Kafka partition), so each gets its own
+        // on its own OS thread (one per Iggy consumer slot), so each gets its own
         // connection to the same DuckLake catalog.
         let conn = self
             .conn

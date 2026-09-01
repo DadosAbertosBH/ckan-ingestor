@@ -104,6 +104,7 @@ class SyncService:
             logger.info(f"Ingesting resources for {instance_name}...")
             resources_col = packages["resources"].combine_chunks().flatten()
             resources = pyarrow.Table.from_struct_array(resources_col)
+
             # Tag every resource with its instance URL so enqueue_outdated
             # can filter by instance.
             ckan_col = pyarrow.array(

@@ -28,11 +28,17 @@ class Settings(BaseSettings):
     mysql_password: str = ""
     mysql_database: str = "ingestor_orchestrator"
 
-    # Kafka
-    kafka_bootstrap_servers: str = "localhost:9092"
-    kafka_topic: str = "ckan.ingest.jobs"
-    kafka_topic_retry: str = "ckan.ingest.jobs.retry"
-    kafka_group_id: str = "ckan-worker"
+    # Apache Iggy
+    iggy_address: str = "localhost:8090"
+    iggy_username: str = "iggy"
+    iggy_password: str = "iggy"
+    iggy_stream: str = "ckan-ingestor"
+    iggy_topic: str = "jobs"
+    iggy_topic_retry: str = "jobs-retry"
+    iggy_topic_results: str = "job-results"
+    iggy_group_id: str = "ckan-worker"
+    iggy_result_group_id: str = "ckan-result-consumer"
+    iggy_partitions: int = 10
 
     # Scheduler
     scheduler_interval_minutes: int = 480  # 8 hours, same as Dagster sensor
@@ -45,6 +51,13 @@ class Settings(BaseSettings):
         return (
             f"mysql+aiomysql://{self.mysql_user}:{quote(self.mysql_password)}"
             f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}"
+        )
+
+    @property
+    def iggy_connection_string(self) -> str:
+        return (
+            f"iggy+tcp://{quote(self.iggy_username, safe='')}:"
+            f"{quote(self.iggy_password, safe='')}@{self.iggy_address}"
         )
 
 

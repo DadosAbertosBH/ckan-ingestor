@@ -37,6 +37,7 @@ from ingestor_orchestrator.config import settings
 from ingestor_orchestrator.db import async_session
 from ingestor_orchestrator.services.scheduler import Scheduler
 from ingestor_orchestrator.result_consumer import ResultConsumer
+from ingestor_orchestrator.iggy_queue import get_iggy_bus
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     scheduler.stop()
     scheduler_task.cancel()
-    result_consumer.stop()
+    await result_consumer.stop()
     result_task.cancel()
     try:
         await asyncio.gather(scheduler_task, result_task, return_exceptions=True)
@@ -128,6 +129,12 @@ async def ready():
             checks["ducklake"] = "ok"
         except Exception:
             checks["ducklake"] = "unreachable"
+
+    try:
+        await get_iggy_bus().ping()
+        checks["iggy"] = "ok"
+    except Exception:
+        checks["iggy"] = "unreachable"
 
     if any(v != "ok" for v in checks.values()):
         return JSONResponse(status_code=503, content={"status": "error", **checks})

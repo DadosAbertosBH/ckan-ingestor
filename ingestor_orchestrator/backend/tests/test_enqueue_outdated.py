@@ -119,7 +119,15 @@ class TestEnqueueOutdatedResources:
         )
         await autocommit_session.commit()
 
-        publish = AsyncMock(return_value=MagicMock(topic="retry", partition=0, offset=1))
+        publish = AsyncMock(
+            return_value=MagicMock(
+                broker_type="iggy",
+                stream="ckan-ingestor",
+                topic="jobs-retry",
+                partition=0,
+                offset=None,
+            )
+        )
         monkeypatch.setattr(JobService, "_publish_job", publish)
         monkeypatch.setattr(
             "ckan_ingestor.duckdb_connection_factory.from_settings",

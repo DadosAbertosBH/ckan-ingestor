@@ -61,7 +61,7 @@ class JobService:
         self.db.add(job)
         await self.db.flush()  # get job.id from DB-generated UUID
 
-        # Publish to Kafka
+        # Publish to the message broker
         csv_delimiter = await self._get_csv_delimiter(job.resource_id)
         record_meta = await self._publish_job(
             job.id, job.resource_id, data.ckan_url,
@@ -72,10 +72,12 @@ class JobService:
             retry=retry,
         )
 
-        # Store Kafka routing metadata for debugging
-        job.kafka_topic = record_meta.topic
-        job.kafka_partition = record_meta.partition
-        job.kafka_offset = record_meta.offset
+        # Store broker routing metadata for debugging
+        job.broker_type = record_meta.broker_type
+        job.message_stream = record_meta.stream
+        job.message_topic = record_meta.topic
+        job.message_partition = record_meta.partition
+        job.message_offset = record_meta.offset
 
         await self._upsert_latest_resource(job)
         await self.db.commit()
@@ -122,10 +124,12 @@ class JobService:
             retry=True,
         )
 
-        # Store Kafka routing metadata for debugging
-        retry_job.kafka_topic = record_meta.topic
-        retry_job.kafka_partition = record_meta.partition
-        retry_job.kafka_offset = record_meta.offset
+        # Store broker routing metadata for debugging
+        retry_job.broker_type = record_meta.broker_type
+        retry_job.message_stream = record_meta.stream
+        retry_job.message_topic = record_meta.topic
+        retry_job.message_partition = record_meta.partition
+        retry_job.message_offset = record_meta.offset
         retry_job.updated_at = datetime.now(timezone.utc)
         await self._upsert_latest_resource(retry_job)
         await self.db.commit()
@@ -164,7 +168,7 @@ class JobService:
         """Apply a result published by the ingestion worker.
 
         Receives a dict with the shape published to ckan.ingest.jobs_result.
-        No Kafka dependency — the caller is responsible for consuming the topic.
+        The caller is responsible for consuming the broker topic.
 
         Retries with exponential backoff when the job isn't found — handles
         the race condition where the result message arrives before the
@@ -463,12 +467,10 @@ class JobService:
         datastore_active: bool = False,
         retry: bool = False,
     ):
-        """Publish job to Kafka and return RecordMetadata."""
-        import asyncio
+        """Publish a job to Apache Iggy and return generic routing metadata."""
+        from ingestor_orchestrator.iggy_queue import get_iggy_bus
 
-        from ingestor_orchestrator.kafka import get_kafka_producer
-
-        topic = settings.kafka_topic_retry if retry else settings.kafka_topic
+        topic = settings.iggy_topic_retry if retry else settings.iggy_topic
         payload_data = {
             "job_id": job_id,
             "resource_id": resource_id,
@@ -481,12 +483,8 @@ class JobService:
             payload_data["csv_delimiter"] = csv_delimiter
         payload = json.dumps(payload_data).encode()
 
-        def _send():
-            producer = get_kafka_producer()
-            return producer.send(topic, payload).get(timeout=10)
-
         try:
-            return await asyncio.to_thread(_send)
+            return await get_iggy_bus().publish(topic, payload, key=job_id)
         except Exception as e:
-            logger.error(f"Failed to publish job {job_id} to Kafka: {e}")
+            logger.error(f"Failed to publish job {job_id} to Iggy: {e}")
             raise

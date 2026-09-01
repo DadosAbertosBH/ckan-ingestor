@@ -1,0 +1,43 @@
+// ckan-ingestor-rs
+//
+// This file is part of ckan-ingestor-rs.
+//
+// ckan-ingestor-rs is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+use ckan_ingestor_consumer::IggySettings;
+
+#[test]
+fn defaults_use_the_approved_iggy_topology() {
+    let settings = IggySettings::default();
+
+    assert_eq!(settings.address, "localhost:8090");
+    assert_eq!(settings.username, "iggy");
+    assert_eq!(settings.password, "iggy");
+    assert_eq!(
+        settings.connection_string(),
+        "iggy://iggy:iggy@localhost:8090"
+    );
+    assert_eq!(settings.stream, "ckan-ingestor");
+    assert_eq!(settings.job_topic, "jobs");
+    assert_eq!(settings.retry_topic, "jobs-retry");
+    assert_eq!(settings.result_topic, "job-results");
+    assert_eq!(settings.consumer_group, "ckan-worker");
+    assert_eq!(settings.partitions, 10);
+}
+
+#[test]
+fn connection_string_encodes_credentials() {
+    let settings = IggySettings {
+        username: "root@example.com".into(),
+        password: "p@ss:/word".into(),
+        ..IggySettings::default()
+    };
+
+    assert_eq!(
+        settings.connection_string(),
+        "iggy://root%40example.com:p%40ss%3A%2Fword@localhost:8090"
+    );
+}

@@ -39,9 +39,11 @@ export interface Job {
   ckan_resource_url: string;
   labels?: string[];
   results?: JobResult[];
-  kafka_topic?: string | null;
-  kafka_partition?: number | null;
-  kafka_offset?: number | null;
+  broker_type?: string | null;
+  message_stream?: string | null;
+  message_topic?: string | null;
+  message_partition?: number | null;
+  message_offset?: number | null;
 }
 
 export interface JobResult {

@@ -13,39 +13,37 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-"""Test Kafka producer — uses kafka-python's send().get() API."""
+"""Tests for job publication through the Iggy message bus."""
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from ingestor_orchestrator.services.job_service import JobService
 
-_FACTORY_PATH = "ingestor_orchestrator.kafka.get_kafka_producer"
+_FACTORY_PATH = "ingestor_orchestrator.iggy_queue.get_iggy_bus"
 
 
-def _mock_producer():
-    mock = MagicMock()
-    mock_future = MagicMock()
-    mock_future.get.return_value = None
-    mock.send.return_value = mock_future
+def _mock_bus():
+    mock = AsyncMock()
     return mock
 
 
 @pytest.mark.asyncio
 async def test_publish_sends_job_id_and_ckan_url():
     """Producer sends a message with job_id and ckan_url."""
-    producer = _mock_producer()
+    bus = _mock_bus()
 
-    with patch(_FACTORY_PATH, return_value=producer):
+    with patch(_FACTORY_PATH, return_value=bus):
         service = JobService(AsyncMock())
         await service._publish_job(
             "test-job", "resource-1", ckan_url="https://dados.pbh.gov.br"
         )
 
-    producer.send.assert_called_once()
-    args, _kwargs = producer.send.call_args
-    assert args[0] == "ckan.ingest.jobs"
+    bus.publish.assert_awaited_once()
+    args, kwargs = bus.publish.await_args
+    assert args[0] == "jobs"
+    assert kwargs["key"] == "test-job"
     payload = json.loads(args[1].decode())
     assert payload["job_id"] == "test-job"
     assert payload["resource_id"] == "resource-1"
@@ -56,41 +54,41 @@ async def test_publish_sends_job_id_and_ckan_url():
 @pytest.mark.asyncio
 async def test_publish_retry_uses_retry_topic():
     """retry=True publishes to the retry topic."""
-    producer = _mock_producer()
+    bus = _mock_bus()
 
-    with patch(_FACTORY_PATH, return_value=producer):
+    with patch(_FACTORY_PATH, return_value=bus):
         service = JobService(AsyncMock())
         await service._publish_job("retry-job", "resource-1", retry=True)
 
-    args, _ = producer.send.call_args
-    assert args[0] == "ckan.ingest.jobs.retry"
+    args, _ = bus.publish.await_args
+    assert args[0] == "jobs-retry"
 
 
 @pytest.mark.asyncio
 async def test_publish_includes_optional_csv_delimiter():
-    producer = _mock_producer()
+    bus = _mock_bus()
 
-    with patch(_FACTORY_PATH, return_value=producer):
+    with patch(_FACTORY_PATH, return_value=bus):
         service = JobService(AsyncMock())
         await service._publish_job(
             "test-job", "resource-1", csv_delimiter=";"
         )
 
-    args, _kwargs = producer.send.call_args
+    args, _kwargs = bus.publish.await_args
     payload = json.loads(args[1].decode())
     assert payload["csv_delimiter"] == ";"
 
 
 @pytest.mark.asyncio
 async def test_publish_includes_datastore_status_from_metadata():
-    producer = _mock_producer()
+    bus = _mock_bus()
 
-    with patch(_FACTORY_PATH, return_value=producer):
+    with patch(_FACTORY_PATH, return_value=bus):
         service = JobService(AsyncMock())
         await service._publish_job(
             "test-job", "resource-1", datastore_active=True
         )
 
-    args, _kwargs = producer.send.call_args
+    args, _kwargs = bus.publish.await_args
     payload = json.loads(args[1].decode())
     assert payload["datastore_active"] is True

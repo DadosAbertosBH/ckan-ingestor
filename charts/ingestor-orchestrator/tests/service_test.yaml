@@ -14,5 +14,5 @@ tests:
       api.service.annotations.tailscale\.com/expose: "true"
     asserts:
       - equal:
-          path: metadata.annotations.tailscale\.com/expose
+          path: metadata.annotations["tailscale.com/expose"]
           value: "true"

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     CHAR,
+    BigInteger,
     Boolean,
     ForeignKey,
     Index,
@@ -81,7 +82,9 @@ class CkanDataJob(Base):
         order_by="CkanDataJobResult.created_at.desc()",
     )
 
-    # Kafka routing metadata
-    kafka_topic: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    kafka_partition: Mapped[int | None] = mapped_column(nullable=True)
-    kafka_offset: Mapped[int | None] = mapped_column(nullable=True)
+    # Message broker routing metadata
+    broker_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    message_stream: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    message_topic: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    message_partition: Mapped[int | None] = mapped_column(nullable=True)
+    message_offset: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

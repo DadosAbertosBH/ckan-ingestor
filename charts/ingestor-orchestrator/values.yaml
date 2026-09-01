@@ -56,12 +56,70 @@ worker:
     limits:
       memory: 4Gi
 
-# -- Kafka configuration
-kafka:
-  bootstrapServers: "kafka:9092"
-  topic: "ckan.ingest.jobs"
-  topicRetry: "ckan.ingest.jobs.retry"
+# -- Apache Iggy configuration
+iggy:
+  # -- Deploy Apache Iggy using the official chart dependency.
+  enabled: true
+  fullnameOverride: iggy
+
+  server:
+    enabled: true
+    replicaCount: 1
+    image:
+      repository: apache/iggy
+      tag: "0.8.0"
+      pullPolicy: IfNotPresent
+    users:
+      root:
+        createSecret: false
+        existingSecret:
+          name: ingestor-orchestrator-csi
+          usernameKey: IGGY_USERNAME
+          passwordKey: IGGY_PASSWORD
+    persistence:
+      enabled: true
+      existingClaim: iggy-data
+    env:
+      - name: RUST_LOG
+        value: info
+      - name: IGGY_HTTP_ADDRESS
+        value: "0.0.0.0:3000"
+      - name: IGGY_TCP_ADDRESS
+        value: "0.0.0.0:8090"
+      - name: IGGY_QUIC_ADDRESS
+        value: "0.0.0.0:8080"
+      - name: IGGY_WEBSOCKET_ADDRESS
+        value: "0.0.0.0:8092"
+      - name: IGGY_SYSTEM_PATH
+        value: /app/local_data
+
+  ui:
+    enabled: false
+
+  securityContext:
+    capabilities:
+      add:
+        - IPC_LOCK
+        - SYS_NICE
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 1Gi
+    limits:
+      memory: 1Gi
+
+  # Connection settings consumed by the API and worker.
+  address: "iggy:8090"
+  username: "iggy"
+  password: ""
+  stream: "ckan-ingestor"
+  topic: "jobs"
+  topicRetry: "jobs-retry"
+  topicResults: "job-results"
   groupId: "ckan-worker"
+  resultGroupId: "ckan-result-consumer"
+  partitions: 10
 
 # -- PostgreSQL configuration (CloudNativePG)
 postgres:

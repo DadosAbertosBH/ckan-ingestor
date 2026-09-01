@@ -14,9 +14,11 @@ FROM chef AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
+    curl \
     libssl-dev \
     libcurl4-openssl-dev \
     pkg-config \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
@@ -42,15 +44,26 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY ckan-ingestor-lib/src/ ckan-ingestor-lib/src/
 COPY ckan-ingestor-consumer/src/ ckan-ingestor-consumer/src/
 
-# Build release binary. The shared /src/target can contain libduckdb.so for
-# more than one platform, so resolve the exact Rust target triple and copy
-# only this platform's lib — avoiding GNU cp's "will not overwrite just-created"
-# failure (and copying the wrong arch) during multi-platform builds.
-RUN DUCKDB_DOWNLOAD_LIB=1 \
+# The Python API uses DuckDB 1.5.5, whose DuckLake extension supports catalog
+# format 1.0. Download the same engine for the worker so both clients can open
+# the shared PostgreSQL-backed DuckLake catalog. duckdb-rs 1.10501 supplies a
+# compatible C ABI binding for this patch release.
+ARG DUCKDB_VERSION=1.5.5
+RUN ARCH="$(dpkg --print-architecture)" && \
+    case "$ARCH" in \
+        amd64) DUCKDB_ARCH=amd64 ;; \
+        arm64) DUCKDB_ARCH=arm64 ;; \
+        *) echo "Unsupported DuckDB architecture: $ARCH" >&2; exit 1 ;; \
+    esac && \
+    mkdir -p /opt/duckdb && \
+    curl --fail --location --silent --show-error \
+      "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/libduckdb-linux-${DUCKDB_ARCH}.zip" \
+      --output /tmp/libduckdb.zip && \
+    unzip -q /tmp/libduckdb.zip -d /opt/duckdb && \
+    DUCKDB_LIB_DIR=/opt/duckdb DUCKDB_INCLUDE_DIR=/opt/duckdb \
     cargo build --release -p ckan_ingestor_consumer && \
     cp target/release/ckan-ingestor-consumer /usr/local/bin/ && \
-    RUST_TARGET="$(rustc -vV | sed -n 's/^host: //p')" && \
-    cp -f "target/duckdb-download/${RUST_TARGET}/1.5.5/libduckdb.so" /usr/local/lib/
+    cp -f /opt/duckdb/libduckdb.so /usr/local/lib/
 
 # --- Runtime image ---
 FROM debian:trixie-slim

@@ -20,6 +20,7 @@ function makeJob(overrides: Partial<Job> = {}): Job {
   return {
     id: "job-1",
     instance_id: null,
+    instance_name: null,
     resource_id: "abc-123",
     resource_name: "Population Data",
     resource_url: "https://example.com/data.csv",

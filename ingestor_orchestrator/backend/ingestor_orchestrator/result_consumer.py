@@ -19,42 +19,31 @@ import logging
 import signal
 
 from ingestor_orchestrator.db import async_session
-from ingestor_orchestrator.kafka_queue import create_kafka_consumer
+from ingestor_orchestrator.iggy_queue import get_iggy_bus
 from ingestor_orchestrator.services.job_service import JobService
 
 logger = logging.getLogger(__name__)
 
-RESULT_TOPIC = "ckan.ingest.jobs_result"
-RESULT_GROUP_ID = "ckan-result-consumer"
-
-
 class ResultConsumer:
-    """Consumes ckan.ingest.jobs_result and updates the database."""
+    """Consumes Iggy job results and updates the database."""
 
     def __init__(self):
         self._running = False
+        self._shutdown = asyncio.Event()
 
     async def start(self):
         self._running = True
+        self._shutdown.clear()
+        consumer = await get_iggy_bus().result_consumer()
+        logger.info("Iggy result consumer started")
 
-        consumer = create_kafka_consumer(RESULT_TOPIC, RESULT_GROUP_ID)
+        async def process(message):
+            await self._process(message)
 
-        logger.info(f"Result consumer started, topic: {RESULT_TOPIC}")
+        await consumer.consume_messages(process, self._shutdown)
 
-        await self._consume_loop(consumer)
-
-    async def _consume_loop(self, consumer):
-        loop = asyncio.get_event_loop()
-
-        while self._running:
-            records = await loop.run_in_executor(None, consumer.poll, 5000, 10)
-
-            for msg_list in records.values():
-                for record in msg_list:
-                    await self._process(record, consumer)
-
-    async def _process(self, record, consumer):
-        payload = json.loads(record.value.decode())
+    async def _process(self, message):
+        payload = json.loads(message.payload().decode())
         job_id = payload.get("job_id", "unknown")
         status = payload.get("status", "UNKNOWN")
         logger.info(f"Result received: job={job_id} status={status}")
@@ -63,20 +52,9 @@ class ResultConsumer:
             service = JobService(db)
             await service.apply_result(payload)
 
-        # Commit offset
-        from kafka import OffsetAndMetadata, TopicPartition
-
-        def _commit():
-            consumer.commit({
-                TopicPartition(record.topic, record.partition): OffsetAndMetadata(
-                    record.offset + 1, "", 0
-                )
-            })
-
-        await asyncio.get_event_loop().run_in_executor(None, _commit)
-
     async def stop(self):
         self._running = False
+        self._shutdown.set()
         logger.info("Result consumer stopped")
 
 

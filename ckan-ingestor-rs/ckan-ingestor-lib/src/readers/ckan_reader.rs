@@ -21,6 +21,7 @@ use crate::readers::temp_file_cleanup::TempFileCleanup;
 use crate::{arrow_ipc_output::ArrowIpcOutput, ckan_resource::CkanResource};
 use anyhow::Result;
 use reqwest::blocking::Client;
+use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
 use std::fs::File;
 use std::io::{self, Write};
 
@@ -32,7 +33,20 @@ pub fn download_to_temp(client: &Client, url: &str, suffix: &str) -> Result<Stri
     let mut response = client.get(url).send()?;
     let status = response.status();
     if !status.is_success() {
-        anyhow::bail!("resource download failed with HTTP status {status}: {url}");
+        let content_type = response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("<missing or invalid>");
+        let content_encoding = response
+            .headers()
+            .get(CONTENT_ENCODING)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("<missing or invalid>");
+        anyhow::bail!(
+            "resource download failed with HTTP status {status} \
+             (Content-Type: {content_type}, Content-Encoding: {content_encoding}): {url}"
+        );
     }
 
     let temp_path = std::env::temp_dir().join(format!("{}{}", uuid::Uuid::new_v4(), suffix));

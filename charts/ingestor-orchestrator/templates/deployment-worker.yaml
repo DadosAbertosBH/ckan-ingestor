@@ -29,14 +29,22 @@ spec:
           image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "worker") }}
           imagePullPolicy: {{ .Values.worker.image.pullPolicy | default .Values.global.image.pullPolicy }}
           env:
-            - name: KAFKA_BOOTSTRAP_SERVERS
-              value: {{ .Values.kafka.bootstrapServers | quote }}
-            - name: KAFKA_TOPIC
-              value: {{ .Values.kafka.topic | quote }}
-            - name: KAFKA_TOPIC_RETRY
-              value: {{ .Values.kafka.topicRetry | quote }}
-            - name: KAFKA_GROUP_ID
-              value: {{ .Values.kafka.groupId | quote }}
+            - name: IGGY_ADDRESS
+              value: {{ .Values.iggy.address | quote }}
+            - name: IGGY_USERNAME
+              value: {{ .Values.iggy.username | quote }}
+            - name: IGGY_STREAM
+              value: {{ .Values.iggy.stream | quote }}
+            - name: IGGY_TOPIC
+              value: {{ .Values.iggy.topic | quote }}
+            - name: IGGY_TOPIC_RETRY
+              value: {{ .Values.iggy.topicRetry | quote }}
+            - name: IGGY_TOPIC_RESULTS
+              value: {{ .Values.iggy.topicResults | quote }}
+            - name: IGGY_GROUP_ID
+              value: {{ .Values.iggy.groupId | quote }}
+            - name: IGGY_PARTITIONS
+              value: {{ .Values.iggy.partitions | quote }}
             - name: S3_ENDPOINT
               value: {{ .Values.ducklake.dataPath.endpoint | quote }}
             - name: S3_BUCKET

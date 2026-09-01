@@ -61,7 +61,7 @@
                     <th>Job ID</th>
                     <th>Format</th>
                     <th>Labels</th>
-                    <th>Kafka</th>
+                    <th>Broker</th>
                     <th>Status</th>
                     <th
                         class="sortable-header sortable-header-duration"
@@ -131,10 +131,19 @@
                     </td>
                     <td>{{ job.resource_format || "—" }}</td>
                     <td><ResourceLabelBadge :labels="job.labels ?? []" /></td>
-                    <td class="mono kafka-cell">
-                        <span v-if="job.kafka_topic" class="kafka-meta">
-                            {{ job.kafka_topic }}<br />[{{ job.kafka_partition }}]
-                            @{{ job.kafka_offset }}
+                    <td class="mono broker-cell">
+                        <span v-if="job.message_topic" class="broker-meta">
+                            {{ job.broker_type }}<br />{{ job.message_stream }}/{{
+                                job.message_topic
+                            }}<br />[{{ job.message_partition }}]
+                            <template
+                                v-if="
+                                    job.message_offset !== null &&
+                                    job.message_offset !== undefined
+                                "
+                            >
+                                @{{ job.message_offset }}
+                            </template>
                         </span>
                         <span v-else>\u2014</span>
                     </td>
@@ -554,13 +563,13 @@ onMounted(async () => {
     color: #9ca3af;
 }
 
-.kafka-cell {
+.broker-cell {
     max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.kafka-meta {
+.broker-meta {
     color: #a78bfa;
     font-size: 12px;
 }

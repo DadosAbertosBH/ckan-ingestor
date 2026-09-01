@@ -3,27 +3,16 @@
 // This file is part of ckan-ingestor-rs.
 //
 // ckan-ingestor-rs is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as published
-// by the Free Software Foundation, either version 3 of the License, or
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//
-// ckan-ingestor-rs is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
+use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Duration;
 
-use rdkafka::producer::{FutureProducer, FutureRecord};
-use rdkafka::util::Timeout;
+use iggy::prelude::{IggyMessage, IggyProducer, Partitioning};
 
 use crate::messages::JobResultMessage;
-
-const RESULT_TOPIC: &str = "ckan.ingest.jobs_result";
 
 pub trait ResultPublisher: Clone {
     fn publish(
@@ -32,39 +21,37 @@ pub trait ResultPublisher: Clone {
     ) -> impl std::future::Future<Output = Result<(), anyhow::Error>> + Send;
 }
 
-impl ResultPublisher for Arc<FutureProducer> {
-    fn publish(
-        &self,
-        result: JobResultMessage,
-    ) -> impl std::future::Future<Output = Result<(), anyhow::Error>> + Send {
-        let producer = Arc::clone(self);
-        async move {
-            let payload = serde_json::to_vec(&result)
-                .map_err(|e| anyhow::anyhow!("serialize result: {}", e))?;
+#[derive(Clone)]
+pub struct IggyResultPublisher {
+    producer: Arc<IggyProducer>,
+}
 
-            let record = FutureRecord::to(RESULT_TOPIC)
-                .key(&result.job_id)
-                .payload(&payload);
-
-            producer
-                .send(record, Timeout::After(Duration::from_secs(10)))
-                .await
-                .map_err(|(e, _)| {
-                    anyhow::anyhow!(
-                        "producer send job={} status={}: {}",
-                        result.job_id,
-                        result.status,
-                        e
-                    )
-                })?;
-            Ok(())
+impl IggyResultPublisher {
+    pub fn new(producer: IggyProducer) -> Self {
+        Self {
+            producer: Arc::new(producer),
         }
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+impl ResultPublisher for IggyResultPublisher {
+    async fn publish(&self, result: JobResultMessage) -> Result<(), anyhow::Error> {
+        let payload = serde_json::to_string(&result).map_err(|error| anyhow::anyhow!(error))?;
+        let message = IggyMessage::from_str(&payload)?;
+        let partitioning = Arc::new(Partitioning::messages_key_str(&result.job_id)?);
+        self.producer
+            .send_with_partitioning(vec![message], Some(partitioning))
+            .await
+            .map_err(|error| {
+                anyhow::anyhow!(
+                    "Iggy publish job={} status={}: {}",
+                    result.job_id,
+                    result.status,
+                    error
+                )
+            })
+    }
+}
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -74,23 +61,25 @@ pub(crate) mod tests {
     #[derive(Clone)]
     pub(crate) struct MockPublisher {
         pub published: Arc<Mutex<Vec<JobResultMessage>>>,
+        failure: Option<String>,
     }
 
     impl MockPublisher {
         pub fn new() -> Self {
             Self {
                 published: Arc::new(Mutex::new(vec![])),
+                failure: None,
             }
         }
     }
 
     impl ResultPublisher for MockPublisher {
-        fn publish(
-            &self,
-            result: JobResultMessage,
-        ) -> impl std::future::Future<Output = Result<(), anyhow::Error>> + Send {
+        async fn publish(&self, result: JobResultMessage) -> Result<(), anyhow::Error> {
+            if let Some(failure) = &self.failure {
+                anyhow::bail!(failure.clone());
+            }
             self.published.lock().unwrap().push(result);
-            std::future::ready(Ok(()))
+            Ok(())
         }
     }
 }
