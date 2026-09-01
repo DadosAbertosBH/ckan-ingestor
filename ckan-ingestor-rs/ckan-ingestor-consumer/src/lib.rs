@@ -63,7 +63,10 @@ impl Default for IggySettings {
 
 impl IggySettings {
     pub fn connection_string(&self) -> String {
-        format!("iggy://{}:{}@{}", self.username, self.password, self.address)
+        format!(
+            "iggy://{}:{}@{}",
+            self.username, self.password, self.address
+        )
     }
 
     pub fn from_env() -> Result<Self> {
