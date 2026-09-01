@@ -85,6 +85,24 @@ beforeEach(() => {
 });
 
 describe("JobDetailView — labels", () => {
+  it("renders only topic, partition, and offset in broker metadata", async () => {
+    mockFetchJob.mockResolvedValue(
+      makeJob({
+        broker_type: "iggy",
+        message_stream: "ckan-ingestor",
+        message_topic: "jobs-retry",
+        message_partition: 5,
+        message_offset: 42,
+      }),
+    );
+
+    const wrapper = await mountDetail();
+    await flushPromises();
+
+    const broker = wrapper.find(".broker-meta");
+    expect(broker.text()).toBe("jobs-retry[5]@42");
+  });
+
   it("shows em-dash when no labels", async () => {
     mockFetchJob.mockResolvedValue(makeJob({ labels: [] }));
 

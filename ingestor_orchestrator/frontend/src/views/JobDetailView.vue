@@ -89,17 +89,7 @@
                 <div v-if="job.message_topic" class="info-item info-item-broker">
                     <span class="info-label">Broker</span>
                     <span class="info-value mono broker-meta">
-                        {{ job.broker_type }}<br />{{ job.message_stream }}/{{
-                            job.message_topic
-                        }}<br />[{{ job.message_partition }}]
-                        <template
-                            v-if="
-                                job.message_offset !== null &&
-                                job.message_offset !== undefined
-                            "
-                        >
-                            @{{ job.message_offset }}
-                        </template>
+                        {{ formatBrokerMetadata(job) }}
                     </span>
                 </div>
                 <div class="info-item">
@@ -188,6 +178,15 @@ async function handleDelete() {
 
 function formatTime(iso: string): string {
     return new Date(iso).toLocaleString();
+}
+
+function formatBrokerMetadata(job: Job): string {
+    const partition = "[" + (job.message_partition ?? "") + "]";
+    const offset =
+        job.message_offset === null || job.message_offset === undefined
+            ? ""
+            : "@" + job.message_offset;
+    return String(job.message_topic) + partition + offset;
 }
 
 onMounted(loadJob);

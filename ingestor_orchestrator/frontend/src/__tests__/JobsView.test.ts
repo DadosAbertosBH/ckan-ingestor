@@ -418,7 +418,7 @@ describe("JobsView — Broker column", () => {
     expect(brokerHeader).toBeTruthy();
   });
 
-  it("renders generic Iggy metadata", async () => {
+  it("renders only topic, partition, and offset in the Broker column", async () => {
     mockFetchJobs.mockResolvedValue([
       {
         id: "job-1",
@@ -439,18 +439,19 @@ describe("JobsView — Broker column", () => {
         instance_name: "PBH",
         broker_type: "iggy",
         message_stream: "ckan-ingestor",
-        message_topic: "jobs",
+        message_topic: "jobs-retry",
         message_partition: 2,
-        message_offset: null,
+        message_offset: 17,
       },
     ]);
 
     const { wrapper } = await mountWithRouter();
     await flushPromises();
 
-    expect(wrapper.text()).toContain("iggy");
-    expect(wrapper.text()).toContain("ckan-ingestor/jobs");
-    expect(wrapper.text()).toContain("2");
+    const broker = wrapper.find(".broker-meta");
+    expect(broker.text()).toContain("jobs-retry[2]@17");
+    expect(broker.text()).not.toContain("iggy");
+    expect(broker.text()).not.toContain("ckan-ingestor");
   });
 
   it("shows — when job has no message topic", async () => {

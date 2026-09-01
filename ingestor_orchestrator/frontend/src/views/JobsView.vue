@@ -133,17 +133,7 @@
                     <td><ResourceLabelBadge :labels="job.labels ?? []" /></td>
                     <td class="mono broker-cell">
                         <span v-if="job.message_topic" class="broker-meta">
-                            {{ job.broker_type }}<br />{{ job.message_stream }}/{{
-                                job.message_topic
-                            }}<br />[{{ job.message_partition }}]
-                            <template
-                                v-if="
-                                    job.message_offset !== null &&
-                                    job.message_offset !== undefined
-                                "
-                            >
-                                @{{ job.message_offset }}
-                            </template>
+                            {{ formatBrokerMetadata(job) }}
                         </span>
                         <span v-else>\u2014</span>
                     </td>
@@ -404,6 +394,15 @@ function formatJobDuration(job: Job): string {
     if (!d) return "—";
     const label = formatDuration(d.ms);
     return d.finished ? label : `${label}…`;
+}
+
+function formatBrokerMetadata(job: Job): string {
+    const partition = "[" + (job.message_partition ?? "") + "]";
+    const offset =
+        job.message_offset === null || job.message_offset === undefined
+            ? ""
+            : "@" + job.message_offset;
+    return String(job.message_topic) + partition + offset;
 }
 
 onMounted(async () => {
