@@ -78,6 +78,9 @@ test-rust:
   tags:
     - noctcloud-k8s
   variables:
+    CARGO_INCREMENTAL: "0"
+    CARGO_PROFILE_DEV_DEBUG: "0"
+    CARGO_PROFILE_TEST_DEBUG: "0"
     # Force libduckdb-sys to download the prebuilt DuckDB library so that
     # tests and builds can link against it on Linux runners.
     DUCKDB_DOWNLOAD_LIB: "1"
@@ -89,7 +92,6 @@ test-rust:
           - ckan-ingestor-rs/Cargo.lock
       paths:
         - $CARGO_HOME
-        - ckan-ingestor-rs/target
   script:
     - apt-get update && apt-get install -y --no-install-recommends build-essential cmake curl libssl-dev libcurl4-openssl-dev pkg-config && rm -rf /var/lib/apt/lists/*
     - until curl -fsS http://docker:2375/_ping; do sleep 1; done
