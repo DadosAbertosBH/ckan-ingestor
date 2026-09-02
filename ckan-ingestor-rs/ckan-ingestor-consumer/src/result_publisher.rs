@@ -13,6 +13,7 @@ use std::sync::Arc;
 use iggy::prelude::{IggyMessage, IggyProducer, Partitioning};
 
 use crate::messages::JobResultMessage;
+use ckan_metadata_ingestor::MetadataSyncResult;
 
 pub trait ResultPublisher: Clone {
     fn publish(
@@ -31,6 +32,16 @@ impl IggyResultPublisher {
         Self {
             producer: Arc::new(producer),
         }
+    }
+
+    pub async fn publish_metadata(&self, result: MetadataSyncResult) -> Result<(), anyhow::Error> {
+        let payload = serde_json::to_string(&result)?;
+        let message = IggyMessage::from_str(&payload)?;
+        let partitioning = Arc::new(Partitioning::messages_key_str(&result.sync_id)?);
+        self.producer
+            .send_with_partitioning(vec![message], Some(partitioning))
+            .await?;
+        Ok(())
     }
 }
 

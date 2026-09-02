@@ -11,7 +11,6 @@ use anyhow::{Result, anyhow};
 use futures::StreamExt;
 use iggy::prelude::IggyConsumer;
 use std::future::Future;
-use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BrokerMessage {
@@ -21,27 +20,25 @@ pub struct BrokerMessage {
 }
 
 pub trait MessageSource {
-    fn recv(&self) -> impl Future<Output = Result<BrokerMessage>> + Send;
+    fn recv(&mut self) -> impl Future<Output = Result<BrokerMessage>> + Send;
 
-    fn commit(&self, partition: u32, offset: u64) -> impl Future<Output = Result<()>> + Send;
+    fn commit(&mut self, partition: u32, offset: u64) -> impl Future<Output = Result<()>> + Send;
 }
 
 pub struct IggySource {
-    consumer: Mutex<IggyConsumer>,
+    consumer: IggyConsumer,
 }
 
 impl IggySource {
     pub fn new(consumer: IggyConsumer) -> Self {
-        Self {
-            consumer: Mutex::new(consumer),
-        }
+        Self { consumer }
     }
 }
 
 impl MessageSource for IggySource {
-    async fn recv(&self) -> Result<BrokerMessage> {
-        let mut consumer = self.consumer.lock().await;
-        let received = consumer
+    async fn recv(&mut self) -> Result<BrokerMessage> {
+        let received = self
+            .consumer
             .next()
             .await
             .ok_or_else(|| anyhow!("Iggy consumer stopped"))??;
@@ -52,9 +49,8 @@ impl MessageSource for IggySource {
         })
     }
 
-    async fn commit(&self, partition: u32, offset: u64) -> Result<()> {
-        let consumer = self.consumer.lock().await;
-        consumer.store_offset(offset, Some(partition)).await?;
+    async fn commit(&mut self, partition: u32, offset: u64) -> Result<()> {
+        self.consumer.store_offset(offset, Some(partition)).await?;
         Ok(())
     }
 }
@@ -66,30 +62,28 @@ pub(crate) mod tests {
     use tokio::sync::mpsc;
 
     pub(crate) struct MockSource {
-        rx: Mutex<mpsc::Receiver<BrokerMessage>>,
+        rx: mpsc::Receiver<BrokerMessage>,
         pub committed: Arc<StdMutex<Vec<(u32, u64)>>>,
     }
 
     impl MockSource {
         pub fn new(rx: mpsc::Receiver<BrokerMessage>) -> Self {
             Self {
-                rx: Mutex::new(rx),
+                rx,
                 committed: Arc::new(StdMutex::new(vec![])),
             }
         }
     }
 
     impl MessageSource for MockSource {
-        async fn recv(&self) -> Result<BrokerMessage> {
+        async fn recv(&mut self) -> Result<BrokerMessage> {
             self.rx
-                .lock()
-                .await
                 .recv()
                 .await
                 .ok_or_else(|| anyhow!("mock source closed"))
         }
 
-        async fn commit(&self, partition: u32, offset: u64) -> Result<()> {
+        async fn commit(&mut self, partition: u32, offset: u64) -> Result<()> {
             self.committed.lock().unwrap().push((partition, offset));
             Ok(())
         }

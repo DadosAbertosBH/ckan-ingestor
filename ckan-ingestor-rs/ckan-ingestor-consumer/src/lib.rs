@@ -10,6 +10,8 @@
 pub mod job_processor;
 pub mod message_source;
 pub mod messages;
+pub mod metadata_processor;
+pub mod metadata_worker_thread;
 pub mod result_publisher;
 pub mod worker_thread;
 
@@ -29,6 +31,8 @@ use tokio::sync::Notify;
 
 use crate::job_processor::RealJobProcessor;
 use crate::message_source::IggySource;
+use crate::metadata_processor::RealMetadataProcessor;
+use crate::metadata_worker_thread::MetadataWorkerThread;
 use crate::result_publisher::IggyResultPublisher;
 use crate::worker_thread::WorkerThread;
 
@@ -41,6 +45,9 @@ pub struct IggySettings {
     pub job_topic: String,
     pub retry_topic: String,
     pub result_topic: String,
+    pub metadata_sync_topic: String,
+    pub metadata_sync_result_topic: String,
+    pub metadata_consumer_group: String,
     pub consumer_group: String,
     pub partitions: u32,
 }
@@ -55,6 +62,9 @@ impl Default for IggySettings {
             job_topic: "jobs".into(),
             retry_topic: "jobs-retry".into(),
             result_topic: "job-results".into(),
+            metadata_sync_topic: "ckan_metadata_sync".into(),
+            metadata_sync_result_topic: "ckan_metadata_sync_result".into(),
+            metadata_consumer_group: "ckan-metadata-sync-worker".into(),
             consumer_group: "ckan-worker".into(),
             partitions: 10,
         }
@@ -86,6 +96,12 @@ impl IggySettings {
             job_topic: env::var("IGGY_TOPIC").unwrap_or(defaults.job_topic),
             retry_topic: env::var("IGGY_TOPIC_RETRY").unwrap_or(defaults.retry_topic),
             result_topic: env::var("IGGY_TOPIC_RESULTS").unwrap_or(defaults.result_topic),
+            metadata_sync_topic: env::var("IGGY_METADATA_SYNC_TOPIC")
+                .unwrap_or(defaults.metadata_sync_topic),
+            metadata_sync_result_topic: env::var("IGGY_METADATA_SYNC_RESULT_TOPIC")
+                .unwrap_or(defaults.metadata_sync_result_topic),
+            metadata_consumer_group: env::var("IGGY_METADATA_SYNC_GROUP_ID")
+                .unwrap_or(defaults.metadata_consumer_group),
             consumer_group: env::var("IGGY_GROUP_ID").unwrap_or(defaults.consumer_group),
             partitions,
         })
@@ -95,12 +111,8 @@ impl IggySettings {
 pub async fn run() -> Result<()> {
     let settings = IggySettings::from_env()?;
     info!(
-        "Worker starting with Iggy stream={}, topics=[{}, {}, {}], partitions={}",
-        settings.stream,
-        settings.job_topic,
-        settings.retry_topic,
-        settings.result_topic,
-        settings.partitions
+        "Worker starting with Iggy stream={}, partitions={}",
+        settings.stream, settings.partitions
     );
 
     let connection_string = settings.connection_string();
@@ -114,9 +126,17 @@ pub async fn run() -> Result<()> {
     result_producer.init().await?;
     let publisher = IggyResultPublisher::new(result_producer);
 
+    let metadata_result_producer = admin
+        .producer(&settings.stream, &settings.metadata_sync_result_topic)?
+        .direct(DirectConfig::builder().batch_length(1).build())
+        .build();
+    metadata_result_producer.init().await?;
+    let metadata_publisher = IggyResultPublisher::new(metadata_result_producer);
+
     let s3 = create_s3_ingestor().await?;
     let processor = RealJobProcessor::new(s3, DuckdbFactory::from_env())?;
     let mut workers = Vec::with_capacity((settings.partitions * 2) as usize);
+    let mut metadata_workers = Vec::with_capacity(1);
 
     for topic in [&settings.job_topic, &settings.retry_topic] {
         for slot in 0..settings.partitions {
@@ -144,12 +164,41 @@ pub async fn run() -> Result<()> {
         }
     }
 
+    let metadata_processor = RealMetadataProcessor::new(DuckdbFactory::from_env())?;
+    let client = connected_client(&connection_string).await?;
+    let mut consumer = client
+        .consumer_group(
+            &settings.metadata_consumer_group,
+            &settings.stream,
+            &settings.metadata_sync_topic,
+        )?
+        .auto_commit(AutoCommit::Disabled)
+        .create_consumer_group_if_not_exists()
+        .auto_join_consumer_group()
+        .polling_strategy(PollingStrategy::next())
+        .poll_interval(IggyDuration::from(Duration::from_millis(10)))
+        .batch_length(1)
+        .build();
+    consumer.init().await?;
+    let mut worker = MetadataWorkerThread::new(
+        settings.metadata_sync_topic.clone(),
+        0,
+        IggySource::new(consumer),
+        metadata_publisher.clone(),
+        metadata_processor,
+    );
+    worker.run();
+    metadata_workers.push(worker);
+
     let shutdown = Arc::new(Notify::new());
     install_shutdown_handler(shutdown.clone());
     info!("CKAN Iggy consumer started with {} workers", workers.len());
     shutdown.notified().await;
 
     for worker in workers {
+        tokio::task::spawn_blocking(move || worker.shutdown()).await?;
+    }
+    for worker in metadata_workers {
         tokio::task::spawn_blocking(move || worker.shutdown()).await?;
     }
     info!("CKAN Iggy consumer stopped");
@@ -173,10 +222,12 @@ pub async fn ensure_topology(client: &IggyClient, settings: &IggySettings) -> Re
         warn!("Iggy stream was created concurrently: {error}");
     }
 
-    for topic_name in [
-        &settings.job_topic,
-        &settings.retry_topic,
-        &settings.result_topic,
+    for (topic_name, partitions) in [
+        (&settings.job_topic, settings.partitions),
+        (&settings.retry_topic, settings.partitions),
+        (&settings.result_topic, settings.partitions),
+        (&settings.metadata_sync_topic, 1),
+        (&settings.metadata_sync_result_topic, 1),
     ] {
         let topic = topic_name.as_str().try_into()?;
         if client.get_topic(&stream, &topic).await?.is_none()
@@ -184,7 +235,7 @@ pub async fn ensure_topology(client: &IggyClient, settings: &IggySettings) -> Re
                 .create_topic(
                     &stream,
                     topic_name,
-                    settings.partitions,
+                    partitions,
                     CompressionAlgorithm::None,
                     Some(1),
                     IggyExpiry::NeverExpire,

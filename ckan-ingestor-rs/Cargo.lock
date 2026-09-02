@@ -1251,6 +1251,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "ckan_ingestor_lib",
+ "ckan_metadata_ingestor",
  "duckdb",
  "env_logger",
  "futures",
@@ -1293,6 +1294,20 @@ dependencies = [
  "tokio",
  "uuid",
  "wiremock",
+]
+
+[[package]]
+name = "ckan_metadata_ingestor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ckan_ingestor_lib",
+ "duckdb",
+ "httpmock",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

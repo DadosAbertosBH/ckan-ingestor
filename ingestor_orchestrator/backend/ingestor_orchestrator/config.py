@@ -36,8 +36,11 @@ class Settings(BaseSettings):
     iggy_topic: str = "jobs"
     iggy_topic_retry: str = "jobs-retry"
     iggy_topic_results: str = "job-results"
+    iggy_metadata_sync_topic: str = "ckan_metadata_sync"
+    iggy_metadata_sync_result_topic: str = "ckan_metadata_sync_result"
     iggy_group_id: str = "ckan-worker"
     iggy_result_group_id: str = "ckan-result-consumer"
+    iggy_metadata_sync_result_group_id: str = "ckan-metadata-sync-result-consumer"
     iggy_partitions: int = 10
 
     # Scheduler

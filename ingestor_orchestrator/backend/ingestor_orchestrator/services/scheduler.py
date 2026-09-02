@@ -44,8 +44,6 @@ class Scheduler:
 
     async def _sync_and_enqueue(self):
         """Sync CKAN metadata for all instances, then enqueue outdated resources."""
-        from datetime import datetime, timezone
-
         from sqlalchemy import select
 
         from ingestor_orchestrator.db import async_session
@@ -60,33 +58,15 @@ class Scheduler:
             for inst in instances:
                 logger.info(f"Syncing CKAN metadata for {inst.name}...")
                 try:
-                    sync_record = await sync_service.start_sync(inst.id)
-                    result = await sync_service.sync_metadata_for_instance(
+                    sync_record = await sync_service.sync_metadata_for_instance(
                         inst.id, inst.name, inst.url
                     )
-                    inst.last_metadata_synced = datetime.now(timezone.utc)
-                    inst.dataset_count = result.get("dataset_count", 0)
-                    inst.resource_count = result.get("resource_count", 0)
-                    await sync_service.finish_sync(sync_record, result)
-                    logger.info(
-                        f"Sync done for {inst.name}: {result['dataset_count']} datasets, {result['resource_count']} resources"
-                    )
+                    logger.info("Metadata sync %s queued for %s", sync_record.id, inst.name)
                 except Exception as e:
                     logger.error(
                         f"Failed to sync instance {inst.name}: {e}", exc_info=True
                     )
 
-                await self._enqueue(inst)
-
-    async def _enqueue(self, instance):
-        from ingestor_orchestrator.services.metadata_sync import (
-            enqueue_outdated_resources,
-        )
-
-        count = await enqueue_outdated_resources(
-            instance.id, instance.name, instance.url
-        )
-        logger.info(f"Enqueued {count} jobs for {instance.name}")
 
 
 async def run():

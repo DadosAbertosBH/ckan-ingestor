@@ -18,7 +18,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CHAR, ForeignKey, Integer, String
+from sqlalchemy import CHAR, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ingestor_orchestrator.db import Base
@@ -42,6 +42,7 @@ class MetadataSync(Base):
     )
     end_time: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     total_packages: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     new_datasets: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     new_resources: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

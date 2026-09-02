@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 ckan_ingestor_lib = { path = "../ckan-ingestor-lib" }
+ckan_metadata_ingestor = { path = "../ckan-metadata-ingestor" }
 iggy = "=0.10.0"
 tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "macros", "sync", "signal", "time"] }
 serde = { version = "1.0", features = ["derive"] }

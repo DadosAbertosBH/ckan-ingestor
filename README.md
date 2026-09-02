@@ -40,20 +40,22 @@ graph TD
 
 ### Fluxo de mensagens (Apache Iggy)
 
-Todos os tópicos pertencem ao stream `ckan-ingestor` e têm 10 partições.
+Todos os tópicos pertencem ao stream `ckan-ingestor`. Os tópicos de ingestão
+usam a quantidade configurada; os dois tópicos de metadata usam uma partição.
 
 | Tópico | Direção | Descrição |
 |---|---|---|
 | `jobs` | API/scheduler → worker | Jobs de ingestão |
 | `jobs-retry` | API → worker | Jobs com retry |
 | `job-results` | worker → result consumer | Resultados da ingestão |
+| `ckan_metadata_sync` | API/scheduler → worker | Comandos de sincronização de metadados CKAN |
+| `ckan_metadata_sync_result` | worker → result consumer | Resultados da sincronização de metadados |
 
 ## Estrutura do repositório
 
 ```
 .
-├── ckan_ingestor/                 # Biblioteca Python (sincronização de metadados)
-├── ckan-ingestor-rs/              # Worker Rust (ingestão de dados)
+├── ckan-ingestor-rs/              # Worker Rust (dados e metadata)
 ├── ingestor_orchestrator/
 │   ├── backend/                   # API FastAPI, scheduler e result consumer
 │   └── frontend/                  # Dashboard Vue.js
@@ -84,17 +86,15 @@ O compose sobe MySQL, Apache Iggy, RustFS, Postgres (catálogo DuckLake), a API,
 
 ## Testes
 
-### Python (orquestrador e biblioteca)
+### Python (orquestrador)
 
 ```bash
-# Raiz — biblioteca ckan_ingestor
-uv sync
-uv run pytest tests/ -q
-uv run ruff check
-
-# Backend do orquestrador
 cd ingestor_orchestrator/backend
 uv run pytest tests/ -q
+
+# Na raiz do repositório
+cd ../..
+uv run ruff check
 ```
 
 ### Rust (worker)
@@ -133,7 +133,10 @@ O `.gitlab-ci.yml` constrói e publica as imagens no registry do GitLab:
 | `INGEST_ORCH_IGGY_TOPIC` | `jobs` | Tópico principal de jobs |
 | `INGEST_ORCH_IGGY_TOPIC_RETRY` | `jobs-retry` | Tópico de retry |
 | `INGEST_ORCH_IGGY_TOPIC_RESULTS` | `job-results` | Tópico de resultados |
+| `INGEST_ORCH_IGGY_METADATA_SYNC_TOPIC` | `ckan_metadata_sync` | Tópico de comandos de metadados |
+| `INGEST_ORCH_IGGY_METADATA_SYNC_RESULT_TOPIC` | `ckan_metadata_sync_result` | Tópico de resultados de metadados |
 | `INGEST_ORCH_IGGY_RESULT_GROUP_ID` | `ckan-result-consumer` | Consumer group de resultados |
+| `INGEST_ORCH_IGGY_METADATA_SYNC_RESULT_GROUP_ID` | `ckan-metadata-sync-result-consumer` | Consumer group dos resultados de metadados |
 | `INGEST_ORCH_IGGY_PARTITIONS` | `10` | Partições por tópico |
 | `INGEST_ORCH_SCHEDULER_INTERVAL_MINUTES` | `480` | Intervalo do scheduler (minutos) |
 | `INGEST_ORCH_DEBUG` | `false` | Modo debug |
@@ -149,7 +152,10 @@ O `.gitlab-ci.yml` constrói e publica as imagens no registry do GitLab:
 | `IGGY_TOPIC` | `jobs` | Tópico principal |
 | `IGGY_TOPIC_RETRY` | `jobs-retry` | Tópico de retry |
 | `IGGY_TOPIC_RESULTS` | `job-results` | Tópico de resultados |
+| `IGGY_METADATA_SYNC_TOPIC` | `ckan_metadata_sync` | Tópico de comandos de metadados |
+| `IGGY_METADATA_SYNC_RESULT_TOPIC` | `ckan_metadata_sync_result` | Tópico de resultados de metadados |
 | `IGGY_GROUP_ID` | `ckan-worker` | Consumer group do worker |
+| `IGGY_METADATA_SYNC_GROUP_ID` | `ckan-metadata-sync-worker` | Consumer group de metadados |
 | `IGGY_PARTITIONS` | `10` | Consumer slots e partições por tópico |
 | `DUCKLAKE_DATABASE` | (obrigatório) | Database DuckDB local |
 | `DUCKLAKE_CATALOG_URI` | (obrigatório) | URI do catálogo DuckLake (Postgres) |

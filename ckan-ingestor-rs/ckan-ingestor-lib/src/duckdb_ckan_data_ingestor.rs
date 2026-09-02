@@ -120,10 +120,6 @@ impl<'a> DuckdbCkanDataIngestor<'a> {
         resource_id: &str,
         result: &SuccessResult,
     ) -> Result<()> {
-        self.conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS ckan_resource_last_update \
-              (ckan_resource_id VARCHAR, last_modified TIMESTAMP)",
-        )?;
         self.create_table_from_ipc(resource_id, result.arrow_ipc.path())?;
         self.update_last_modified(resource_id)?;
         Ok(())
@@ -212,6 +208,14 @@ mod tests {
         output
     }
 
+    fn initialize_metadata_schema(conn: &duckdb::Connection) {
+        conn.execute_batch(
+            "CREATE TABLE ckan_resource_last_update \
+             (ckan_resource_id VARCHAR, last_modified TIMESTAMP)",
+        )
+        .expect("metadata sync initialized the resource update history");
+    }
+
     impl CkanReader for BatchReader {
         fn supported_formats(&self) -> &[String] {
             &self.formats
@@ -263,6 +267,7 @@ mod tests {
             data_path.to_string_lossy(),
         ));
         let conn = factory.open().expect("DuckLake connection should open");
+        initialize_metadata_schema(&conn);
         let batches: Vec<RecordBatch> = conn
             .prepare(&format!(
                 "SELECT * FROM read_json_auto('{}')",
@@ -344,6 +349,7 @@ mod tests {
         let conn = duckdb::Connection::open_in_memory().expect("in-memory DuckDB");
         conn.execute_batch("INSTALL arrow FROM community; LOAD arrow;")
             .expect("DuckDB Arrow extension is available");
+        initialize_metadata_schema(&conn);
         let reader = MultipleReader::new(vec![Box::new(StaticReader {
             formats: vec!["CSV".to_string()],
         })]);

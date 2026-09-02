@@ -35,13 +35,21 @@ class ResultConsumer:
     async def start(self):
         self._running = True
         self._shutdown.clear()
-        consumer = await get_iggy_bus().result_consumer()
+        bus = get_iggy_bus()
+        consumer = await bus.result_consumer()
+        metadata_consumer = await bus.metadata_sync_result_consumer()
         logger.info("Iggy result consumer started")
 
         async def process(message):
             await self._process(message)
 
-        await consumer.consume_messages(process, self._shutdown)
+        async def process_metadata(message):
+            await self._process_metadata_sync(message)
+
+        await asyncio.gather(
+            consumer.consume_messages(process, self._shutdown),
+            metadata_consumer.consume_messages(process_metadata, self._shutdown),
+        )
 
     async def _process(self, message):
         payload = json.loads(message.payload().decode())
@@ -52,6 +60,46 @@ class ResultConsumer:
         async with async_session() as db:
             service = JobService(db)
             await service.apply_result(payload)
+
+    async def _process_metadata_sync(self, message):
+        """Apply a terminal metadata sync result exactly once."""
+        payload = json.loads(message.payload().decode())
+        sync_id = payload.get("sync_id")
+        if not sync_id:
+            logger.error("Metadata sync result missing sync_id")
+            return
+
+        from ingestor_orchestrator.models import CkanInstance, MetadataSync
+        from ingestor_orchestrator.services.metadata_service import MetadataService
+        from ingestor_orchestrator.services.metadata_sync import enqueue_outdated_resources
+        from ingestor_orchestrator.services.sync_service import SyncService
+
+        async with async_session() as db:
+            record = await db.get(MetadataSync, sync_id)
+            if record is None:
+                logger.error("Metadata sync result references unknown sync %s", sync_id)
+                return
+            if record.status in {"success", "failure"}:
+                logger.info("Ignoring duplicate metadata sync result %s", sync_id)
+                return
+
+            sync_service = SyncService(db)
+            if payload.get("status") != "success":
+                await sync_service.finish_sync(record, payload, status="failure")
+                return
+
+            instance = await db.get(CkanInstance, record.instance_id)
+            if instance is None:
+                await sync_service.finish_sync(record, payload, status="failure")
+                return
+            await MetadataService(db).update_sync_result(
+                instance, payload.get("dataset_count", 0), payload.get("resource_count", 0)
+            )
+            await sync_service.finish_sync(record, payload)
+            enqueued = await enqueue_outdated_resources(
+                instance.id, instance.name, instance.url, db=db
+            )
+            logger.info("Metadata sync %s completed; enqueued %s resources", sync_id, enqueued)
 
     async def stop(self):
         self._running = False

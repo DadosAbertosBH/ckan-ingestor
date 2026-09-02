@@ -1,21 +1,11 @@
 [project]
-name = "ckan-ingestor"
+name = "ckan-ingestor-workspace"
 version = "0.1.0"
-description = "Core CKAN data ingestion library"
+description = "Development tooling for the CKAN ingestor workspace"
 authors = [{ name = "guilhermecastro", email = "guilherme.castro@protonmail.com" }]
 requires-python = ">=3.13"
 readme = "README.md"
-dependencies = [
-    "pyarrow>=24.0.0,<25",
-    "pydantic-settings>=2.6.1,<3",
-    "duckdb>=1.5.3,<2",
-    "minio>=7.2.15",
-    "pandas>=2.3.0",
-    "requests>=2.31.0",
-    "nats-py>=2.15.0",
-    "marimo>=0.12.0",
-    "plotly>=6.0.0",
-]
+dependencies = []
 
 [dependency-groups]
 dev = [
@@ -29,12 +19,5 @@ dev = [
     "testcontainers[postgres]>=4.14.2,<5",
 ]
 
-[tool.hatch.build.targets.sdist]
-include = ["ckan_ingestor"]
-
-[tool.hatch.build.targets.wheel]
-include = ["ckan_ingestor"]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[tool.uv]
+package = false

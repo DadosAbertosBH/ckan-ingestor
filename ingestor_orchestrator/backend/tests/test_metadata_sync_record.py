@@ -15,11 +15,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """Tests for the syncs entity: recording sync runs, counts, and the syncs API."""
 
-import asyncio
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
-
-import pyarrow as pa
+import json
+import logging
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -50,31 +48,6 @@ async def instance(sess):
     sess.add(inst)
     await sess.commit()
     return inst
-
-
-def _dataset(ds_id, modified):
-    return {"id": ds_id, "name": ds_id, "metadata_modified": modified}
-
-
-def _resource(res_id, ds_id, modified):
-    return {
-        "id": res_id,
-        "name": res_id,
-        "url": f"http://example.com/{res_id}",
-        "format": "CSV",
-        "last_modified": modified,
-        "package_id": ds_id,
-        "datastore_active": True,
-    }
-
-
-def _packages_table(datasets, resources_by_dataset):
-    rows = []
-    for ds in datasets:
-        row = dict(ds)
-        row["resources"] = resources_by_dataset.get(ds["id"], [])
-        rows.append(row)
-    return pa.Table.from_pylist(rows)
 
 
 class TestSyncService:
@@ -110,25 +83,39 @@ class TestSyncService:
         assert finished.updated_datasets == 1
         assert finished.updated_resources == 4
 
-    async def test_metadata_sync_dispatches_to_thread(self):
-        """SyncService.sync_metadata_for_instance must run via asyncio.to_thread."""
-        service = SyncService(db=AsyncMock())
+    async def test_failed_sync_logs_worker_error(self, sess, caplog):
+        record = await SyncService(sess).start_sync("inst-1")
 
-        with (
-            patch.object(SyncService, "_run_metadata_sync") as mock_run,
-            patch.object(
-                asyncio, "to_thread", new_callable=AsyncMock
-            ) as mock_to_thread,
-        ):
-            mock_to_thread.return_value = {"dataset_count": 2, "resource_count": 5}
-            result = await service.sync_metadata_for_instance(
-                "inst-1", "Test", "https://test.example.com"
+        with caplog.at_level(logging.ERROR):
+            await SyncService(sess).finish_sync(
+                record,
+                {"error_message": "HTTP 403 Forbidden from CKAN"},
+                status="failure",
             )
 
-        mock_to_thread.assert_awaited_once()
-        # The blocking sync must NOT run directly on the event loop
-        mock_run.assert_not_called()
-        assert result["dataset_count"] == 2
+        assert "status=failure" in caplog.text
+        assert "HTTP 403 Forbidden from CKAN" in caplog.text
+        assert record.error_message == "HTTP 403 Forbidden from CKAN"
+
+    async def test_metadata_sync_publishes_an_async_worker_command(self, sess, instance):
+        service = SyncService(sess)
+
+        record = await service.sync_metadata_for_instance(
+            instance.id, instance.name, instance.url
+        )
+
+        assert record.status == "pending"
+        from ingestor_orchestrator.iggy_queue import get_iggy_bus
+
+        payload = get_iggy_bus().publish.await_args.args[1]
+        assert get_iggy_bus().publish.await_args.args[0] == "ckan_metadata_sync"
+        assert get_iggy_bus().publish.await_args.kwargs["key"] == record.id
+        assert json.loads(payload) == {
+            "sync_id": record.id,
+            "instance_id": instance.id,
+            "instance_name": instance.name,
+            "instance_url": instance.url,
+        }
 
 
 class TestSyncsApi:
@@ -165,6 +152,27 @@ class TestSyncsApi:
         assert sync.updated_datasets == 0
         assert sync.updated_resources == 1
         assert sync.end_time is not None
+
+    async def test_list_syncs_exposes_sync_failure_error(self, sess, instance):
+        from ingestor_orchestrator.api.syncs import list_syncs
+        from ingestor_orchestrator.repositories import SqlAlchemySyncRepository
+
+        service = SyncService(sess)
+        record = await service.start_sync(instance.id)
+        await service.finish_sync(
+            record,
+            {"error_message": "HTTP 403 Forbidden from CKAN"},
+            status="failure",
+        )
+
+        sync = (
+            await list_syncs(
+                limit=50, offset=0, repo=SqlAlchemySyncRepository(sess)
+            )
+        )[0]
+
+        assert sync.status == "failure"
+        assert sync.error_message == "HTTP 403 Forbidden from CKAN"
 
     async def test_sync_failure_still_sets_end_time(self, sess, instance):
         """When sync raises, finish_sync must still be called so end_time is set."""
@@ -207,105 +215,3 @@ class TestSyncsApi:
 
         assert finished.status == "success"
         assert finished.end_time is not None
-
-
-class TestSyncMetadataCounts:
-    """sync_metadata_for_instance must report new/updated dataset and resource counts."""
-
-    def _run_sync(self, packages, db_path, instance_url="https://test.example.com"):
-        import duckdb
-
-        class FakeFetcher:
-            def __init__(self, url):
-                pass
-
-            def fetch(self):
-                return packages
-
-        def _make_conn(settings):
-            return duckdb.connect(db_path)
-
-        with (
-            patch(
-                "ckan_ingestor.ckan_dataset_fetcher.CkanDatasetFetcher",
-                FakeFetcher,
-            ),
-            patch(
-                "ckan_ingestor.duckdb_connection_factory.from_settings",
-                side_effect=_make_conn,
-            ),
-        ):
-            return SyncService._run_metadata_sync("inst-1", "Test", instance_url)
-
-    def test_first_sync_counts_all_as_new(self, tmp_path):
-        packages = _packages_table(
-            [_dataset("ds-1", "2024-01-01"), _dataset("ds-2", "2024-01-01")],
-            {
-                "ds-1": [_resource("res-1", "ds-1", "2024-01-01")],
-                "ds-2": [_resource("res-2", "ds-2", "2024-01-01")],
-            },
-        )
-        result = self._run_sync(packages, str(tmp_path / "test.duckdb"))
-
-        assert result["total_packages"] == 2
-        assert result["new_datasets"] == 2
-        assert result["new_resources"] == 2
-        assert result["updated_datasets"] == 0
-        assert result["updated_resources"] == 0
-
-    def test_dataset_and_resource_update_counts(self, tmp_path):
-        db_path = str(tmp_path / "test.duckdb")
-        initial = _packages_table(
-            [_dataset("ds-1", "2024-01-01")],
-            {"ds-1": [_resource("res-1", "ds-1", "2024-01-01")]},
-        )
-        updated = _packages_table(
-            [_dataset("ds-1", "2025-01-01")],
-            {"ds-1": [_resource("res-1", "ds-1", "2025-01-01")]},
-        )
-        self._run_sync(initial, db_path)
-        result = self._run_sync(updated, db_path)
-
-        assert result["new_datasets"] == 0
-        assert result["new_resources"] == 0
-        assert result["updated_datasets"] == 1
-        assert result["updated_resources"] == 1
-
-    def test_resource_update_marks_dataset_as_updated(self, tmp_path):
-        db_path = str(tmp_path / "test.duckdb")
-        initial = _packages_table(
-            [_dataset("ds-1", "2024-01-01")],
-            {"ds-1": [_resource("res-1", "ds-1", "2024-01-01")]},
-        )
-        updated = _packages_table(
-            [_dataset("ds-1", "2024-01-01")],
-            {"ds-1": [_resource("res-1", "ds-1", "2025-01-01")]},
-        )
-        self._run_sync(initial, db_path)
-        result = self._run_sync(updated, db_path)
-
-        assert result["new_datasets"] == 0
-        assert result["new_resources"] == 0
-        assert result["updated_resources"] == 1
-        assert result["updated_datasets"] == 1
-
-    def test_mixed_new_and_updated(self, tmp_path):
-        db_path = str(tmp_path / "test.duckdb")
-        initial = _packages_table(
-            [_dataset("ds-1", "2024-01-01")],
-            {"ds-1": [_resource("res-1", "ds-1", "2024-01-01")]},
-        )
-        updated = _packages_table(
-            [_dataset("ds-1", "2025-01-01"), _dataset("ds-2", "2025-01-01")],
-            {
-                "ds-1": [_resource("res-1", "ds-1", "2025-01-01")],
-                "ds-2": [_resource("res-2", "ds-2", "2025-01-01")],
-            },
-        )
-        self._run_sync(initial, db_path)
-        result = self._run_sync(updated, db_path)
-
-        assert result["new_datasets"] == 1
-        assert result["new_resources"] == 1
-        assert result["updated_datasets"] == 1
-        assert result["updated_resources"] == 1

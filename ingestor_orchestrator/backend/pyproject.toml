@@ -5,7 +5,7 @@ description = "Lightweight CKAN data pipeline orchestrator replacing Dagster"
 requires-python = ">=3.13"
 license = "AGPL-3.0"
 dependencies = [
-    "ckan-ingestor",
+    "duckdb>=1.5.3,<2",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
     "sqlalchemy[asyncio]>=2.0.0",
@@ -38,6 +38,3 @@ dev = [
     "pytest-asyncio>=0.24",
     "testcontainers>=4.14.2,<5",
 ]
-
-[tool.uv.sources]
-ckan-ingestor = { path = "../.." }

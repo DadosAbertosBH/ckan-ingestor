@@ -17,6 +17,7 @@
 
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 import duckdb
 import pytest
@@ -130,7 +131,7 @@ class TestEnqueueOutdatedResources:
         )
         monkeypatch.setattr(JobService, "_publish_job", publish)
         monkeypatch.setattr(
-            "ckan_ingestor.duckdb_connection_factory.from_settings",
+            "ingestor_orchestrator.ducklake.from_settings",
             lambda _: duck_conn,
         )
 
@@ -153,7 +154,7 @@ class TestEnqueueOutdatedResources:
         )
 
         monkeypatch.setattr(
-            "ckan_ingestor.duckdb_connection_factory.from_settings",
+            "ingestor_orchestrator.ducklake.from_settings",
             lambda _: duck_conn,
         )
 
@@ -171,6 +172,45 @@ class TestEnqueueOutdatedResources:
             "r2": False,
         }
 
+    async def test_enqueues_resources_with_duckdb_uuid_ids_as_strings(
+        self, autocommit_session, instance_id, duck_conn, monkeypatch
+    ):
+        resource_id = UUID("d3260a73-c176-44c7-9e9a-fdf2e1b91ab1")
+        dataset_id = UUID("d3260a73-c176-44c7-9e9a-fdf2e1b91ab2")
+        duck_conn.execute("DROP TABLE ckan_resource")
+        duck_conn.execute("DROP TABLE ckan_dataset")
+        duck_conn.execute(
+            "CREATE TABLE ckan_dataset "
+            "(id UUID, name VARCHAR, metadata_modified VARCHAR)"
+        )
+        duck_conn.execute(
+            "CREATE TABLE ckan_resource ("
+            "id UUID, name VARCHAR, url VARCHAR, format VARCHAR, "
+            "package_id UUID, last_modified VARCHAR, ckan_url VARCHAR, "
+            "datastore_active BOOLEAN)"
+        )
+        duck_conn.execute(
+            "INSERT INTO ckan_dataset VALUES (?, 'D1', '2025-01-01')",
+            [dataset_id],
+        )
+        duck_conn.execute(
+            "INSERT INTO ckan_resource VALUES (?, 'R1', 'http://a', 'CSV', "
+            "?, '2025-01-01', '', false)",
+            [resource_id, dataset_id],
+        )
+        monkeypatch.setattr(
+            "ingestor_orchestrator.ducklake.from_settings",
+            lambda _: duck_conn,
+        )
+
+        count = await enqueue_outdated_resources(
+            instance_id, "test", db=autocommit_session
+        )
+
+        assert count == 1
+        job = (await autocommit_session.execute(select(CkanDataJob))).scalar_one()
+        assert job.resource_id == str(resource_id)
+
     async def test_skips_already_synced_resources(
         self, autocommit_session, instance_id, duck_conn, monkeypatch
     ):
@@ -185,7 +225,7 @@ class TestEnqueueOutdatedResources:
         )
 
         monkeypatch.setattr(
-            "ckan_ingestor.duckdb_connection_factory.from_settings",
+            "ingestor_orchestrator.ducklake.from_settings",
             lambda _: duck_conn,
         )
 
@@ -200,7 +240,7 @@ class TestEnqueueOutdatedResources:
     ):
         """Empty DuckDB returns 0 jobs."""
         monkeypatch.setattr(
-            "ckan_ingestor.duckdb_connection_factory.from_settings",
+            "ingestor_orchestrator.ducklake.from_settings",
             lambda _: duck_conn,
         )
 
@@ -227,7 +267,7 @@ class TestEnqueueOutdatedResources:
         )
 
         monkeypatch.setattr(
-            "ckan_ingestor.duckdb_connection_factory.from_settings",
+            "ingestor_orchestrator.ducklake.from_settings",
             lambda _: duck_conn,
         )
 

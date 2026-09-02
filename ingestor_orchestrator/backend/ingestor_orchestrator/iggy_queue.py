@@ -80,30 +80,37 @@ class IggyMessageBus:
                 if await self._client.get_stream(stream) is None:
                     raise
 
-        for topic in (
-            self._settings.iggy_topic,
-            self._settings.iggy_topic_retry,
-            self._settings.iggy_topic_results,
+        for topic, partitions in (
+            (self._settings.iggy_topic, self._settings.iggy_partitions),
+            (self._settings.iggy_topic_retry, self._settings.iggy_partitions),
+            (self._settings.iggy_topic_results, self._settings.iggy_partitions),
+            (self._settings.iggy_metadata_sync_topic, 1),
+            (self._settings.iggy_metadata_sync_result_topic, 1),
         ):
             if await self._client.get_topic(stream, topic) is None:
                 try:
                     await self._client.create_topic(
                         stream=stream,
                         name=topic,
-                        partitions_count=self._settings.iggy_partitions,
+                        partitions_count=partitions,
                         replication_factor=1,
                     )
                 except Exception:
                     if await self._client.get_topic(stream, topic) is None:
                         raise
 
-    def partition_for(self, key: str) -> int:
+    def partition_for(self, key: str, topic: str | None = None) -> int:
+        if topic in {
+            self._settings.iggy_metadata_sync_topic,
+            self._settings.iggy_metadata_sync_result_topic,
+        }:
+            return 0
         digest = hashlib.sha256(key.encode()).digest()
         return int.from_bytes(digest[:4], "big") % self._settings.iggy_partitions
 
     async def publish(self, topic: str, payload: bytes, *, key: str) -> PublishMetadata:
         await self.connect()
-        partition = self.partition_for(key)
+        partition = self.partition_for(key, topic)
         await self._client.send_messages(
             stream=self._settings.iggy_stream,
             topic=topic,
@@ -123,6 +130,19 @@ class IggyMessageBus:
             name=self._settings.iggy_result_group_id,
             stream=self._settings.iggy_stream,
             topic=self._settings.iggy_topic_results,
+            polling_strategy=PollingStrategy.Next(),
+            batch_length=10,
+            auto_commit=AutoCommit.After(AutoCommitAfter.ConsumingEachMessage()),
+            create_consumer_group_if_not_exists=True,
+            auto_join_consumer_group=True,
+        )
+
+    async def metadata_sync_result_consumer(self):
+        await self.connect()
+        return await self._client.consumer_group(
+            name=self._settings.iggy_metadata_sync_result_group_id,
+            stream=self._settings.iggy_stream,
+            topic=self._settings.iggy_metadata_sync_result_topic,
             polling_strategy=PollingStrategy.Next(),
             batch_length=10,
             auto_commit=AutoCommit.After(AutoCommitAfter.ConsumingEachMessage()),

@@ -117,8 +117,12 @@ iggy:
   topic: "jobs"
   topicRetry: "jobs-retry"
   topicResults: "job-results"
+  metadataSyncTopic: "ckan_metadata_sync"
+  metadataSyncResultTopic: "ckan_metadata_sync_result"
   groupId: "ckan-worker"
+  metadataSyncGroupId: "ckan-metadata-sync-worker"
   resultGroupId: "ckan-result-consumer"
+  metadataSyncResultGroupId: "ckan-metadata-sync-result-consumer"
   partitions: 10
 
 # -- PostgreSQL configuration (CloudNativePG)

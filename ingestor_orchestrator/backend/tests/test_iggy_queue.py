@@ -30,6 +30,9 @@ def iggy_settings():
     settings.iggy_topic = "jobs"
     settings.iggy_topic_retry = "jobs-retry"
     settings.iggy_topic_results = "job-results"
+    settings.iggy_metadata_sync_topic = "ckan_metadata_sync"
+    settings.iggy_metadata_sync_result_topic = "ckan_metadata_sync_result"
+    settings.iggy_metadata_sync_result_group_id = "metadata-results"
     settings.iggy_partitions = 10
     return settings
 
@@ -51,10 +54,28 @@ async def test_connect_creates_stream_and_topics_idempotently(iggy_settings):
         await bus.connect()
 
     client.create_stream.assert_awaited_once_with(name="ckan-ingestor")
-    assert client.create_topic.await_count == 3
-    for call in client.create_topic.await_args_list:
+    assert client.create_topic.await_count == 5
+    calls_by_topic = {
+        call.kwargs["name"]: call for call in client.create_topic.await_args_list
+    }
+    for topic, call in calls_by_topic.items():
         assert call.kwargs["stream"] == "ckan-ingestor"
-        assert call.kwargs["partitions_count"] == 10
+        expected = 1 if topic.startswith("ckan_metadata_sync") else 10
+        assert call.kwargs["partitions_count"] == expected
+
+
+@pytest.mark.asyncio
+async def test_metadata_sync_messages_always_use_partition_zero(iggy_settings):
+    client = MagicMock()
+    client.send_messages = AsyncMock()
+    bus = IggyMessageBus(iggy_settings, client=client)
+
+    metadata = await bus.publish(
+        "ckan_metadata_sync", b'{}', key="sync-with-any-hash"
+    )
+
+    assert metadata.partition == 0
+    assert client.send_messages.await_args.kwargs["partitioning"] == 0
 
 
 @pytest.mark.asyncio
@@ -63,7 +84,7 @@ async def test_connect_accepts_topology_created_concurrently(iggy_settings):
     client.connect = AsyncMock()
     client.get_stream = AsyncMock(side_effect=[None, object()])
     client.create_stream = AsyncMock(side_effect=RuntimeError("already exists"))
-    client.get_topic = AsyncMock(side_effect=[None, object(), object(), object()])
+    client.get_topic = AsyncMock(side_effect=[None, object(), object(), object(), object(), object()])
     client.create_topic = AsyncMock(side_effect=RuntimeError("already exists"))
 
     with patch(
@@ -74,7 +95,7 @@ async def test_connect_accepts_topology_created_concurrently(iggy_settings):
         await bus.connect()
 
     assert client.get_stream.await_count == 2
-    assert client.get_topic.await_count == 4
+    assert client.get_topic.await_count == 6
 
 
 @pytest.mark.asyncio

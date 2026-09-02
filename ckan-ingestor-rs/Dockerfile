@@ -28,9 +28,11 @@ WORKDIR /src
 # the real source will overwrite in the next stage.
 COPY Cargo.toml Cargo.lock ./
 COPY ckan-ingestor-lib/Cargo.toml ckan-ingestor-lib/
+COPY ckan-metadata-ingestor/Cargo.toml ckan-metadata-ingestor/
 COPY ckan-ingestor-consumer/Cargo.toml ckan-ingestor-consumer/
-RUN mkdir -p ckan-ingestor-lib/src ckan-ingestor-consumer/src && \
+RUN mkdir -p ckan-ingestor-lib/src ckan-metadata-ingestor/src ckan-ingestor-consumer/src && \
     touch ckan-ingestor-lib/src/lib.rs && \
+    touch ckan-metadata-ingestor/src/lib.rs && \
     touch ckan-ingestor-consumer/src/main.rs && \
     cargo chef prepare --recipe-path recipe.json
 
@@ -42,6 +44,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 # The production image only needs the application sources. Keeping tests,
 # fixtures, and local metadata out of this COPY preserves the build cache.
 COPY ckan-ingestor-lib/src/ ckan-ingestor-lib/src/
+COPY ckan-metadata-ingestor/src/ ckan-metadata-ingestor/src/
 COPY ckan-ingestor-consumer/src/ ckan-ingestor-consumer/src/
 
 # The Python API uses DuckDB 1.5.5, whose DuckLake extension supports catalog

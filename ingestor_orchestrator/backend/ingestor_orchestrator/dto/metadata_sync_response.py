@@ -25,6 +25,7 @@ class MetadataSyncResponse(BaseModel):
     start_time: datetime
     end_time: datetime | None = None
     status: str | None = None
+    error_message: str | None = None
     total_packages: int = 0
     new_datasets: int = 0
     new_resources: int = 0

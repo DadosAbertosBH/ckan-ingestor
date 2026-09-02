@@ -54,6 +54,7 @@ def _mock_iggy():
     mock_bus.publish.side_effect = publish
     mock_consumer = AsyncMock()
     mock_bus.result_consumer.return_value = mock_consumer
+    mock_bus.metadata_sync_result_consumer.return_value = mock_consumer
     with (
         patch(
             "ingestor_orchestrator.iggy_queue.get_iggy_bus",

@@ -14,7 +14,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import logging
-from datetime import datetime, timezone
 
 from ingestor_orchestrator.services.sync_service import SyncService
 
@@ -41,16 +40,17 @@ def sync_all_instances() -> list[dict]:
 
             for inst in instances:
                 try:
-                    sync_record = await sync_service.start_sync(inst.id)
-                    result = await sync_service.sync_metadata_for_instance(
+                    sync_record = await sync_service.sync_metadata_for_instance(
                         inst.id, inst.name, inst.url
                     )
-                    # Update MySQL instance metadata
-                    inst.last_metadata_synced = datetime.now(timezone.utc)
-                    inst.dataset_count = result["dataset_count"]
-                    inst.resource_count = result["resource_count"]
-                    await sync_service.finish_sync(sync_record, result)
-                    results.append(result)
+                    results.append(
+                        {
+                            "sync_id": sync_record.id,
+                            "instance_id": inst.id,
+                            "instance_name": inst.name,
+                            "status": sync_record.status,
+                        }
+                    )
                 except Exception as e:
                     logger.error(
                         f"Failed to sync instance {inst.name}: {e}", exc_info=True
@@ -101,12 +101,12 @@ async def enqueue_outdated_resources(
     """Find outdated resources for an instance and create jobs for them."""
     import asyncio
 
-    from ckan_ingestor.config.ducklake_settings import DucklakeSettings
-    from ckan_ingestor.duckdb_ckan_metadata_ingestor import (
-        DuckdbCkanMetadataIngestor,
-    )
-    from ckan_ingestor.duckdb_connection_factory import from_settings
     from ingestor_orchestrator.db import async_session
+    from ingestor_orchestrator.ducklake import (
+        DucklakeSettings,
+        from_settings,
+        get_outdated_resource_ids,
+    )
     from ingestor_orchestrator.dto import JobCreate
     from ingestor_orchestrator.services.job_service import JobService
 
@@ -114,14 +114,16 @@ async def enqueue_outdated_resources(
         ducklake_settings = DucklakeSettings()
         conn = from_settings(ducklake_settings)
         try:
-            metadata_ingestor = DuckdbCkanMetadataIngestor(conn)
-            outdated_ids = metadata_ingestor.get_outdated_resources_id(ckan_url)
+            outdated_ids = get_outdated_resource_ids(conn, ckan_url)
             return outdated_ids, conn
         except Exception:
             conn.close()
             raise
 
     outdated_ids, conn = await asyncio.to_thread(_get_outdated)
+    # DuckDB returns UUID-typed resource ids as ``uuid.UUID``. The broker and
+    # MySQL job contract use string identifiers.
+    outdated_ids = [str(resource_id) for resource_id in outdated_ids]
     logger.info(f"Found {len(outdated_ids)} outdated resources for {instance_name}")
     if not outdated_ids:
         conn.close()
@@ -189,7 +191,7 @@ async def enqueue_outdated_resources(
             f"WHERE r.id IN ({placeholders})",
             to_enqueue,
         ).fetchall()
-        metadata_map = {r[4]: r[:4] + (r[5],) for r in rows}
+        metadata_map = {str(r[4]): r[:4] + (r[5],) for r in rows}
 
         # 4) Create jobs
         service = JobService(db_session)

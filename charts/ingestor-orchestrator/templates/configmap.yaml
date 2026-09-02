@@ -15,8 +15,11 @@ data:
   INGEST_ORCH_IGGY_TOPIC: {{ .Values.iggy.topic | quote }}
   INGEST_ORCH_IGGY_TOPIC_RETRY: {{ .Values.iggy.topicRetry | quote }}
   INGEST_ORCH_IGGY_TOPIC_RESULTS: {{ .Values.iggy.topicResults | quote }}
+  INGEST_ORCH_IGGY_METADATA_SYNC_TOPIC: {{ .Values.iggy.metadataSyncTopic | quote }}
+  INGEST_ORCH_IGGY_METADATA_SYNC_RESULT_TOPIC: {{ .Values.iggy.metadataSyncResultTopic | quote }}
   INGEST_ORCH_IGGY_GROUP_ID: {{ .Values.iggy.groupId | quote }}
   INGEST_ORCH_IGGY_RESULT_GROUP_ID: {{ .Values.iggy.resultGroupId | quote }}
+  INGEST_ORCH_IGGY_METADATA_SYNC_RESULT_GROUP_ID: {{ .Values.iggy.metadataSyncResultGroupId | quote }}
   INGEST_ORCH_IGGY_PARTITIONS: {{ .Values.iggy.partitions | quote }}
   INGEST_ORCH_DEBUG: {{ .Values.debug | quote }}
   DUCKLAKE_DATABASE: {{ .Values.ducklake.database | quote }}

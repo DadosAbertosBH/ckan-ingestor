@@ -33,6 +33,7 @@ async def test_result_is_processed_by_the_commit_after_callback():
     consumer.consume_messages.side_effect = consume
     bus = AsyncMock()
     bus.result_consumer.return_value = consumer
+    bus.metadata_sync_result_consumer.return_value = AsyncMock()
     result_consumer = ResultConsumer()
     result_consumer._process = AsyncMock()
 
@@ -54,6 +55,7 @@ async def test_result_offset_is_retained_when_processing_fails():
     consumer.consume_messages.side_effect = consume
     bus = AsyncMock()
     bus.result_consumer.return_value = consumer
+    bus.metadata_sync_result_consumer.return_value = AsyncMock()
     result_consumer = ResultConsumer()
     result_consumer._process = AsyncMock(side_effect=RuntimeError("database down"))
 

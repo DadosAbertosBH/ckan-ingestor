@@ -71,7 +71,7 @@ where
         runtime: &tokio::runtime::Runtime,
         topic: String,
         slot: usize,
-        source: M,
+        mut source: M,
         publisher: P,
         processor: Proc,
         shutdown: Arc<Notify>,

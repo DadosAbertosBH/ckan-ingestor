@@ -41,8 +41,14 @@ spec:
               value: {{ .Values.iggy.topicRetry | quote }}
             - name: IGGY_TOPIC_RESULTS
               value: {{ .Values.iggy.topicResults | quote }}
+            - name: IGGY_METADATA_SYNC_TOPIC
+              value: {{ .Values.iggy.metadataSyncTopic | quote }}
+            - name: IGGY_METADATA_SYNC_RESULT_TOPIC
+              value: {{ .Values.iggy.metadataSyncResultTopic | quote }}
             - name: IGGY_GROUP_ID
               value: {{ .Values.iggy.groupId | quote }}
+            - name: IGGY_METADATA_SYNC_GROUP_ID
+              value: {{ .Values.iggy.metadataSyncGroupId | quote }}
             - name: IGGY_PARTITIONS
               value: {{ .Values.iggy.partitions | quote }}
             - name: S3_ENDPOINT
