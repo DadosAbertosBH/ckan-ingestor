@@ -5,7 +5,7 @@ Pipeline de ingestão de dados do portal [CKAN](https://ckan.org) para um lakeho
 O projeto é composto por dois serviços principais:
 
 - **`ingestor_orchestrator`** — API (FastAPI), frontend (Vue 3), scheduler de sincronização de metadados e consumer de resultados.
-- **`ckan-ingestor-rs`** — worker em Rust que consome jobs do Apache Iggy e executa a ingestão de dados.
+- **`ckan-ingestor-rs`** — workers Rust: `worker` para ingestão de dados e `worker-coordinator` para metadata e topologia Iggy.
 
 ## Arquitetura
 
@@ -48,14 +48,14 @@ usam a quantidade configurada; os dois tópicos de metadata usam uma partição.
 | `jobs` | API/scheduler → worker | Jobs de ingestão |
 | `jobs-retry` | API → worker | Jobs com retry |
 | `job-results` | worker → result consumer | Resultados da ingestão |
-| `ckan_metadata_sync` | API/scheduler → worker | Comandos de sincronização de metadados CKAN |
-| `ckan_metadata_sync_result` | worker → result consumer | Resultados da sincronização de metadados |
+| `ckan_metadata_sync` | API/scheduler → worker-coordinator | Comandos de sincronização de metadados CKAN |
+| `ckan_metadata_sync_result` | worker-coordinator → result consumer | Resultados da sincronização de metadados |
 
 ## Estrutura do repositório
 
 ```
 .
-├── ckan-ingestor-rs/              # Worker Rust (dados e metadata)
+├── ckan-ingestor-rs/              # Workers Rust (dados e coordinator de metadata)
 ├── ingestor_orchestrator/
 │   ├── backend/                   # API FastAPI, scheduler e result consumer
 │   └── frontend/                  # Dashboard Vue.js
@@ -113,7 +113,8 @@ O `.gitlab-ci.yml` constrói e publica as imagens no registry do GitLab:
 | Imagem | Dockerfile |
 |---|---|
 | `$CI_REGISTRY_IMAGE/orchestrator` | `ingestor_orchestrator/Dockerfile` |
-| `$CI_REGISTRY_IMAGE/worker` | `ckan-ingestor-rs/Dockerfile` |
+| `$CI_REGISTRY_IMAGE/worker` | `ckan-ingestor-rs/Dockerfile` (`ckan_ingestor_consumer`) |
+| `$CI_REGISTRY_IMAGE/worker-coordinator` | `ckan-ingestor-rs/Dockerfile` (`ckan_worker_coordinator`) |
 
 ## Configuração
 
@@ -152,10 +153,7 @@ O `.gitlab-ci.yml` constrói e publica as imagens no registry do GitLab:
 | `IGGY_TOPIC` | `jobs` | Tópico principal |
 | `IGGY_TOPIC_RETRY` | `jobs-retry` | Tópico de retry |
 | `IGGY_TOPIC_RESULTS` | `job-results` | Tópico de resultados |
-| `IGGY_METADATA_SYNC_TOPIC` | `ckan_metadata_sync` | Tópico de comandos de metadados |
-| `IGGY_METADATA_SYNC_RESULT_TOPIC` | `ckan_metadata_sync_result` | Tópico de resultados de metadados |
 | `IGGY_GROUP_ID` | `ckan-worker` | Consumer group do worker |
-| `IGGY_METADATA_SYNC_GROUP_ID` | `ckan-metadata-sync-worker` | Consumer group de metadados |
 | `IGGY_PARTITIONS` | `10` | Consumer slots e partições por tópico |
 | `DUCKLAKE_DATABASE` | (obrigatório) | Database DuckDB local |
 | `DUCKLAKE_CATALOG_URI` | (obrigatório) | URI do catálogo DuckLake (Postgres) |
@@ -165,6 +163,10 @@ O `.gitlab-ci.yml` constrói e publica as imagens no registry do GitLab:
 | `S3_SECRET_ACCESS_KEY` | `password` | Secret key do S3 |
 | `S3_USE_SSL` | `false` | Usar SSL no S3 |
 | `RUST_LOG` | `info` | Nível de log |
+
+### Worker coordinator Rust
+
+O `worker-coordinator` inicializa de forma idempotente o stream e os tópicos Iggy e processa exclusivamente a sincronização de metadata. Ele usa `IGGY_ADDRESS`, `IGGY_USERNAME`, `IGGY_PASSWORD`, `IGGY_STREAM`, `IGGY_TOPIC`, `IGGY_TOPIC_RETRY`, `IGGY_TOPIC_RESULTS`, `IGGY_METADATA_SYNC_TOPIC`, `IGGY_METADATA_SYNC_RESULT_TOPIC`, `IGGY_METADATA_SYNC_GROUP_ID` e `IGGY_PARTITIONS`, além da mesma configuração DuckLake/S3 do worker. API e worker preservam sua criação idempotente de topologia como proteção durante a inicialização.
 
 ## Deploy
 

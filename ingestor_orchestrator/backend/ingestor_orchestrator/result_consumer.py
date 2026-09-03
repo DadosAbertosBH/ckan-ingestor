@@ -28,17 +28,53 @@ logger = logging.getLogger(__name__)
 class ResultConsumer:
     """Consumes Iggy job results and updates the database."""
 
+    INITIAL_RETRY_DELAY_SECONDS = 1
+    MAX_RETRY_DELAY_SECONDS = 30
+
     def __init__(self):
         self._running = False
+        self._connected = False
         self._shutdown = asyncio.Event()
+
+    @property
+    def is_connected(self) -> bool:
+        """Whether the consumer currently has active Iggy subscriptions."""
+        return self._connected
 
     async def start(self):
         self._running = True
         self._shutdown.clear()
+        retry_delay = self.INITIAL_RETRY_DELAY_SECONDS
+
+        while self._running:
+            try:
+                await self._consume_once()
+                if self._running:
+                    raise ConnectionError("Iggy result consumer stopped unexpectedly")
+                break
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self._connected = False
+                await get_iggy_bus().invalidate()
+                if not self._running:
+                    break
+                logger.exception(
+                    "Iggy result consumer disconnected; retrying in %s seconds",
+                    retry_delay,
+                )
+                try:
+                    await asyncio.wait_for(self._shutdown.wait(), timeout=retry_delay)
+                except TimeoutError:
+                    pass
+                retry_delay = min(retry_delay * 2, self.MAX_RETRY_DELAY_SECONDS)
+
+        self._connected = False
+
+    async def _consume_once(self) -> None:
         bus = get_iggy_bus()
         consumer = await bus.result_consumer()
         metadata_consumer = await bus.metadata_sync_result_consumer()
-        logger.info("Iggy result consumer started")
 
         async def process(message):
             await self._process(message)
@@ -46,16 +82,57 @@ class ResultConsumer:
         async def process_metadata(message):
             await self._process_metadata_sync(message)
 
-        await asyncio.gather(
-            consumer.consume_messages(process, self._shutdown),
-            metadata_consumer.consume_messages(process_metadata, self._shutdown),
-        )
+        tasks = [
+            asyncio.create_task(consumer.consume_messages(process, self._shutdown)),
+            asyncio.create_task(
+                metadata_consumer.consume_messages(process_metadata, self._shutdown)
+            ),
+        ]
+        self._connected = True
+        logger.info("Iggy result consumer started")
+        try:
+            done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                task.result()
+        finally:
+            self._connected = False
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _process(self, message):
         payload = json.loads(message.payload().decode())
         job_id = payload.get("job_id", "unknown")
         status = payload.get("status", "UNKNOWN")
         logger.info(f"Result received: job={job_id} status={status}")
+
+        # Coordinator discovery events share the worker result contract. A
+        # PENDING event includes the generated job id and the fields required
+        # by MySQL; SUCCESS without an id merely confirms an in-flight job.
+        if status == "PENDING" and payload.get("resource_id"):
+            from ingestor_orchestrator.dto import JobCreate
+
+            if not payload.get("job_id"):
+                raise ValueError("coordinator PENDING result missing job_id")
+            async with async_session() as db:
+                await JobService(db).create_coordinated_job(
+                    payload["job_id"],
+                    JobCreate(
+                        resource_id=payload["resource_id"],
+                        dataset_name=payload.get("dataset_name") or "unknown",
+                        resource_name=payload.get("resource_name"),
+                        resource_url=payload.get("resource_url"),
+                        resource_format=payload.get("resource_format"),
+                        instance_id=payload.get("instance_id"),
+                        ckan_url=payload.get("ckan_url") or "",
+                        datastore_active=payload.get("datastore_active", False),
+                    ),
+                )
+            return
+        if status == "SUCCESS" and payload.get("resource_id") and not payload.get("job_id"):
+            logger.info("Coordinator skipped in-flight resource %s", payload["resource_id"])
+            return
 
         async with async_session() as db:
             service = JobService(db)
@@ -71,7 +148,6 @@ class ResultConsumer:
 
         from ingestor_orchestrator.models import CkanInstance, MetadataSync
         from ingestor_orchestrator.services.metadata_service import MetadataService
-        from ingestor_orchestrator.services.metadata_sync import enqueue_outdated_resources
         from ingestor_orchestrator.services.sync_service import SyncService
 
         async with async_session() as db:
@@ -96,10 +172,7 @@ class ResultConsumer:
                 instance, payload.get("dataset_count", 0), payload.get("resource_count", 0)
             )
             await sync_service.finish_sync(record, payload)
-            enqueued = await enqueue_outdated_resources(
-                instance.id, instance.name, instance.url, db=db
-            )
-            logger.info("Metadata sync %s completed; enqueued %s resources", sync_id, enqueued)
+            logger.info("Metadata sync %s completed; coordinator published resource jobs", sync_id)
 
     async def stop(self):
         self._running = False

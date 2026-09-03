@@ -177,17 +177,22 @@ build-orchestrator:
   variables:
     WORKER_DOCKERFILE: ckan-ingestor-rs/Dockerfile
     WORKER_CONTEXT: ckan-ingestor-rs
+    WORKER_IMAGE: worker
+    WORKER_PACKAGE: ckan_ingestor_consumer
+    WORKER_BINARY: ckan-ingestor-consumer
   script:
     - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
-    - docker pull $CI_REGISTRY_IMAGE/worker:latest || true
+    - docker pull $CI_REGISTRY_IMAGE/$WORKER_IMAGE:latest || true
     - docker context create builder
     - docker buildx create builder --use
     - |
-      ARCH_TAG="$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA-$TARGET_ARCH"
+      ARCH_TAG="$CI_REGISTRY_IMAGE/$WORKER_IMAGE:$CI_COMMIT_SHORT_SHA-$TARGET_ARCH"
       docker buildx build \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
-        --cache-from type=registry,ref=$CI_REGISTRY_IMAGE/worker-cache:$TARGET_ARCH \
-        --cache-to type=registry,ref=$CI_REGISTRY_IMAGE/worker-cache:$TARGET_ARCH,mode=max \
+        --cache-from type=registry,ref=$CI_REGISTRY_IMAGE/$WORKER_IMAGE-cache:$TARGET_ARCH \
+        --cache-to type=registry,ref=$CI_REGISTRY_IMAGE/$WORKER_IMAGE-cache:$TARGET_ARCH,mode=max \
+        --build-arg WORKER_PACKAGE=$WORKER_PACKAGE \
+        --build-arg WORKER_BINARY=$WORKER_BINARY \
         --platform linux/$TARGET_ARCH \
         --tag "$ARCH_TAG" \
         --file $WORKER_DOCKERFILE \
@@ -233,6 +238,54 @@ build-worker:
           --tag "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_TAG" \
           "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA-amd64" \
           "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA-arm64"
+      fi
+  rules:
+    - if: $CI_COMMIT_TAG
+
+build-worker-coordinator-amd64:
+  extends: .build-worker-base
+  variables:
+    TARGET_ARCH: amd64
+    WORKER_IMAGE: worker-coordinator
+    WORKER_PACKAGE: ckan_worker_coordinator
+    WORKER_BINARY: ckan-worker-coordinator
+  tags:
+    - saas-linux-medium-amd64
+
+build-worker-coordinator-arm64:
+  extends: .build-worker-base
+  variables:
+    TARGET_ARCH: arm64
+    WORKER_IMAGE: worker-coordinator
+    WORKER_PACKAGE: ckan_worker_coordinator
+    WORKER_BINARY: ckan-worker-coordinator
+  tags:
+    - saas-linux-small-arm64
+
+build-worker-coordinator:
+  stage: build
+  timeout: 2h
+  needs:
+    - build-worker-coordinator-amd64
+    - build-worker-coordinator-arm64
+  script:
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
+    - docker context create builder
+    - docker buildx create builder --use
+    - |
+      AMD64="$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-amd64"
+      ARM64="$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-arm64"
+      docker buildx imagetools create \
+        --tag "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA" \
+        --tag "$CI_REGISTRY_IMAGE/worker-coordinator:latest" \
+        "$AMD64" \
+        "$ARM64"
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        docker buildx imagetools create \
+          --tag "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_TAG" \
+          "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-amd64" \
+          "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-arm64"
       fi
   rules:
     - if: $CI_COMMIT_TAG

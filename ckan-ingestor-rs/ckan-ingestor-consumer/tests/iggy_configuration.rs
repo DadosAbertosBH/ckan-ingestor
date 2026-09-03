@@ -24,16 +24,7 @@ fn defaults_use_the_approved_iggy_topology() {
     assert_eq!(settings.job_topic, "jobs");
     assert_eq!(settings.retry_topic, "jobs-retry");
     assert_eq!(settings.result_topic, "job-results");
-    assert_eq!(settings.metadata_sync_topic, "ckan_metadata_sync");
-    assert_eq!(
-        settings.metadata_sync_result_topic,
-        "ckan_metadata_sync_result"
-    );
     assert_eq!(settings.consumer_group, "ckan-worker");
-    assert_eq!(
-        settings.metadata_consumer_group,
-        "ckan-metadata-sync-worker"
-    );
     assert_eq!(settings.partitions, 10);
 }
 

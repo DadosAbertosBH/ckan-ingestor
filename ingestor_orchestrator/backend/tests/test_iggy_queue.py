@@ -127,3 +127,24 @@ async def test_publish_uses_same_partition_for_same_key(iggy_settings):
     second = await bus.publish("jobs", b"second", key="stable-key")
 
     assert first.partition == second.partition
+
+
+@pytest.mark.asyncio
+async def test_invalidate_discards_a_disconnected_client(iggy_settings):
+    disconnected_client = MagicMock()
+    fresh_client = MagicMock()
+    fresh_client.connect = AsyncMock()
+    fresh_client.get_stream = AsyncMock(return_value=object())
+    fresh_client.get_topic = AsyncMock(return_value=object())
+    bus = IggyMessageBus(iggy_settings, client=disconnected_client)
+
+    await bus.invalidate()
+
+    with patch(
+        "ingestor_orchestrator.iggy_queue.IggyClient.from_connection_string",
+        return_value=fresh_client,
+    ):
+        await bus.connect()
+
+    assert bus.client is fresh_client
+    fresh_client.connect.assert_awaited_once()

@@ -55,6 +55,7 @@ async def lifespan(app: FastAPI):
     scheduler_task = asyncio.create_task(scheduler.start())
 
     result_consumer = ResultConsumer()
+    app.state.result_consumer = result_consumer
     result_task = asyncio.create_task(result_consumer.start())
 
     logger.info("Scheduler and result consumer started")
@@ -135,6 +136,12 @@ async def ready():
         checks["iggy"] = "ok"
     except Exception:
         checks["iggy"] = "unreachable"
+
+    result_consumer = getattr(app.state, "result_consumer", None)
+    if result_consumer is not None:
+        checks["result_consumer"] = (
+            "ok" if result_consumer.is_connected else "unreachable"
+        )
 
     if any(v != "ok" for v in checks.values()):
         return JSONResponse(status_code=503, content={"status": "error", **checks})

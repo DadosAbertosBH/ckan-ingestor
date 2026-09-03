@@ -71,6 +71,12 @@ class IggyMessageBus:
                 "Iggy client connected to stream %s", self._settings.iggy_stream
             )
 
+    async def invalidate(self) -> None:
+        """Discard a client after its broker connection is no longer usable."""
+        async with self._connect_lock:
+            self._client = None
+            self._connected = False
+
     async def _ensure_topology(self) -> None:
         stream = self._settings.iggy_stream
         if await self._client.get_stream(stream) is None:

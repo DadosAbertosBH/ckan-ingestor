@@ -88,6 +88,37 @@ class JobService:
         logger.debug(f"Created job {job.id} for resource {data.resource_id}")
         return job
 
+    async def create_coordinated_job(
+        self, job_id: str, data: JobCreate
+    ) -> CkanDataJob:
+        """Persist a job already published by the Rust coordinator.
+
+        The coordinator publishes the PENDING result before the JobMessage, so
+        this method deliberately does not send another broker message.
+        """
+        existing = await self.db.get(CkanDataJob, job_id)
+        if existing is not None:
+            return existing
+        job = CkanDataJob(
+            id=job_id,
+            resource_id=data.resource_id,
+            resource_name=data.resource_name,
+            resource_url=data.resource_url,
+            resource_format=data.resource_format,
+            dataset_name=data.dataset_name,
+            idempotency_key=data.resource_id,
+            status=JobStatus.PENDING,
+            instance_id=data.instance_id or "",
+            ckan_url=data.ckan_url or "",
+            datastore_active=data.datastore_active,
+        )
+        self.db.add(job)
+        await self.db.flush()
+        await self._upsert_latest_resource(job)
+        await self.db.commit()
+        await self.db.refresh(job)
+        return job
+
     async def retry_job(self, job_id: str) -> CkanDataJob:
         job = await self.db.get(CkanDataJob, job_id)
         if not job:

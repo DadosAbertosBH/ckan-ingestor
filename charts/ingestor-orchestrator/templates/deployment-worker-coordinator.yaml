@@ -1,0 +1,68 @@
+{{- if .Values.workerCoordinator.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ingestor-orchestrator.fullname" . }}-worker-coordinator
+  labels:
+    {{- include "ingestor-orchestrator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-coordinator
+spec:
+  replicas: {{ .Values.workerCoordinator.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "ingestor-orchestrator.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker-coordinator
+  template:
+    metadata:
+      labels:
+        {{- include "ingestor-orchestrator.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker-coordinator
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker-coordinator
+          image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "workerCoordinator") }}
+          imagePullPolicy: {{ .Values.workerCoordinator.image.pullPolicy | default .Values.global.image.pullPolicy }}
+          env:
+            - name: IGGY_ADDRESS
+              value: {{ .Values.iggy.address | quote }}
+            - name: IGGY_USERNAME
+              value: {{ .Values.iggy.username | quote }}
+            - name: IGGY_STREAM
+              value: {{ .Values.iggy.stream | quote }}
+            - name: IGGY_TOPIC
+              value: {{ .Values.iggy.topic | quote }}
+            - name: IGGY_TOPIC_RETRY
+              value: {{ .Values.iggy.topicRetry | quote }}
+            - name: IGGY_TOPIC_RESULTS
+              value: {{ .Values.iggy.topicResults | quote }}
+            - name: IGGY_METADATA_SYNC_TOPIC
+              value: {{ .Values.iggy.metadataSyncTopic | quote }}
+            - name: IGGY_METADATA_SYNC_RESULT_TOPIC
+              value: {{ .Values.iggy.metadataSyncResultTopic | quote }}
+            - name: IGGY_METADATA_SYNC_GROUP_ID
+              value: {{ .Values.iggy.metadataSyncGroupId | quote }}
+            - name: IGGY_PARTITIONS
+              value: {{ .Values.iggy.partitions | quote }}
+            - name: S3_ENDPOINT
+              value: {{ .Values.ducklake.dataPath.endpoint | quote }}
+            - name: S3_BUCKET
+              value: {{ .Values.ducklake.dataPath.bucket | quote }}
+            - name: S3_USE_SSL
+              value: {{ .Values.ducklake.dataPath.useSsl | quote }}
+            - name: S3_URL_STYLE
+              value: {{ .Values.ducklake.dataPath.urlStyle | quote }}
+            {{- include "ingestor-orchestrator.cnpgDucklakeEnv" . | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "ingestor-orchestrator.fullname" . }}
+            - secretRef:
+                name: {{ include "ingestor-orchestrator.secretName" . }}
+          resources:
+            {{- toYaml .Values.workerCoordinator.resources | nindent 12 }}
+{{- end }}

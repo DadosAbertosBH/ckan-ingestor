@@ -1,0 +1,21 @@
+suite: Worker coordinator deployment (Rust)
+templates:
+  - deployment-worker-coordinator.yaml
+tests:
+  - it: uses the dedicated coordinator image
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "/worker-coordinator:"
+
+  - it: runs one replica with its dedicated resources
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: 500m
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 1Gi

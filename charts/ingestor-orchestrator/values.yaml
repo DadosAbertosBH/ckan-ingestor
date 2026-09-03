@@ -56,6 +56,22 @@ worker:
     limits:
       memory: 4Gi
 
+# -- Metadata and Iggy topology coordinator configuration
+workerCoordinator:
+  enabled: true
+  replicaCount: 1
+  image:
+    registry: ""
+    repository: worker-coordinator
+    tag: ""
+    pullPolicy: ""
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 1Gi
+
 # -- Apache Iggy configuration
 iggy:
   # -- Deploy Apache Iggy using the official chart dependency.

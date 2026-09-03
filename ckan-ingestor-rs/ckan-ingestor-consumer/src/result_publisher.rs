@@ -13,7 +13,6 @@ use std::sync::Arc;
 use iggy::prelude::{IggyMessage, IggyProducer, Partitioning};
 
 use crate::messages::JobResultMessage;
-use ckan_metadata_ingestor::MetadataSyncResult;
 
 pub trait ResultPublisher: Clone {
     fn publish(
@@ -33,30 +32,24 @@ impl IggyResultPublisher {
             producer: Arc::new(producer),
         }
     }
-
-    pub async fn publish_metadata(&self, result: MetadataSyncResult) -> Result<(), anyhow::Error> {
-        let payload = serde_json::to_string(&result)?;
-        let message = IggyMessage::from_str(&payload)?;
-        let partitioning = Arc::new(Partitioning::messages_key_str(&result.sync_id)?);
-        self.producer
-            .send_with_partitioning(vec![message], Some(partitioning))
-            .await?;
-        Ok(())
-    }
 }
 
 impl ResultPublisher for IggyResultPublisher {
     async fn publish(&self, result: JobResultMessage) -> Result<(), anyhow::Error> {
         let payload = serde_json::to_string(&result).map_err(|error| anyhow::anyhow!(error))?;
         let message = IggyMessage::from_str(&payload)?;
-        let partitioning = Arc::new(Partitioning::messages_key_str(&result.job_id)?);
+        let job_id = result
+            .job_id
+            .as_deref()
+            .expect("worker results require job_id");
+        let partitioning = Arc::new(Partitioning::messages_key_str(job_id)?);
         self.producer
             .send_with_partitioning(vec![message], Some(partitioning))
             .await
             .map_err(|error| {
                 anyhow::anyhow!(
                     "Iggy publish job={} status={}: {}",
-                    result.job_id,
+                    job_id,
                     result.status,
                     error
                 )

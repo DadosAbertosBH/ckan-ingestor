@@ -201,6 +201,51 @@ services:
     networks:
       - orchestrator_net
 
+  worker-coordinator:
+    build:
+      context: ../ckan-ingestor-rs
+      dockerfile: Dockerfile
+      args:
+        WORKER_PACKAGE: ckan_worker_coordinator
+        WORKER_BINARY: ckan-worker-coordinator
+    init: true
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "1024M"
+    depends_on:
+      iggy:
+        condition: service_healthy
+      rustfs-setup:
+        condition: service_completed_successfully
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      IGGY_ADDRESS: iggy:8090
+      IGGY_USERNAME: iggy
+      IGGY_PASSWORD: iggy
+      IGGY_STREAM: ckan-ingestor
+      IGGY_TOPIC: jobs
+      IGGY_TOPIC_RETRY: jobs-retry
+      IGGY_TOPIC_RESULTS: job-results
+      IGGY_METADATA_SYNC_TOPIC: ckan_metadata_sync
+      IGGY_METADATA_SYNC_RESULT_TOPIC: ckan_metadata_sync_result
+      IGGY_METADATA_SYNC_GROUP_ID: ckan-metadata-sync-worker
+      IGGY_PARTITIONS: "10"
+      DUCKLAKE_DATABASE: ":memory:"
+      DUCKLAKE_CATALOG_URI: "postgres:dbname=ducklake_catalog host=postgres user=postgres password=postgres"
+      S3_ENDPOINT: rustfs:9000
+      S3_BUCKET: warehouse
+      S3_ACCESS_KEY_ID: admin
+      S3_SECRET_ACCESS_KEY: password
+      S3_USE_SSL: "false"
+      S3_URL_STYLE: path
+      RUST_LOG: "info,memory_profile=info"
+    networks:
+      - orchestrator_net
+
 volumes:
   mysql_data:
   iggy_data:

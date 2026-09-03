@@ -68,16 +68,5 @@ async fn creates_the_approved_stream_and_topics() -> anyhow::Result<()> {
             .expect("topic should exist");
         assert_eq!(details.partitions_count, settings.partitions);
     }
-    for topic in [
-        settings.metadata_sync_topic,
-        settings.metadata_sync_result_topic,
-    ] {
-        let topic_id = topic.as_str().try_into()?;
-        let details = client
-            .get_topic(&stream_id, &topic_id)
-            .await?
-            .expect("metadata topic should exist");
-        assert_eq!(details.partitions_count, 1);
-    }
     Ok(())
 }

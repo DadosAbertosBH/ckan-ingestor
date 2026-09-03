@@ -7,16 +7,14 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-pub mod job_processor;
-pub mod message_source;
-pub mod messages;
-pub mod result_publisher;
-pub mod worker_thread;
+pub mod job_planner;
+pub mod job_publisher;
+pub mod metadata_processor;
+pub mod metadata_publisher;
+pub mod metadata_worker_thread;
 
 use anyhow::{Context, Result};
-use ckan_ingestor_lib::config::S3Settings;
 use ckan_ingestor_lib::duckdb_factory::DuckdbFactory;
-use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
 use iggy::prelude::{
     AutoCommit, Client, CompressionAlgorithm, DirectConfig, IggyClient, IggyDuration, IggyExpiry,
     MaxTopicSize, PollingStrategy, StreamClient, TopicClient,
@@ -27,10 +25,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
 
-use crate::job_processor::RealJobProcessor;
-use crate::message_source::IggySource;
-use crate::result_publisher::IggyResultPublisher;
-use crate::worker_thread::WorkerThread;
+use crate::job_planner::MysqlJobPlanner;
+use crate::job_publisher::JobPublisher;
+use crate::metadata_processor::RealMetadataProcessor;
+use crate::metadata_publisher::MetadataPublisher;
+use crate::metadata_worker_thread::MetadataHandler;
+use ckan_ingestor_worker_lib::{ConsumerWorker, IggySource};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IggySettings {
@@ -41,7 +41,9 @@ pub struct IggySettings {
     pub job_topic: String,
     pub retry_topic: String,
     pub result_topic: String,
-    pub consumer_group: String,
+    pub metadata_sync_topic: String,
+    pub metadata_sync_result_topic: String,
+    pub metadata_consumer_group: String,
     pub partitions: u32,
 }
 
@@ -55,7 +57,9 @@ impl Default for IggySettings {
             job_topic: "jobs".into(),
             retry_topic: "jobs-retry".into(),
             result_topic: "job-results".into(),
-            consumer_group: "ckan-worker".into(),
+            metadata_sync_topic: "ckan_metadata_sync".into(),
+            metadata_sync_result_topic: "ckan_metadata_sync_result".into(),
+            metadata_consumer_group: "ckan-metadata-sync-worker".into(),
             partitions: 10,
         }
     }
@@ -86,7 +90,12 @@ impl IggySettings {
             job_topic: env::var("IGGY_TOPIC").unwrap_or(defaults.job_topic),
             retry_topic: env::var("IGGY_TOPIC_RETRY").unwrap_or(defaults.retry_topic),
             result_topic: env::var("IGGY_TOPIC_RESULTS").unwrap_or(defaults.result_topic),
-            consumer_group: env::var("IGGY_GROUP_ID").unwrap_or(defaults.consumer_group),
+            metadata_sync_topic: env::var("IGGY_METADATA_SYNC_TOPIC")
+                .unwrap_or(defaults.metadata_sync_topic),
+            metadata_sync_result_topic: env::var("IGGY_METADATA_SYNC_RESULT_TOPIC")
+                .unwrap_or(defaults.metadata_sync_result_topic),
+            metadata_consumer_group: env::var("IGGY_METADATA_SYNC_GROUP_ID")
+                .unwrap_or(defaults.metadata_consumer_group),
             partitions,
         })
     }
@@ -94,61 +103,63 @@ impl IggySettings {
 
 pub async fn run() -> Result<()> {
     let settings = IggySettings::from_env()?;
-    info!(
-        "Worker starting with Iggy stream={}, partitions={}",
-        settings.stream, settings.partitions
-    );
-
     let connection_string = settings.connection_string();
     let admin = connected_client(&connection_string).await?;
     ensure_topology(&admin, &settings).await?;
-
+    let producer = admin
+        .producer(&settings.stream, &settings.metadata_sync_result_topic)?
+        .direct(DirectConfig::builder().batch_length(1).build())
+        .build();
+    producer.init().await?;
     let result_producer = admin
         .producer(&settings.stream, &settings.result_topic)?
         .direct(DirectConfig::builder().batch_length(1).build())
         .build();
     result_producer.init().await?;
-    let publisher = IggyResultPublisher::new(result_producer);
-
-    let s3 = create_s3_ingestor().await?;
-    let processor = RealJobProcessor::new(s3, DuckdbFactory::from_env())?;
-    let mut workers = Vec::with_capacity((settings.partitions * 2) as usize);
-
-    for topic in [&settings.job_topic, &settings.retry_topic] {
-        for slot in 0..settings.partitions {
-            let client = connected_client(&connection_string).await?;
-            let mut consumer = client
-                .consumer_group(&settings.consumer_group, &settings.stream, topic)?
-                .auto_commit(AutoCommit::Disabled)
-                .create_consumer_group_if_not_exists()
-                .auto_join_consumer_group()
-                .polling_strategy(PollingStrategy::next())
-                .poll_interval(IggyDuration::from(Duration::from_millis(10)))
-                .batch_length(1)
-                .build();
-            consumer.init().await?;
-            let source = IggySource::new(consumer);
-            let mut worker = WorkerThread::new(
-                topic.clone(),
-                slot as usize,
-                source,
-                publisher.clone(),
-                processor.clone(),
-            );
-            worker.run();
-            workers.push(worker);
-        }
-    }
-
+    let job_producer = admin
+        .producer(&settings.stream, &settings.job_topic)?
+        .direct(DirectConfig::builder().batch_length(1).build())
+        .build();
+    job_producer.init().await?;
+    let retry_producer = admin
+        .producer(&settings.stream, &settings.retry_topic)?
+        .direct(DirectConfig::builder().batch_length(1).build())
+        .build();
+    retry_producer.init().await?;
+    let client = connected_client(&connection_string).await?;
+    let mut consumer = client
+        .consumer_group(
+            &settings.metadata_consumer_group,
+            &settings.stream,
+            &settings.metadata_sync_topic,
+        )?
+        .auto_commit(AutoCommit::Disabled)
+        .create_consumer_group_if_not_exists()
+        .auto_join_consumer_group()
+        .polling_strategy(PollingStrategy::next())
+        .poll_interval(IggyDuration::from(Duration::from_millis(10)))
+        .batch_length(1)
+        .build();
+    consumer.init().await?;
+    let processor = RealMetadataProcessor::new(DuckdbFactory::from_env())?;
+    let mut worker = ConsumerWorker::new(
+        settings.metadata_sync_topic.clone(),
+        0,
+        IggySource::new(consumer),
+        MetadataHandler::new(
+            MetadataPublisher::new(producer),
+            JobPublisher::new(result_producer, job_producer, retry_producer),
+            MysqlJobPlanner::from_env()?,
+            processor,
+        ),
+    );
+    worker.run();
     let shutdown = Arc::new(Notify::new());
     install_shutdown_handler(shutdown.clone());
-    info!("CKAN Iggy consumer started with {} workers", workers.len());
+    info!("CKAN worker coordinator started");
     shutdown.notified().await;
-
-    for worker in workers {
-        tokio::task::spawn_blocking(move || worker.shutdown()).await?;
-    }
-    info!("CKAN Iggy consumer stopped");
+    tokio::task::spawn_blocking(move || worker.shutdown()).await?;
+    info!("CKAN worker coordinator stopped");
     Ok(())
 }
 
@@ -168,11 +179,12 @@ pub async fn ensure_topology(client: &IggyClient, settings: &IggySettings) -> Re
         }
         warn!("Iggy stream was created concurrently: {error}");
     }
-
     for (topic_name, partitions) in [
         (&settings.job_topic, settings.partitions),
         (&settings.retry_topic, settings.partitions),
         (&settings.result_topic, settings.partitions),
+        (&settings.metadata_sync_topic, 1),
+        (&settings.metadata_sync_result_topic, 1),
     ] {
         let topic = topic_name.as_str().try_into()?;
         if client.get_topic(&stream, &topic).await?.is_none()
@@ -203,14 +215,7 @@ fn install_shutdown_handler(shutdown: Arc<Notify>) {
             .expect("failed to register SIGTERM handler");
         let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
             .expect("failed to register SIGINT handler");
-        tokio::select! {
-            _ = sigterm.recv() => {},
-            _ = sigint.recv() => {},
-        }
+        tokio::select! { _ = sigterm.recv() => {}, _ = sigint.recv() => {} }
         shutdown.notify_waiters();
     });
-}
-
-async fn create_s3_ingestor() -> Result<S3DocumentIngestor> {
-    S3DocumentIngestor::new(S3Settings::from_env())
 }

@@ -90,8 +90,8 @@ impl JobProcessor for RealJobProcessor {
                 let truncated = &error_str[..error_str.len().min(16_000)];
                 log::error!("Job {} failed: {}", job.job_id, truncated);
                 JobResultMessage {
-                    reader: String::new(),
-                    job_id: job.job_id.clone(),
+                    reader: Some(String::new()),
+                    job_id: Some(job.job_id.clone()),
                     status: JobStatus::Failed,
                     rows_processed: None,
                     expected_rows: None,
@@ -99,7 +99,14 @@ impl JobProcessor for RealJobProcessor {
                     csv_strict_mode: None,
                     csv_delimiter: None,
                     expected_columns: None,
-                    datastore_active: false,
+                    datastore_active: Some(false),
+                    resource_id: None,
+                    dataset_name: None,
+                    resource_name: None,
+                    resource_url: None,
+                    resource_format: None,
+                    instance_id: None,
+                    ckan_url: None,
                     error_message: Some(truncated.to_string()),
                     preview: None,
                 }
@@ -119,8 +126,8 @@ fn job_result_from_outcome(
     }
 
     JobResultMessage {
-        job_id,
-        reader: outcome.reader,
+        job_id: Some(job_id),
+        reader: Some(outcome.reader),
         status: match outcome.status {
             ckan_ingestor_lib::ingestor_outcome::IngestionStatus::Success => JobStatus::Success,
             ckan_ingestor_lib::ingestor_outcome::IngestionStatus::Failed => JobStatus::Failed,
@@ -135,7 +142,14 @@ fn job_result_from_outcome(
         expected_columns: outcome
             .expected_columns
             .and_then(|value| i64::try_from(value).ok()),
-        datastore_active: outcome.datastore_active,
+        datastore_active: Some(outcome.datastore_active),
+        resource_id: None,
+        dataset_name: None,
+        resource_name: None,
+        resource_url: None,
+        resource_format: None,
+        instance_id: None,
+        ckan_url: None,
         error_message: outcome.error_message,
         preview: Some(outcome.preview),
     }
