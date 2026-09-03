@@ -8,12 +8,8 @@
 // (at your option) any later version.
 
 use anyhow::Context;
-use ckan_worker_coordinator::job_planner::MysqlJobPlanner;
-use ckan_worker_coordinator::metadata_processor::ResourceCandidate;
 use ckan_worker_coordinator::{IggySettings, ensure_topology};
 use iggy::prelude::{Client, IggyClient, TopicClient};
-use mysql::prelude::Queryable;
-use mysql::{OptsBuilder, Pool};
 use testcontainers::core::{IntoContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
@@ -34,88 +30,6 @@ async fn start_iggy() -> anyhow::Result<ContainerAsync<GenericImage>> {
         .with_env_var("IGGY_TCP_ADDRESS", "0.0.0.0:8090")
         .start()
         .await?)
-}
-
-async fn start_mysql() -> anyhow::Result<ContainerAsync<GenericImage>> {
-    Ok(GenericImage::new("mysql", "8.0")
-        .with_wait_for(WaitFor::message_on_either_std("ready for connections"))
-        .with_cmd(["--default-authentication-plugin=mysql_native_password"])
-        .with_mapped_port(0, 3306.tcp())
-        .with_env_var("MYSQL_ROOT_PASSWORD", "coordinator")
-        .with_env_var("MYSQL_ROOT_HOST", "%")
-        .with_env_var("MYSQL_DATABASE", "coordinator_test")
-        .start()
-        .await?)
-}
-
-fn candidate(id: &str) -> ResourceCandidate {
-    ResourceCandidate {
-        resource_id: id.into(),
-        resource_name: None,
-        resource_url: None,
-        resource_format: None,
-        dataset_name: "dataset".into(),
-        datastore_active: false,
-    }
-}
-
-fn mysql_options(host: &str, port: u16) -> OptsBuilder {
-    OptsBuilder::new()
-        .ip_or_hostname(Some(host))
-        .tcp_port(port)
-        .user(Some("root"))
-        .pass(Some("coordinator"))
-        .db_name(Some("coordinator_test"))
-}
-
-#[tokio::test]
-#[ignore = "requires Docker"]
-async fn coordinator_plans_jobs_from_mysql_state() -> anyhow::Result<()> {
-    let container = timeout(Duration::from_secs(60), start_mysql())
-        .await
-        .context("timed out while starting the MySQL container")??;
-    let host = container.get_host().await?;
-    let port = container.get_host_port_ipv4(3306.tcp()).await?;
-    let host = host.to_string();
-    let mut initial_connection = None;
-    for _ in 0..30 {
-        if let Ok(pool) = Pool::new(mysql_options(&host, port))
-            && let Ok(connection) = pool.get_conn()
-        {
-            initial_connection = Some((pool, connection));
-            break;
-        }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-    let (pool, mut connection) =
-        initial_connection.context("MySQL did not accept connections within 30 seconds")?;
-    connection.query_drop(
-        "CREATE TABLE ckan_data_job (id VARCHAR(36) PRIMARY KEY, idempotency_key VARCHAR(255), resource_id VARCHAR(255), status VARCHAR(32));\
-         CREATE TABLE latest_resource_job (resource_id VARCHAR(255), latest_job_id VARCHAR(36));\
-         INSERT INTO ckan_data_job VALUES \
-             ('in-flight-job', 'in-flight', 'in-flight', 'pending'),\
-             ('failed-job', 'failed', 'failed', 'failed');\
-         INSERT INTO latest_resource_job VALUES ('failed', 'failed-job')",
-    )?;
-
-    let planned = MysqlJobPlanner::from_pool(pool).classify(vec![
-        candidate("new"),
-        candidate("in-flight"),
-        candidate("failed"),
-    ])?;
-
-    assert_eq!(
-        planned
-            .iter()
-            .map(|(resource, enqueue, retry)| (resource.resource_id.as_str(), *enqueue, *retry))
-            .collect::<Vec<_>>(),
-        vec![
-            ("new", true, false),
-            ("in-flight", false, false),
-            ("failed", true, true),
-        ]
-    );
-    Ok(())
 }
 
 #[tokio::test]

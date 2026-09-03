@@ -305,7 +305,7 @@ fn fails_to_parse_quoted_semicolon_after_long_csv_sample() -> Result<()> {
         then.status(200).body(csv);
     });
 
-    let reader = CsvReader::new(test_client());
+    let reader = CsvReader::with_delimiter(test_client(), Some(";".to_string()));
     let resource = CkanResource {
         id: "0331ad41-85e6-41da-bbf2-19c0505beef5".to_string(),
         url: format!("{}/dm_favorecido.csv", server.url("")),

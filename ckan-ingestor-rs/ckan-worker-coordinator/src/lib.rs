@@ -9,9 +9,11 @@
 
 pub mod job_planner;
 pub mod job_publisher;
+pub mod job_repository;
 pub mod metadata_processor;
 pub mod metadata_publisher;
 pub mod metadata_worker_thread;
+pub mod mysql_job_repository;
 
 use anyhow::{Context, Result};
 use ckan_ingestor_lib::duckdb_factory::DuckdbFactory;
@@ -25,11 +27,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
 
-use crate::job_planner::MysqlJobPlanner;
+use crate::job_planner::JobPlanner;
 use crate::job_publisher::JobPublisher;
 use crate::metadata_processor::RealMetadataProcessor;
 use crate::metadata_publisher::MetadataPublisher;
 use crate::metadata_worker_thread::MetadataHandler;
+use crate::mysql_job_repository::MySqlJobRepository;
 use ckan_ingestor_worker_lib::{ConsumerWorker, IggySource};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,7 +152,7 @@ pub async fn run() -> Result<()> {
         MetadataHandler::new(
             MetadataPublisher::new(producer),
             JobPublisher::new(result_producer, job_producer, retry_producer),
-            MysqlJobPlanner::from_env()?,
+            JobPlanner::new(Box::new(MySqlJobRepository::from_env()?)),
             processor,
         ),
     );

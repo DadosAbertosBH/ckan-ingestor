@@ -10,48 +10,29 @@
 use std::collections::HashSet;
 
 use anyhow::Result;
-use mysql::prelude::Queryable;
-use mysql::{OptsBuilder, Pool};
 
+use crate::job_repository::JobRepository;
 use crate::metadata_processor::ResourceCandidate;
 
-pub struct MysqlJobPlanner {
-    pool: Pool,
+#[derive(Debug, Clone)]
+pub struct JobPlan {
+    pub candidate: ResourceCandidate,
+    pub enqueue: bool,
+    pub retry: bool,
 }
 
-impl MysqlJobPlanner {
-    pub fn from_pool(pool: Pool) -> Self {
-        Self { pool }
+pub struct JobPlanner {
+    repository: Box<dyn JobRepository>,
+}
+
+impl JobPlanner {
+    pub fn new(repository: Box<dyn JobRepository>) -> Self {
+        Self { repository }
     }
 
-    pub fn from_env() -> Result<Self> {
-        let host = std::env::var("INGEST_ORCH_MYSQL_HOST").unwrap_or_else(|_| "localhost".into());
-        let port = std::env::var("INGEST_ORCH_MYSQL_PORT")
-            .unwrap_or_else(|_| "3306".into())
-            .parse()?;
-        let user = std::env::var("INGEST_ORCH_MYSQL_USER").unwrap_or_else(|_| "root".into());
-        let password = std::env::var("INGEST_ORCH_MYSQL_PASSWORD").unwrap_or_default();
-        let database = std::env::var("INGEST_ORCH_MYSQL_DATABASE")
-            .unwrap_or_else(|_| "ingestor_orchestrator".into());
-        let options = OptsBuilder::new()
-            .ip_or_hostname(Some(host))
-            .tcp_port(port)
-            .user(Some(user))
-            .pass(Some(password))
-            .db_name(Some(database));
-        Ok(Self::from_pool(Pool::new(options)?))
-    }
-
-    pub fn classify(
-        &self,
-        candidates: Vec<ResourceCandidate>,
-    ) -> Result<Vec<(ResourceCandidate, bool, bool)>> {
-        let mut conn = self.pool.get_conn()?;
-        let in_flight: HashSet<String> = conn.query_map(
-            "SELECT idempotency_key FROM ckan_data_job WHERE status IN ('pending', 'processing')",
-            |id| id,
-        )?.into_iter().collect();
-        let failed: HashSet<String> = conn.query_map("SELECT c.resource_id FROM ckan_data_job c JOIN latest_resource_job l ON l.latest_job_id = c.id WHERE c.status = 'failed'", |id| id)?.into_iter().collect();
+    pub fn classify(&self, candidates: Vec<ResourceCandidate>) -> Result<Vec<JobPlan>> {
+        let in_flight = self.repository.in_flight_resource_ids()?;
+        let failed = self.repository.failed_resource_ids()?;
         Ok(classify_candidates(candidates, &in_flight, &failed))
     }
 }
@@ -60,13 +41,17 @@ pub fn classify_candidates(
     candidates: Vec<ResourceCandidate>,
     in_flight: &HashSet<String>,
     failed: &HashSet<String>,
-) -> Vec<(ResourceCandidate, bool, bool)> {
+) -> Vec<JobPlan> {
     candidates
         .into_iter()
         .map(|candidate| {
             let enqueue = !in_flight.contains(&candidate.resource_id);
             let retry = enqueue && failed.contains(&candidate.resource_id);
-            (candidate, enqueue, retry)
+            JobPlan {
+                candidate,
+                enqueue,
+                retry,
+            }
         })
         .collect()
 }
@@ -74,6 +59,21 @@ pub fn classify_candidates(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct MockJobRepository {
+        in_flight: HashSet<String>,
+        failed: HashSet<String>,
+    }
+
+    impl JobRepository for MockJobRepository {
+        fn in_flight_resource_ids(&self) -> Result<HashSet<String>> {
+            Ok(self.in_flight.clone())
+        }
+
+        fn failed_resource_ids(&self) -> Result<HashSet<String>> {
+            Ok(self.failed.clone())
+        }
+    }
 
     fn candidate(id: &str) -> ResourceCandidate {
         ResourceCandidate {
@@ -88,24 +88,24 @@ mod tests {
 
     #[test]
     fn classifies_new_failed_and_in_flight_outdated_resources() {
-        let in_flight = HashSet::from(["in-flight".to_string()]);
-        let failed = HashSet::from(["failed".to_string()]);
-        let planned = classify_candidates(
-            vec![
+        let planner = JobPlanner::new(Box::new(MockJobRepository {
+            in_flight: HashSet::from(["in-flight".to_string()]),
+            failed: HashSet::from(["failed".to_string()]),
+        }));
+        let planned = planner
+            .classify(vec![
                 candidate("new"),
                 candidate("failed"),
                 candidate("in-flight"),
-            ],
-            &in_flight,
-            &failed,
-        );
+            ])
+            .unwrap();
         assert_eq!(
             planned
                 .iter()
-                .map(|(candidate, enqueue, retry)| (
-                    candidate.resource_id.as_str(),
-                    *enqueue,
-                    *retry
+                .map(|plan| (
+                    plan.candidate.resource_id.as_str(),
+                    plan.enqueue,
+                    plan.retry
                 ))
                 .collect::<Vec<_>>(),
             vec![
@@ -119,8 +119,12 @@ mod tests {
     #[test]
     fn preserves_uuid_like_resource_ids_and_empty_input() {
         let id = "a6b97d48-a9fb-4991-9893-d920ffb19b90";
-        let planned = classify_candidates(vec![candidate(id)], &HashSet::new(), &HashSet::new());
-        assert_eq!(planned[0].0.resource_id, id);
-        assert!(classify_candidates(vec![], &HashSet::new(), &HashSet::new()).is_empty());
+        let planner = JobPlanner::new(Box::new(MockJobRepository {
+            in_flight: HashSet::new(),
+            failed: HashSet::new(),
+        }));
+        let planned = planner.classify(vec![candidate(id)]).unwrap();
+        assert_eq!(planned[0].candidate.resource_id, id);
+        assert!(planner.classify(vec![]).unwrap().is_empty());
     }
 }

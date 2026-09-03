@@ -13,7 +13,7 @@ use ckan_ingestor_worker_lib::{
 use ckan_metadata_ingestor::MetadataSyncCommand;
 use uuid::Uuid;
 
-use crate::job_planner::MysqlJobPlanner;
+use crate::job_planner::{JobPlan, JobPlanner};
 use crate::job_publisher::JobPublisher;
 use crate::metadata_processor::RealMetadataProcessor;
 use crate::metadata_publisher::MetadataPublisher;
@@ -21,7 +21,7 @@ use crate::metadata_publisher::MetadataPublisher;
 pub struct MetadataHandler {
     publisher: MetadataPublisher,
     jobs: JobPublisher,
-    planner: MysqlJobPlanner,
+    planner: JobPlanner,
     processor: RealMetadataProcessor,
 }
 
@@ -29,7 +29,7 @@ impl MetadataHandler {
     pub fn new(
         publisher: MetadataPublisher,
         jobs: JobPublisher,
-        planner: MysqlJobPlanner,
+        planner: JobPlanner,
         processor: RealMetadataProcessor,
     ) -> Self {
         Self {
@@ -46,7 +46,11 @@ impl MessageHandler for MetadataHandler {
         let command = serde_json::from_slice::<MetadataSyncCommand>(&message.payload)?;
         let result = self.processor.process(command.clone());
         if result.status == "success" {
-            for (candidate, enqueue, retry) in self
+            for JobPlan {
+                candidate,
+                enqueue,
+                retry,
+            } in self
                 .planner
                 .classify(self.processor.outdated_resources(&command.instance_url)?)?
             {
