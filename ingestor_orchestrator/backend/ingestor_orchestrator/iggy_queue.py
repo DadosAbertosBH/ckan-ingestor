@@ -21,6 +21,7 @@ import asyncio
 import hashlib
 import logging
 from dataclasses import dataclass
+from datetime import timedelta
 
 from apache_iggy import (
     AutoCommit,
@@ -138,6 +139,9 @@ class IggyMessageBus:
             topic=self._settings.iggy_topic_results,
             polling_strategy=PollingStrategy.Next(),
             batch_length=10,
+            poll_interval=timedelta(
+                milliseconds=self._settings.iggy_consumer_poll_interval_ms
+            ),
             auto_commit=AutoCommit.After(AutoCommitAfter.ConsumingEachMessage()),
             create_consumer_group_if_not_exists=True,
             auto_join_consumer_group=True,
@@ -151,6 +155,9 @@ class IggyMessageBus:
             topic=self._settings.iggy_metadata_sync_result_topic,
             polling_strategy=PollingStrategy.Next(),
             batch_length=10,
+            poll_interval=timedelta(
+                milliseconds=self._settings.iggy_consumer_poll_interval_ms
+            ),
             auto_commit=AutoCommit.After(AutoCommitAfter.ConsumingEachMessage()),
             create_consumer_group_if_not_exists=True,
             auto_join_consumer_group=True,

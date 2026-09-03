@@ -28,11 +28,13 @@ WORKDIR /src
 # the real source will overwrite in the next stage.
 COPY Cargo.toml Cargo.lock ./
 COPY ckan-ingestor-lib/Cargo.toml ckan-ingestor-lib/
+COPY ckan-ingestor-worker-lib/Cargo.toml ckan-ingestor-worker-lib/
 COPY ckan-metadata-ingestor/Cargo.toml ckan-metadata-ingestor/
 COPY ckan-ingestor-consumer/Cargo.toml ckan-ingestor-consumer/
 COPY ckan-worker-coordinator/Cargo.toml ckan-worker-coordinator/
-RUN mkdir -p ckan-ingestor-lib/src ckan-metadata-ingestor/src ckan-ingestor-consumer/src ckan-worker-coordinator/src && \
+RUN mkdir -p ckan-ingestor-lib/src ckan-ingestor-worker-lib/src ckan-metadata-ingestor/src ckan-ingestor-consumer/src ckan-worker-coordinator/src && \
     touch ckan-ingestor-lib/src/lib.rs && \
+    touch ckan-ingestor-worker-lib/src/lib.rs && \
     touch ckan-metadata-ingestor/src/lib.rs && \
     touch ckan-ingestor-consumer/src/main.rs && \
     touch ckan-worker-coordinator/src/main.rs && \
@@ -46,6 +48,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 # The production image only needs the application sources. Keeping tests,
 # fixtures, and local metadata out of this COPY preserves the build cache.
 COPY ckan-ingestor-lib/src/ ckan-ingestor-lib/src/
+COPY ckan-ingestor-worker-lib/src/ ckan-ingestor-worker-lib/src/
 COPY ckan-metadata-ingestor/src/ ckan-metadata-ingestor/src/
 COPY ckan-ingestor-consumer/src/ ckan-ingestor-consumer/src/
 COPY ckan-worker-coordinator/src/ ckan-worker-coordinator/src/

@@ -24,6 +24,25 @@ def message():
 
 
 @pytest.mark.asyncio
+async def test_consume_once_accepts_iggy_futures():
+    consumer = MagicMock()
+    metadata_consumer = MagicMock()
+    completed = asyncio.get_running_loop().create_future()
+    completed.set_result(None)
+    pending = asyncio.get_running_loop().create_future()
+    consumer.consume_messages.return_value = completed
+    metadata_consumer.consume_messages.return_value = pending
+    bus = AsyncMock()
+    bus.result_consumer.return_value = consumer
+    bus.metadata_sync_result_consumer.return_value = metadata_consumer
+
+    with patch("ingestor_orchestrator.result_consumer.get_iggy_bus", return_value=bus):
+        await ResultConsumer()._consume_once()
+
+    assert pending.cancelled()
+
+
+@pytest.mark.asyncio
 async def test_result_is_processed_by_the_commit_after_callback():
     consumer = AsyncMock()
     received = message()

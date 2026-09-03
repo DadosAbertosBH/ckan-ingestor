@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     iggy_group_id: str = "ckan-worker"
     iggy_result_group_id: str = "ckan-result-consumer"
     iggy_metadata_sync_result_group_id: str = "ckan-metadata-sync-result-consumer"
+    iggy_consumer_poll_interval_ms: int = 500
     iggy_partitions: int = 10
 
     # Scheduler

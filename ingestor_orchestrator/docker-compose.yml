@@ -234,6 +234,11 @@ services:
       IGGY_METADATA_SYNC_RESULT_TOPIC: ckan_metadata_sync_result
       IGGY_METADATA_SYNC_GROUP_ID: ckan-metadata-sync-worker
       IGGY_PARTITIONS: "10"
+      INGEST_ORCH_MYSQL_HOST: mysql
+      INGEST_ORCH_MYSQL_PORT: "3306"
+      INGEST_ORCH_MYSQL_USER: root
+      INGEST_ORCH_MYSQL_PASSWORD: ${INGEST_ORCH_MYSQL_PASSWORD:-ckan_orch_pass}
+      INGEST_ORCH_MYSQL_DATABASE: ${INGEST_ORCH_MYSQL_DATABASE:-ingestor_orchestrator}
       DUCKLAKE_DATABASE: ":memory:"
       DUCKLAKE_CATALOG_URI: "postgres:dbname=ducklake_catalog host=postgres user=postgres password=postgres"
       S3_ENDPOINT: rustfs:9000

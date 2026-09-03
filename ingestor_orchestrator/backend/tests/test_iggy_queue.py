@@ -16,6 +16,7 @@
 """Tests for the Apache Iggy message bus adapter."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import timedelta
 
 import pytest
 
@@ -33,8 +34,24 @@ def iggy_settings():
     settings.iggy_metadata_sync_topic = "ckan_metadata_sync"
     settings.iggy_metadata_sync_result_topic = "ckan_metadata_sync_result"
     settings.iggy_metadata_sync_result_group_id = "metadata-results"
+    settings.iggy_consumer_poll_interval_ms = 500
     settings.iggy_partitions = 10
     return settings
+
+
+@pytest.mark.asyncio
+async def test_result_consumers_use_a_bounded_poll_interval(iggy_settings):
+    client = MagicMock()
+    client.consumer_group = AsyncMock()
+    bus = IggyMessageBus(iggy_settings, client=client)
+
+    await bus.result_consumer()
+    await bus.metadata_sync_result_consumer()
+
+    assert [call.kwargs["poll_interval"] for call in client.consumer_group.await_args_list] == [
+        timedelta(milliseconds=500),
+        timedelta(milliseconds=500),
+    ]
 
 
 @pytest.mark.asyncio

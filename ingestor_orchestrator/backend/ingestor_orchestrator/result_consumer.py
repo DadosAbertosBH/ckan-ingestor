@@ -83,8 +83,8 @@ class ResultConsumer:
             await self._process_metadata_sync(message)
 
         tasks = [
-            asyncio.create_task(consumer.consume_messages(process, self._shutdown)),
-            asyncio.create_task(
+            asyncio.ensure_future(consumer.consume_messages(process, self._shutdown)),
+            asyncio.ensure_future(
                 metadata_consumer.consume_messages(process_metadata, self._shutdown)
             ),
         ]
