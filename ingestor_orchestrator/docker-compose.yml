@@ -1,6 +1,10 @@
 services:
   mysql:
     image: mysql:8.0
+    deploy:
+      resources:
+        limits:
+          memory: "256M"
     ports:
       - "3306:3306"
     environment:

@@ -83,14 +83,14 @@ test-rust:
     # Force libduckdb-sys to download the prebuilt DuckDB library so that
     # tests and builds can link against it on Linux runners.
     DUCKDB_DOWNLOAD_LIB: "1"
-    CARGO_HOME: .cargo-home
+    CARGO_HOME: "$CI_PROJECT_DIR/.cargo-home"
     TESTCONTAINERS_HOST_OVERRIDE: "docker"
   cache:
     - key:
         files:
           - ckan-ingestor-rs/Cargo.lock
       paths:
-        - $CARGO_HOME
+        - .cargo-home/
   script:
     - apt-get update && apt-get install -y --no-install-recommends build-essential cmake curl libssl-dev libcurl4-openssl-dev pkg-config && rm -rf /var/lib/apt/lists/*
     - until curl -fsS http://docker:2375/_ping; do sleep 1; done

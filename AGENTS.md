@@ -24,7 +24,7 @@ uv run ruff check    # lint
 
 Every implementation, bug fix, or adjustment must follow TDD:
 
-1. **RED** — write a failing test that reproduces the bug or validates the expected behavior
+1. **RED** — write a failing test that reproduces the bug or validates the expected behavior. Compile errors does not count as red state. 
 2. **GREEN** — apply the minimal fix to make the test pass
 3. Run the full suite:
    - `cd /Users/guilhermecastro/Projects/ckan-ingestor && uv run pytest tests/ -q`
