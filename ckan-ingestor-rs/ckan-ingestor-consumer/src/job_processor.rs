@@ -16,19 +16,19 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
 use ckan_ingestor_lib::ckan_resource::CkanResource;
-use ckan_ingestor_lib::duckdb_ckan_data_ingestor::DuckdbCkanDataIngestor;
+use ckan_ingestor_lib::datafusion_ckan_data_ingestor::DatafusionCkanDataIngestor;
+use ckan_ingestor_lib::datafusion_ducklake_factory::DatafusionDucklakeFactory;
 use ckan_ingestor_lib::readers::csv_reader::CsvReader;
 use ckan_ingestor_lib::readers::datastore_reader::DatastoreReader;
 use ckan_ingestor_lib::readers::document_reader::DocumentReader;
 use ckan_ingestor_lib::readers::json_reader::JsonReader;
 use ckan_ingestor_lib::readers::multiple_reader::MultipleReader;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
-use duckdb::Connection;
 use reqwest::blocking::Client;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
+use tokio::runtime::Runtime;
 
 use crate::messages::{JobMessage, JobResultMessage, JobStatus};
-use ckan_ingestor_lib::duckdb_factory::DuckdbFactory;
 
 // ---------------------------------------------------------------------------
 // JobProcessor trait
@@ -49,41 +49,36 @@ pub trait JobProcessor: Clone + Send + 'static {
 
 pub struct RealJobProcessor {
     s3: S3DocumentIngestor,
-    factory: DuckdbFactory,
-    conn: Connection,
+    factory: DatafusionDucklakeFactory,
+    runtime: Arc<Runtime>,
 }
 
 impl RealJobProcessor {
-    pub fn new(s3: S3DocumentIngestor, factory: DuckdbFactory) -> anyhow::Result<Self> {
-        let conn = factory.open()?;
-        Ok(Self { s3, factory, conn })
+    pub fn new(s3: S3DocumentIngestor, factory: DatafusionDucklakeFactory) -> anyhow::Result<Self> {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?;
+        Ok(Self {
+            s3,
+            factory,
+            runtime: Arc::new(runtime),
+        })
     }
 }
 
 impl Clone for RealJobProcessor {
     fn clone(&self) -> Self {
-        // Clone the underlying connection and re-apply session settings, which
-        // are per-connection and not inherited by `try_clone`. Each clone runs
-        // on its own OS thread (one per Iggy consumer slot), so each gets its own
-        // connection to the same DuckLake catalog.
-        let conn = self
-            .conn
-            .try_clone()
-            .expect("failed to clone duckdb connection");
-        self.factory
-            .configure(&conn)
-            .expect("failed to configure cloned duckdb connection");
         Self {
             s3: self.s3.clone(),
             factory: self.factory.clone(),
-            conn,
+            runtime: self.runtime.clone(),
         }
     }
 }
 
 impl JobProcessor for RealJobProcessor {
     fn process(&self, job: JobMessage) -> JobResultMessage {
-        match run_ingestion(&self.conn, &job, &self.s3) {
+        match run_ingestion(&self.runtime, &self.factory, &job, &self.s3) {
             Ok(outcome) => job_result_from_outcome(job.job_id.clone(), outcome),
             Err(e) => {
                 let error_str = format!("{}", e);
@@ -156,7 +151,8 @@ fn job_result_from_outcome(
 }
 
 fn run_ingestion(
-    conn: &Connection,
+    runtime: &Runtime,
+    factory: &DatafusionDucklakeFactory,
     job: &JobMessage,
     s3: &S3DocumentIngestor,
 ) -> Result<ckan_ingestor_lib::ingestor_outcome::IngestionOutcome, anyhow::Error> {
@@ -184,9 +180,8 @@ fn run_ingestion(
         Box::new(JsonReader::with_client(http_client)),
         Box::new(DocumentReader::new(s3)),
     ]);
-    let ingestor = DuckdbCkanDataIngestor::new(conn, &reader);
-
-    Ok(ingestor.ingest_ckan_data(&resource))
+    let ingestor = DatafusionCkanDataIngestor::new(factory, &reader);
+    Ok(runtime.block_on(ingestor.ingest_ckan_data(&resource)))
 }
 
 #[cfg(test)]

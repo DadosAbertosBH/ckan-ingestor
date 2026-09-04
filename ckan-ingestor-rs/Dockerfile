@@ -68,6 +68,11 @@ RUN ARCH="$(dpkg --print-architecture)" && \
     esac && \
     mkdir -p /opt/duckdb && \
     curl --fail --location --silent --show-error \
+      --connect-timeout 60 \
+      --max-time 420 \
+      --retry 3 \
+      --retry-all-errors \
+      --retry-delay 5 \
       "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/libduckdb-linux-${DUCKDB_ARCH}.zip" \
       --output /tmp/libduckdb.zip && \
     unzip -q /tmp/libduckdb.zip -d /opt/duckdb && \

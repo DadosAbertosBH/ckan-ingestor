@@ -7,7 +7,7 @@
 // by the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use ckan_metadata_ingestor::CkanDatasetFetcher;
+use ckan_metadata_ingestor::{CkanDatasetFetcher, fetcher::PAGE_SIZE};
 use httpmock::{Method::GET, MockServer};
 use serde_json::json;
 
@@ -22,7 +22,7 @@ fn fetches_all_pages_until_a_short_page() {
     let first = server.mock(|when, then| {
         when.method(GET)
             .path(ACTION_PATH)
-            .query_param("limit", "100")
+            .query_param("limit", PAGE_SIZE)
             .query_param("offset", "0");
         then.status(200).json_body(json!({"result": first_page}));
     });
