@@ -35,7 +35,10 @@ fn fetches_all_pages_until_a_short_page() {
             .json_body(json!({"result": [{"id": "dataset-100"}]}));
     });
 
-    let packages = CkanDatasetFetcher::fetch(&format!("{}/", server.base_url())).unwrap();
+    let packages = CkanDatasetFetcher::fetch(&format!("{}/", server.base_url()))
+        .unwrap()
+        .collect::<anyhow::Result<Vec<_>>>()
+        .unwrap();
 
     first.assert();
     second.assert();
@@ -55,7 +58,10 @@ fn sends_a_user_agent_accepted_by_protected_ckan_instances() {
             .json_body(json!({"result": [{"id": "dataset-1"}]}));
     });
 
-    CkanDatasetFetcher::fetch(&server.base_url()).unwrap();
+    CkanDatasetFetcher::fetch(&server.base_url())
+        .unwrap()
+        .collect::<anyhow::Result<Vec<_>>>()
+        .unwrap();
 
     request.assert();
 }
@@ -68,7 +74,11 @@ fn rejects_an_empty_dataset_list() {
         then.status(200).json_body(json!({"result": []}));
     });
 
-    let error = CkanDatasetFetcher::fetch(&server.base_url()).unwrap_err();
+    let error = CkanDatasetFetcher::fetch(&server.base_url())
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap_err();
 
     assert!(error.to_string().contains("No packages returned"));
 }
@@ -82,7 +92,11 @@ fn rejects_a_non_array_result() {
             .json_body(json!({"result": {"id": "dataset-1"}}));
     });
 
-    let error = CkanDatasetFetcher::fetch(&server.base_url()).unwrap_err();
+    let error = CkanDatasetFetcher::fetch(&server.base_url())
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap_err();
 
     assert!(error.to_string().contains("result must be an array"));
 }
@@ -95,7 +109,11 @@ fn propagates_http_failures() {
         then.status(503);
     });
 
-    let error = CkanDatasetFetcher::fetch(&server.base_url()).unwrap_err();
+    let error = CkanDatasetFetcher::fetch(&server.base_url())
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap_err();
 
     assert!(error.to_string().contains("503"));
 }
@@ -110,7 +128,11 @@ fn rejects_invalid_json() {
             .body("not-json");
     });
 
-    let error = CkanDatasetFetcher::fetch(&server.base_url()).unwrap_err();
+    let error = CkanDatasetFetcher::fetch(&server.base_url())
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap_err();
 
     assert!(error.to_string().contains("invalid CKAN JSON response"));
 }

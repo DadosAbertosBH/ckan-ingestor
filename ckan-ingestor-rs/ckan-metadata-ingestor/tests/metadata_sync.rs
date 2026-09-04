@@ -7,9 +7,73 @@
 // by the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use ckan_metadata_ingestor::{DuckdbCkanMetadataIngestor, MetadataSyncCommand};
-use duckdb::Connection;
+use anyhow::Result;
+use ckan_ingestor_lib::duckdb_factory::{DuckdbConfig, DuckdbFactory};
+use ckan_metadata_ingestor::{DuckdbCkanMetadataIngestor, MetadataSyncCommand, MetadataSyncResult};
+use duckdb::Connection as DuckdbConnection;
+use httpmock::MockServer;
 use serde_json::{Value, json};
+use std::ops::Deref;
+use tempfile::TempDir;
+
+struct TestDatabase {
+    _temp_dir: TempDir,
+    connection: DuckdbConnection,
+}
+
+impl Deref for TestDatabase {
+    type Target = DuckdbConnection;
+
+    fn deref(&self) -> &Self::Target {
+        &self.connection
+    }
+}
+
+struct Connection;
+
+impl Connection {
+    fn open_in_memory() -> Result<TestDatabase> {
+        let temp_dir = tempfile::tempdir()?;
+        let factory = DuckdbFactory::new(DuckdbConfig::for_local_ducklake(
+            temp_dir.path().join("catalog.ducklake").to_string_lossy(),
+            temp_dir.path().join("data").to_string_lossy(),
+        ));
+        Ok(TestDatabase {
+            connection: factory.open()?,
+            _temp_dir: temp_dir,
+        })
+    }
+}
+
+trait TestIngest {
+    fn ingest_packages(
+        &self,
+        command: &MetadataSyncCommand,
+        packages: Vec<Value>,
+    ) -> Result<MetadataSyncResult>;
+}
+
+impl TestIngest for DuckdbCkanMetadataIngestor<'_> {
+    fn ingest_packages(
+        &self,
+        command: &MetadataSyncCommand,
+        packages: Vec<Value>,
+    ) -> Result<MetadataSyncResult> {
+        let server = MockServer::start();
+        let request = server.mock(|when, then| {
+            when.method("GET")
+                .path("/api/action/current_package_list_with_resources")
+                .query_param("limit", "100")
+                .query_param("offset", "0");
+            then.status(200).json_body(json!({"result": packages}));
+        });
+        let mut sync_command = command.clone();
+        sync_command.instance_url = server.url("");
+        let result = self.sync(&sync_command);
+        request.assert();
+        result
+    }
+}
 
 fn command() -> MetadataSyncCommand {
     MetadataSyncCommand {

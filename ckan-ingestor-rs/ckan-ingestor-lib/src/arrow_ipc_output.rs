@@ -18,7 +18,7 @@
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
-use arrow::{array::RecordBatch, error::ArrowError};
+use arrow::{array::RecordBatch, datatypes::SchemaRef, error::ArrowError};
 use arrow_ipc::writer::FileWriter;
 
 const PREVIEW_MAX_VALUE_LEN: usize = 1000;
@@ -26,6 +26,7 @@ const PREVIEW_MAX_ROWS: usize = 5;
 
 pub struct ArrowIpcOutput {
     path: PathBuf,
+    pub schema: SchemaRef,
     pub writer: FileWriter<File>,
     pub rows: usize,
     pub columns: usize,
@@ -39,6 +40,7 @@ impl ArrowIpcOutput {
         let writer = FileWriter::try_new(file, &batch.schema())?;
         Ok(Self {
             path,
+            schema: batch.schema(),
             writer,
             rows: 0,
             columns: 0,

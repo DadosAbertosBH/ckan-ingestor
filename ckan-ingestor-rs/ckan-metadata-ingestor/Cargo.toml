@@ -5,6 +5,9 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0"
+arrow = "58.4.0"
+arrow-ipc = "58.4.0"
+arrow-json = "58.4.0"
 ckan_ingestor_lib = { path = "../ckan-ingestor-lib" }
 duckdb = "1.5.5"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
@@ -14,3 +17,4 @@ tempfile = "3.15"
 
 [dev-dependencies]
 httpmock = "0.7"
+libc = "0.2"
