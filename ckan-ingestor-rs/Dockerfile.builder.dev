@@ -1,0 +1,16 @@
+# ckan-ingestor-rs
+#
+# Development image used by the Rust GitLab CI job.
+FROM rust:1.97.1-slim-trixie
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    curl \
+    libssl-dev \
+    libcurl4-openssl-dev \
+    pkg-config \
+    sccache \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN rustup component add rustfmt clippy
