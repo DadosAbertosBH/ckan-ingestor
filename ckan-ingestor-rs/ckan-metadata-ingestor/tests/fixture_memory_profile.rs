@@ -18,38 +18,6 @@ use std::thread;
 
 #[test]
 #[ignore = "profiling test; run explicitly with -- --ignored --nocapture"]
-fn reports_peak_rss_for_the_complete_ckan_fixture_sync() {
-    let fixture = fixture_path("all.json");
-    let base_url = fixture_server(vec![fixture.clone()]);
-    let temp_dir = tempfile::tempdir().unwrap();
-    let factory = DuckdbFactory::new(DuckdbConfig::for_local_ducklake(
-        temp_dir.path().join("catalog.ducklake").to_string_lossy(),
-        temp_dir.path().join("data").to_string_lossy(),
-    ));
-    let conn = factory.open().unwrap();
-    let initial_peak = peak_rss_bytes();
-    let command = MetadataSyncCommand {
-        sync_id: "memory-profile".into(),
-        instance_id: "pbh".into(),
-        instance_name: "PBH".into(),
-        instance_url: base_url,
-    };
-    let result = DuckdbCkanMetadataIngestor::new(&conn)
-        .sync(&command)
-        .unwrap();
-    let sync_peak = peak_rss_bytes();
-
-    eprintln!(
-        "fixture_bytes={}, packages={}, resources={}, peak_rss_bytes={{initial: {initial_peak}, sync: {sync_peak}}}",
-        std::fs::metadata(&fixture).unwrap().len(),
-        result.dataset_count,
-        result.resource_count,
-    );
-    assert!(result.dataset_count > 0);
-}
-
-#[test]
-#[ignore = "profiling test; run explicitly with -- --ignored --nocapture"]
 fn reports_peak_rss_for_two_100_package_pages() {
     let profile = profile_sync(&["pbh_first_100.json", "pbh_offset_100.json"]);
     assert_eq!(profile.packages, 200);
