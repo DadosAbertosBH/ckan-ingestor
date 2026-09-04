@@ -10,7 +10,7 @@
 use anyhow::{Context, Result};
 use serde_json::Value;
 
-const PAGE_SIZE: usize = 100;
+const PAGE_SIZE: usize = 25;
 const CKAN_USER_AGENT: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15; rv:132.0) Gecko/20100101 Firefox/132.0";
 
