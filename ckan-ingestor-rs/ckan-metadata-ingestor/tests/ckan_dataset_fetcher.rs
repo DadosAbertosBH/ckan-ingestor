@@ -16,21 +16,21 @@ const ACTION_PATH: &str = "/api/action/current_package_list_with_resources";
 #[test]
 fn fetches_all_pages_until_a_short_page() {
     let server = MockServer::start();
-    let first_page = (0..100)
+    let first_page = (0..PAGE_SIZE)
         .map(|index| json!({"id": format!("dataset-{index}")}))
         .collect::<Vec<_>>();
     let first = server.mock(|when, then| {
         when.method(GET)
             .path(ACTION_PATH)
-            .query_param("limit", PAGE_SIZE)
+            .query_param("limit", PAGE_SIZE.to_string())
             .query_param("offset", "0");
         then.status(200).json_body(json!({"result": first_page}));
     });
     let second = server.mock(|when, then| {
         when.method(GET)
             .path(ACTION_PATH)
-            .query_param("limit", "100")
-            .query_param("offset", "100");
+            .query_param("limit", PAGE_SIZE.to_string())
+            .query_param("offset", PAGE_SIZE.to_string());
         then.status(200)
             .json_body(json!({"result": [{"id": "dataset-100"}]}));
     });
@@ -42,7 +42,7 @@ fn fetches_all_pages_until_a_short_page() {
 
     first.assert();
     second.assert();
-    assert_eq!(packages.len(), 101);
+    assert_eq!(packages.len(), PAGE_SIZE + 1);
     assert_eq!(packages[100]["id"], "dataset-100");
 }
 
