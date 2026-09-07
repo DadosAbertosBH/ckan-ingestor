@@ -14,4 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
     
 
-RUN rustup component add --toolchain nightly-2026-07-01-aarch64-unknown-linux-gnu rustfmt clippy rust-analyzer
+RUN rustup toolchain install nightly-2026-07-01 \
+    --profile minimal \
+    --component rustfmt \
+    --component clippy \
+    --component rust-analyzer \
+    && rustup default nightly-2026-07-01

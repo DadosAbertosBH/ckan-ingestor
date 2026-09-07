@@ -79,7 +79,8 @@ impl MessageHandler for MetadataHandler {
                     self.jobs.pending(&pending, &job, retry).await?;
                 } else {
                     let skipped = JobResultMessage {
-                        job_id: None,
+                        // The backend treats an empty id as a metadata-only result.
+                        job_id: String::new(),
                         status: JobStatus::Success,
                         resource_id: candidate.resource_id.clone(),
                         dataset_name: Some(candidate.dataset_name),

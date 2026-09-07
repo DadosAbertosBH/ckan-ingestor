@@ -92,10 +92,7 @@ impl<T: JobTransport> JobPublisher<T> {
         job: &JobMessage,
         retry: bool,
     ) -> anyhow::Result<()> {
-        let id = result
-            .job_id
-            .as_deref()
-            .expect("pending coordinator result requires job id");
+        let id = result.job_id.as_str();
         self.send(Destination::Results, id, result).await?;
         self.send(
             if retry {

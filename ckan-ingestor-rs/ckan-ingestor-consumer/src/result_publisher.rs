@@ -38,10 +38,7 @@ impl ResultPublisher for IggyResultPublisher {
     async fn publish(&self, result: JobResultMessage) -> Result<(), anyhow::Error> {
         let payload = serde_json::to_string(&result).map_err(|error| anyhow::anyhow!(error))?;
         let message = IggyMessage::from_str(&payload)?;
-        let job_id = result
-            .job_id
-            .as_deref()
-            .expect("worker results require job_id");
+        let job_id = result.job_id.as_str();
         let partitioning = Arc::new(Partitioning::messages_key_str(&result.resource_id)?);
         self.producer
             .send_with_partitioning(vec![message], Some(partitioning))

@@ -45,7 +45,7 @@ impl<P: ResultPublisher + Send + 'static, Proc: JobProcessor> MessageHandler
         });
         let processing = JobResultMessage {
             reader: Some(String::new()),
-            job_id: Some(job.job_id.clone()),
+            job_id: job.job_id.clone(),
             status: JobStatus::Processing,
             rows_processed: None,
             expected_rows: None,
@@ -133,7 +133,7 @@ mod tests {
         fn process(&self, job: JobMessage) -> JobResultMessage {
             JobResultMessage {
                 reader: Some(String::new()),
-                job_id: Some(job.job_id),
+                job_id: job.job_id,
                 status: JobStatus::Success,
                 rows_processed: Some(1),
                 expected_rows: None,

@@ -12,6 +12,9 @@ services:
     command: ["--tls=false"]
 
 variables:
+  # Immutable builder tag. Bump this together with Dockerfile.builder.dev so
+  # the prepare job publishes a new image while ordinary Rust jobs reuse cache.
+  CKAN_BUILDER_IMAGE: "$CI_REGISTRY_IMAGE/ckan-builder-dev:nightly-2026-07-01-v1"
   # Instruct Testcontainers to use the daemon of DinD, use port 2375 for non-tls connections.
   DOCKER_HOST: "tcp://docker:2375"
   # Instruct Docker not to start over TLS.
@@ -56,7 +59,7 @@ build-ckan-builder-dev:
     - |
       docker buildx build \
         --platform linux/arm64 \
-        --tag $CI_REGISTRY_IMAGE/ckan-builder-dev:latest \
+        --tag $CKAN_BUILDER_IMAGE \
         --tag $CI_REGISTRY_IMAGE/ckan-builder-dev:$CI_COMMIT_SHORT_SHA \
         --file ckan-ingestor-rs/Dockerfile.builder.dev \
         --push .
@@ -94,7 +97,7 @@ test:
 
 test-rust:
   stage: test
-  image: $CI_REGISTRY_IMAGE/ckan-builder-dev:latest
+  image: $CKAN_BUILDER_IMAGE
   tags:
     - noctcloud-k8s
   variables:

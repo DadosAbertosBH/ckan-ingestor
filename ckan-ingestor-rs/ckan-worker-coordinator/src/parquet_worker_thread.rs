@@ -39,10 +39,11 @@ impl MessageHandler for ParquetHandler {
                 .as_ref()
                 .context("successful conversion result requires artifact")?;
             let resource_id = result.resource_id.as_str();
-            let job_id = result
-                .job_id
-                .as_deref()
-                .context("successful conversion result requires job_id")?;
+            let job_id = result.job_id.as_str();
+            anyhow::ensure!(
+                !job_id.is_empty(),
+                "successful conversion result requires job_id"
+            );
             let mut failure = None;
             for attempt in 0..3 {
                 match self.registrar.register(resource_id, job_id, artifact).await {

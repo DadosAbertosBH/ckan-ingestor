@@ -53,8 +53,7 @@ pub struct JobMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JobResultMessage {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub job_id: Option<String>,
+    pub job_id: String,
     pub status: JobStatus,
     pub resource_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -122,7 +121,7 @@ impl JobResultMessage {
         instance_id: impl Into<String>,
     ) -> Self {
         Self {
-            job_id: Some(job_id.into()),
+            job_id: job_id.into(),
             status: JobStatus::Pending,
             resource_id: resource_id.into(),
             dataset_name: Some(dataset_name.into()),
@@ -153,7 +152,7 @@ mod artifact_tests {
     #[test]
     fn parquet_artifact_round_trips_through_the_job_result_contract() {
         let message = JobResultMessage {
-            job_id: Some("job-1".into()),
+            job_id: "job-1".into(),
             status: JobStatus::Success,
             resource_id: "resource-1".into(),
             dataset_name: None,

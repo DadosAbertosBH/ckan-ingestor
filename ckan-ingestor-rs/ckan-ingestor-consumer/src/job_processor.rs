@@ -86,7 +86,7 @@ impl JobProcessor for RealJobProcessor {
                 log::error!("Job {} failed: {}", job.job_id, truncated);
                 JobResultMessage {
                     reader: Some(String::new()),
-                    job_id: Some(job.job_id.clone()),
+                    job_id: job.job_id.clone(),
                     status: JobStatus::Failed,
                     rows_processed: None,
                     expected_rows: None,
@@ -118,7 +118,7 @@ fn job_result_from_success(
     artifact: ckan_ingestor_worker_lib::ParquetArtifact,
 ) -> JobResultMessage {
     JobResultMessage {
-        job_id: Some(job_id),
+        job_id,
         reader: Some(outcome.reader),
         status: JobStatus::Success,
         rows_processed: i64::try_from(outcome.rows_processed).ok(),
@@ -205,7 +205,7 @@ fn job_result_from_failure(
     failed: ckan_ingestor_lib::readers::ckan_reader::FailedResult,
 ) -> JobResultMessage {
     JobResultMessage {
-        job_id: Some(job_id.into()),
+        job_id: job_id.into(),
         status: JobStatus::Failed,
         resource_id: resource_id.into(),
         dataset_name: None,
