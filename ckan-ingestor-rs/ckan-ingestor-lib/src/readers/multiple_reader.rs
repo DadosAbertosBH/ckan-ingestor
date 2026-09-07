@@ -84,8 +84,8 @@ impl CkanReader for MultipleReader<'_> {
 mod tests {
     use std::sync::Arc;
 
-    use crate::arrow_ipc_output::ArrowIpcOutput;
-    use duckdb::arrow::{
+    use crate::parquet_output::ParquetOutput;
+    use arrow::{
         array::{ArrayRef, StringArray},
         datatypes::{DataType, Field, Schema},
         record_batch::RecordBatch,
@@ -99,12 +99,12 @@ mod tests {
         returns_data: bool,
     }
 
-    fn output(batches: &[RecordBatch]) -> ArrowIpcOutput {
-        let mut output = ArrowIpcOutput::try_new(&batches[0]).expect("valid IPC output");
+    fn output(batches: &[RecordBatch]) -> ParquetOutput {
+        let mut output = ParquetOutput::try_new(&batches[0]).expect("valid Parquet output");
         for batch in batches {
-            output.write(batch).expect("write IPC batch");
+            output.write(batch).expect("write Parquet batch");
         }
-        output.finish().expect("finish IPC output");
+        output.finish().expect("finish Parquet output");
         output
     }
 

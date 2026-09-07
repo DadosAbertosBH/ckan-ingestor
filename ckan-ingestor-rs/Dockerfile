@@ -4,7 +4,7 @@
 # --- Chef: compute a dependency recipe so deps can be cached as a real
 # image layer (survives --cache-to type=registry), unlike --mount=type=cache
 # which is ephemeral and is reset on every CI runner.
-FROM rust:1.97.1-slim-trixie AS chef
+FROM rustlang/rust:nightly-slim AS chef
 RUN cargo install cargo-chef --locked --version 0.1.71
 WORKDIR /src
 

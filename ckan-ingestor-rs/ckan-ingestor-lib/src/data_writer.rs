@@ -7,16 +7,11 @@
 // by the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-pub mod fetcher;
-pub mod models;
+use anyhow::Result;
 
-mod ckan_schemas;
-mod duckdb;
-mod ingestor;
-mod ipc;
-mod package_processing;
+use crate::parquet_output::ParquetOutput;
 
-pub use fetcher::CkanDatasetFetcher;
-pub use ingestor::DuckdbCkanMetadataIngestor;
-pub use ipc::StructuredIpc;
-pub use models::{MetadataSyncCommand, MetadataSyncResult};
+#[allow(async_fn_in_trait)]
+pub trait DataWriter {
+    async fn ingest(&self, resource_id: &str, parquet: &ParquetOutput) -> Result<()>;
+}

@@ -3,35 +3,36 @@ name = "ckan_ingestor_lib"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["ducklake-backend"]
+ducklake-backend = ["dep:ducklake", "dep:object_store", "dep:tokio", "dep:url"]
+
 [dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"] }
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 anyhow = "1.0"
-arrow = { version = "58.4.0", features = ["ipc"] }
-arrow-csv = "58.4.0"
-arrow-json = "58.4.0"
-arrow-ipc = "58.4.0"
-duckdb = "1.5.5"
+arrow = "=59.2.0"
+arrow-csv = "=59.2.0"
+arrow-json = "=59.2.0"
+arrow-ipc = "=59.2.0"
+parquet = { version = "=59.2.0", features = ["arrow"] }
 uuid = { version = "1.17.0", features = ["v4"] }
 bytes = "1.10"
-libduckdb-sys = "1.5.5"
 rust-s3 = { version = "0.37", default-features = false, features = ["sync-rustls-tls"] }
 csv-nose = { git = "https://github.com/guitcastro/csv-nose.git", branch = "fix/reduce-dialect-scoring-memory" }
 flate2 = "1"
 encoding_rs = "0.8"
 encoding_rs_io = "0.1"
 regex = "1"
-datafusion = "54"
-datafusion-ducklake = { version = "0.7", default-features = false, features = ["write-postgres", "tls-rustls-ring"] }
-object_store = { version = "0.13", features = ["aws"] }
-url = "2"
-futures = "0.3"
+ducklake = { version = "=0.0.16", default-features = false, features = ["aws", "postgres", "sqlite"], optional = true }
+object_store = { version = "=0.13.2", default-features = false, features = ["aws", "fs"], optional = true }
+tokio = { version = "1.0", features = ["fs", "io-util", "macros", "rt", "sync"], optional = true }
+url = { version = "2", optional = true }
 
 [dev-dependencies]
 httpmock = "0.7"
-tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "macros"] }
 rstest = "0.26.1"
 wiremock = "0.6.5"
 testcontainers = { version = "0.28", features = ["blocking"] }

@@ -7,6 +7,7 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
+use anyhow::Context;
 use ckan_ingestor_worker_lib::{BrokerMessage, ConsumerWorker, MessageHandler};
 
 use crate::job_processor::JobProcessor;
@@ -67,8 +68,12 @@ impl<P: ResultPublisher + Send + 'static, Proc: JobProcessor> MessageHandler
             .publish(processing)
             .await
             .expect("failed to publish PROCESSING");
+        let processor = self.processor.clone();
+        let result = tokio::task::spawn_blocking(move || processor.process(job))
+            .await
+            .context("job processor panicked")?;
         self.publisher
-            .publish(self.processor.process(job))
+            .publish(result)
             .await
             .expect("failed to publish terminal result");
         Ok(())
@@ -110,11 +115,18 @@ mod tests {
     use crate::job_processor::JobProcessor;
     use crate::message_source::{BrokerMessage, tests::MockSource};
     use crate::result_publisher::tests::MockPublisher;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
     use tokio::sync::mpsc;
 
     #[derive(Clone)]
     struct StubProcessor;
+
+    #[derive(Clone)]
+    struct RuntimeBlockingProcessor {
+        processed: Arc<AtomicBool>,
+    }
 
     impl JobProcessor for StubProcessor {
         fn process(&self, job: JobMessage) -> JobResultMessage {
@@ -139,6 +151,18 @@ mod tests {
                 error_message: None,
                 preview: None,
             }
+        }
+    }
+
+    impl JobProcessor for RuntimeBlockingProcessor {
+        fn process(&self, job: JobMessage) -> JobResultMessage {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {});
+            self.processed.store(true, Ordering::SeqCst);
+            StubProcessor.process(job)
         }
     }
 
@@ -187,5 +211,36 @@ mod tests {
             .map(|message| message.status)
             .collect();
         assert_eq!(statuses, vec![JobStatus::Processing, JobStatus::Success]);
+    }
+
+    #[test]
+    fn processes_jobs_outside_the_message_runtime() {
+        let (tx, rx) = mpsc::channel(1);
+        tx.blocking_send(BrokerMessage {
+            payload: job_payload(),
+            partition: 3,
+            offset: 42,
+        })
+        .unwrap();
+        let source = MockSource::new(rx);
+        let committed = source.committed.clone();
+        let processed = Arc::new(AtomicBool::new(false));
+        let processor = RuntimeBlockingProcessor {
+            processed: processed.clone(),
+        };
+        let mut worker =
+            WorkerThread::new("jobs".into(), 0, source, MockPublisher::new(), processor);
+        worker.run();
+
+        for _ in 0..100 {
+            if committed.lock().unwrap().len() == 1 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        worker.shutdown();
+
+        assert!(processed.load(Ordering::SeqCst));
+        assert_eq!(*committed.lock().unwrap(), vec![(3, 42)]);
     }
 }

@@ -16,8 +16,8 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
 use ckan_ingestor_lib::ckan_resource::CkanResource;
-use ckan_ingestor_lib::datafusion_ckan_data_ingestor::DatafusionCkanDataIngestor;
-use ckan_ingestor_lib::datafusion_ducklake_factory::DatafusionDucklakeFactory;
+use ckan_ingestor_lib::data_ingestor::DataIngestor;
+use ckan_ingestor_lib::ducklake_factory::DucklakeFactory;
 use ckan_ingestor_lib::readers::csv_reader::CsvReader;
 use ckan_ingestor_lib::readers::datastore_reader::DatastoreReader;
 use ckan_ingestor_lib::readers::document_reader::DocumentReader;
@@ -49,13 +49,13 @@ pub trait JobProcessor: Clone + Send + 'static {
 
 pub struct RealJobProcessor {
     s3: S3DocumentIngestor,
-    factory: DatafusionDucklakeFactory,
+    factory: DucklakeFactory,
     runtime: Arc<Runtime>,
 }
 
 impl RealJobProcessor {
-    pub fn new(s3: S3DocumentIngestor, factory: DatafusionDucklakeFactory) -> anyhow::Result<Self> {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
+    pub fn new(s3: S3DocumentIngestor, factory: DucklakeFactory) -> anyhow::Result<Self> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
         Ok(Self {
@@ -152,7 +152,7 @@ fn job_result_from_outcome(
 
 fn run_ingestion(
     runtime: &Runtime,
-    factory: &DatafusionDucklakeFactory,
+    factory: &DucklakeFactory,
     job: &JobMessage,
     s3: &S3DocumentIngestor,
 ) -> Result<ckan_ingestor_lib::ingestor_outcome::IngestionOutcome, anyhow::Error> {
@@ -180,8 +180,10 @@ fn run_ingestion(
         Box::new(JsonReader::with_client(http_client)),
         Box::new(DocumentReader::new(s3)),
     ]);
-    let ingestor = DatafusionCkanDataIngestor::new(factory, &reader);
-    Ok(runtime.block_on(ingestor.ingest_ckan_data(&resource)))
+    runtime.block_on(async {
+        let ingestor = DataIngestor::new(factory.writer().await?, &reader);
+        Ok(ingestor.ingest_ckan_data(&resource).await)
+    })
 }
 
 #[cfg(test)]

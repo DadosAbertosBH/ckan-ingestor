@@ -22,6 +22,7 @@ use ckan_ingestor_lib::readers::csv_reader::CsvReader;
 use common::fixture_path;
 use flate2::{write::GzEncoder, Compression};
 use httpmock::{Method::GET, MockServer};
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -245,14 +246,13 @@ fn parses_numeric_columns_with_whitespace_padded_dash_as_null() -> Result<()> {
 
     assert_eq!(result.rows_processed, 52);
     assert_eq!(result.number_of_columns, 19);
-    let batches: Vec<_> = arrow_ipc::reader::FileReader::try_new(
-        std::fs::File::open(result.arrow_ipc.path())?,
-        None,
-    )?
-    .collect::<std::result::Result<_, _>>()?;
+    let batches: Vec<_> =
+        ParquetRecordBatchReaderBuilder::try_new(std::fs::File::open(result.parquet.path())?)?
+            .build()?
+            .collect::<std::result::Result<_, _>>()?;
     assert_eq!(
         batches[0].schema().field(16).data_type(),
-        &duckdb::arrow::datatypes::DataType::Float64
+        &arrow::datatypes::DataType::Float64
     );
     let null_count: usize = batches
         .iter()

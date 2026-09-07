@@ -14,12 +14,12 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
-use crate::arrow_ipc_output::ArrowIpcOutput;
+use crate::parquet_output::ParquetOutput;
 use crate::readers::ckan_reader::{CkanReader, SuccessResult};
 use crate::s3_document_ingestor::S3DocumentIngestor;
 use crate::{ckan_resource::CkanResource, readers::ckan_reader::ReadResult};
 
-use duckdb::arrow::{
+use arrow::{
     array::StringArray,
     datatypes::{Field, Schema},
     record_batch::RecordBatch,
@@ -59,7 +59,7 @@ impl CkanReader for DocumentReader<'_> {
         // Criar o schema com uma coluna 'url'
         let schema = Arc::new(Schema::new(vec![Field::new(
             "url",
-            duckdb::arrow::datatypes::DataType::Utf8,
+            arrow::datatypes::DataType::Utf8,
             false,
         )]));
 
@@ -69,14 +69,11 @@ impl CkanReader for DocumentReader<'_> {
         // Criar o RecordBatch
         let batch = RecordBatch::try_new(schema, vec![Arc::new(url_array)])?;
 
-        let mut arrow_ipc = ArrowIpcOutput::try_new(&batch)?;
-        arrow_ipc.write(&batch)?;
-        arrow_ipc.finish()?;
+        let mut parquet = ParquetOutput::try_new(&batch)?;
+        parquet.write(&batch)?;
+        parquet.finish()?;
 
-        Ok(SuccessResult::new(
-            arrow_ipc,
-            self.reader_name().to_string(),
-        ))
+        Ok(SuccessResult::new(parquet, self.reader_name().to_string()))
     }
 }
 

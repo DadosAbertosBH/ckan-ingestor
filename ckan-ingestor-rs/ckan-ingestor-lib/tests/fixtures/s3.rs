@@ -71,17 +71,28 @@ pub fn s3_settings() -> (S3Settings, Container<GenericImage>) {
     {
         return (settings, container);
     }
-    let creds = Credentials::new(Some("admin"), Some("password"), None, None, None).unwrap();
-    let _ = Bucket::create_with_path_style(
-        "warehouse",
-        Region::Custom {
-            region: "us-east-1".into(),
-            endpoint: format!("http://{}", address),
-        },
-        creds,
-        BucketConfiguration::public(),
-    )
-    .expect("Failed to create RustFS bucket");
-
-    (settings, container)
+    let mut last_response = None;
+    for _ in 0..50 {
+        let creds = Credentials::new(Some("admin"), Some("password"), None, None, None).unwrap();
+        match Bucket::create_with_path_style(
+            "warehouse",
+            Region::Custom {
+                region: "us-east-1".into(),
+                endpoint: format!("http://{}", address),
+            },
+            creds,
+            BucketConfiguration::public(),
+        ) {
+            Ok(response) if response.success() || response.response_code == 409 => {
+                return (settings, container);
+            }
+            Ok(response) => last_response = Some(response.response_text),
+            Err(error) => last_response = Some(error.to_string()),
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    panic!(
+        "RustFS did not become ready to create the bucket: {}",
+        last_response.unwrap_or_default()
+    );
 }

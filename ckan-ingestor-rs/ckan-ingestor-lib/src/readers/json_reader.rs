@@ -22,8 +22,8 @@ use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::sync::Arc;
 
 use crate::{
-    arrow_ipc_output::ArrowIpcOutput,
     ckan_resource::CkanResource,
+    parquet_output::ParquetOutput,
     readers::{
         ckan_reader::{download_to_temp, CkanReader, FailedResult, ReadResult, SuccessResult},
         temp_file_cleanup::TempFileCleanup,
@@ -69,7 +69,7 @@ impl JsonReader {
         Ok(SuccessResult::new(output, self.reader_name().to_string()))
     }
 
-    fn try_read_json(&self, path: &str) -> Result<ArrowIpcOutput> {
+    fn try_read_json(&self, path: &str) -> Result<ParquetOutput> {
         match self.read_json(BufReader::new(File::open(path)?)) {
             Ok(output) => Ok(output),
             Err(line_delimited_error) => {
@@ -82,7 +82,7 @@ impl JsonReader {
         }
     }
 
-    fn read_json_document(&self, document: serde_json::Value) -> Result<ArrowIpcOutput> {
+    fn read_json_document(&self, document: serde_json::Value) -> Result<ParquetOutput> {
         let records = match document {
             serde_json::Value::Array(records) => records,
             record => vec![record],
@@ -97,11 +97,11 @@ impl JsonReader {
             decoder.serialize(records)?;
             if let Some(batch) = decoder.flush()? {
                 if output.is_none() {
-                    output = Some(ArrowIpcOutput::try_new(&batch)?);
+                    output = Some(ParquetOutput::try_new(&batch)?);
                 }
                 output
                     .as_mut()
-                    .expect("Arrow IPC output initialized")
+                    .expect("Parquet output initialized")
                     .write(&batch)?;
             }
         }
@@ -110,7 +110,7 @@ impl JsonReader {
         Ok(output)
     }
 
-    fn read_json<R: BufRead + Seek>(&self, mut schema_reader: R) -> Result<ArrowIpcOutput> {
+    fn read_json<R: BufRead + Seek>(&self, mut schema_reader: R) -> Result<ParquetOutput> {
         let (schema, _) = infer_json_schema(&mut schema_reader, None)?;
         schema_reader.seek(SeekFrom::Start(0))?;
         let schema = Arc::new(schema);
@@ -121,11 +121,11 @@ impl JsonReader {
         for batch_result in reader {
             let batch = batch_result?;
             if output.is_none() {
-                output = Some(ArrowIpcOutput::try_new(&batch)?);
+                output = Some(ParquetOutput::try_new(&batch)?);
             }
             output
                 .as_mut()
-                .expect("Arrow IPC output initialized")
+                .expect("Parquet output initialized")
                 .write(&batch)?;
         }
         let mut output = output.ok_or_else(|| anyhow::anyhow!("No data"))?;

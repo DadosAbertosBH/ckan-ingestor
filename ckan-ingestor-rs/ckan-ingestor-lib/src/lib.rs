@@ -17,13 +17,17 @@
 pub mod arrow_ipc_output;
 pub mod ckan_resource;
 pub mod config;
-pub mod datafusion_ckan_data_ingestor;
-pub mod datafusion_ducklake_factory;
+#[cfg(feature = "ducklake-backend")]
+pub mod data_ingestor;
+#[cfg(feature = "ducklake-backend")]
+pub mod data_writer;
 pub mod dataset_fetcher;
-pub mod duckdb_ckan_data_ingestor;
-pub mod duckdb_factory;
+#[cfg(feature = "ducklake-backend")]
+pub mod ducklake_data_writer;
+#[cfg(feature = "ducklake-backend")]
+pub mod ducklake_factory;
 pub mod ingestor_outcome;
-pub(crate) mod memory_profile;
+pub mod parquet_output;
 pub mod readers;
 pub mod s3_document_ingestor;
 

@@ -32,7 +32,7 @@ fn fetches_all_pages_until_a_short_page() {
             .query_param("limit", PAGE_SIZE.to_string())
             .query_param("offset", PAGE_SIZE.to_string());
         then.status(200)
-            .json_body(json!({"result": [{"id": "dataset-100"}]}));
+            .json_body(json!({"result": [{"id": format!("dataset-{PAGE_SIZE}")}]}));
     });
 
     let packages = CkanDatasetFetcher::fetch(&format!("{}/", server.base_url()))
@@ -43,7 +43,7 @@ fn fetches_all_pages_until_a_short_page() {
     first.assert();
     second.assert();
     assert_eq!(packages.len(), PAGE_SIZE + 1);
-    assert_eq!(packages[100]["id"], "dataset-100");
+    assert_eq!(packages[PAGE_SIZE]["id"], format!("dataset-{PAGE_SIZE}"));
 }
 
 #[test]

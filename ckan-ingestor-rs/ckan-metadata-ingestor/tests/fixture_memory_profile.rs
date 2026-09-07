@@ -7,7 +7,6 @@
 // by the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use ckan_ingestor_lib::duckdb_factory::{DuckdbConfig, DuckdbFactory};
 use ckan_metadata_ingestor::{DuckdbCkanMetadataIngestor, MetadataSyncCommand};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
@@ -15,6 +14,14 @@ use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::Command;
 use std::thread;
+
+fn open_in_memory_duckdb() -> duckdb::Connection {
+    let connection = duckdb::Connection::open_in_memory().unwrap();
+    connection
+        .execute_batch("INSTALL arrow FROM community; LOAD arrow;")
+        .unwrap();
+    connection
+}
 
 #[test]
 #[ignore = "profiling test; run explicitly with -- --ignored --nocapture"]
@@ -39,12 +46,7 @@ fn reports_peak_rss_for_four_consecutive_paginated_syncs() {
         .flat_map(|_| [Some(first_page.clone()), Some(second_page.clone()), None])
         .collect();
     let base_url = fixture_server_responses(responses);
-    let temp_dir = tempfile::tempdir().unwrap();
-    let factory = DuckdbFactory::new(DuckdbConfig::for_local_ducklake(
-        temp_dir.path().join("catalog.ducklake").to_string_lossy(),
-        temp_dir.path().join("data").to_string_lossy(),
-    ));
-    let conn = factory.open().unwrap();
+    let conn = open_in_memory_duckdb();
     let command = MetadataSyncCommand {
         sync_id: "memory-profile".into(),
         instance_id: "pbh".into(),
@@ -98,12 +100,7 @@ fn profile_sync(fixture_names: &[&str]) -> MemoryProfile {
         .map(|name| pbh_fixture_path(name))
         .collect::<Vec<_>>();
     let base_url = fixture_server(fixture_paths);
-    let temp_dir = tempfile::tempdir().unwrap();
-    let factory = DuckdbFactory::new(DuckdbConfig::for_local_ducklake(
-        temp_dir.path().join("catalog.ducklake").to_string_lossy(),
-        temp_dir.path().join("data").to_string_lossy(),
-    ));
-    let conn = factory.open().unwrap();
+    let conn = open_in_memory_duckdb();
     let initial_peak = peak_rss_bytes();
     let command = MetadataSyncCommand {
         sync_id: "memory-profile".into(),
