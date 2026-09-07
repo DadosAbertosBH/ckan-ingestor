@@ -1,7 +1,7 @@
 # ckan-ingestor-rs
 #
 # Development image used by the Rust GitLab CI job.
-FROM rustlang/rust:nightly-slim-2026-09-04
+FROM rustlang/rust:nightly-slim-2026-07-01
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -14,4 +14,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
     
 
-RUN rustup component add --toolchain nightly-2026-09-04-aarch64-unknown-linux-gnu rustfmt clippy rust-analyzer
+RUN rustup component add --toolchain nightly-2026-07-01-aarch64-unknown-linux-gnu rustfmt clippy rust-analyzer
