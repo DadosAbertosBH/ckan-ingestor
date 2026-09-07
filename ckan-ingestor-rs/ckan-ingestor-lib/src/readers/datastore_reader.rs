@@ -17,12 +17,12 @@
 use std::sync::Arc;
 
 use crate::{
-    arrow_ipc_output::ArrowIpcOutput,
     ckan_resource::CkanResource,
+    parquet_output::ParquetOutput,
     readers::ckan_reader::{CkanReader, FailedResult, ReadResult, SuccessResult},
 };
 use anyhow::{Context, Result};
-use duckdb::arrow::{
+use arrow::{
     array::{ArrayRef, StringArray},
     datatypes::{DataType, Field, Schema},
     record_batch::RecordBatch,
@@ -107,7 +107,7 @@ impl DatastoreReader {
     pub fn read_batches(&self, resource: &CkanResource) -> ReadResult {
         let resource_id = &resource.id;
         let mut offset = 0;
-        let mut arrow_ipc = None;
+        let mut parquet = None;
         let (rows, columns) = self.get_row_and_column_count(resource_id)?;
         loop {
             let url = format!(
@@ -134,7 +134,7 @@ impl DatastoreReader {
                 .filter_map(|field| field.get("id").and_then(Value::as_str).map(str::to_string))
                 .collect();
 
-            if arrow_ipc.is_none() {
+            if parquet.is_none() {
                 let schema = Arc::new(Schema::new(
                     column_names
                         .iter()
@@ -146,7 +146,7 @@ impl DatastoreReader {
                     .map(|_| Arc::new(StringArray::from(Vec::<String>::new())) as ArrayRef)
                     .collect();
                 let empty_batch = RecordBatch::try_new(schema, empty_arrays)?;
-                arrow_ipc = Some(ArrowIpcOutput::try_new(&empty_batch)?);
+                parquet = Some(ParquetOutput::try_new(&empty_batch)?);
             }
 
             if records.is_empty() {
@@ -170,23 +170,23 @@ impl DatastoreReader {
                 .into_iter()
                 .map(|column| Arc::new(StringArray::from(column)) as ArrayRef)
                 .collect();
-            let schema = arrow_ipc
+            let schema = parquet
                 .as_ref()
-                .expect("Arrow IPC output initialized")
-                .writer
-                .schema();
-            let batch = RecordBatch::try_new(schema.clone(), arrays)?;
-            arrow_ipc
+                .expect("Parquet output initialized")
+                .schema
+                .clone();
+            let batch = RecordBatch::try_new(schema, arrays)?;
+            parquet
                 .as_mut()
-                .expect("Arrow IPC output initialized")
+                .expect("Parquet output initialized")
                 .write(&batch)?;
             offset += MAX_RECORDS_FETCH;
         }
 
-        let mut arrow_ipc = arrow_ipc.ok_or_else(|| anyhow::anyhow!("No data"))?;
-        arrow_ipc.finish()?;
+        let mut parquet = parquet.ok_or_else(|| anyhow::anyhow!("No data"))?;
+        parquet.finish()?;
         Ok(SuccessResult::from_datastore(
-            arrow_ipc,
+            parquet,
             rows,
             columns,
             self.reader_name().to_string(),

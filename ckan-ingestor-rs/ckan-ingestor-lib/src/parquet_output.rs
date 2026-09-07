@@ -18,26 +18,26 @@
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
-use arrow::{array::RecordBatch, datatypes::SchemaRef, error::ArrowError};
-use arrow_ipc::writer::FileWriter;
+use arrow::{array::RecordBatch, datatypes::SchemaRef};
+use parquet::{arrow::ArrowWriter, errors::ParquetError};
 
 const PREVIEW_MAX_VALUE_LEN: usize = 1000;
 const PREVIEW_MAX_ROWS: usize = 5;
 
-pub struct ArrowIpcOutput {
+pub struct ParquetOutput {
     path: PathBuf,
     pub schema: SchemaRef,
-    pub writer: FileWriter<File>,
+    pub writer: ArrowWriter<File>,
     pub rows: usize,
     pub columns: usize,
     pub preview: Option<Vec<serde_json::Value>>,
 }
 
-impl ArrowIpcOutput {
-    pub fn try_new(batch: &RecordBatch) -> Result<Self, ArrowError> {
-        let path = std::env::temp_dir().join(format!("{}.arrow", uuid::Uuid::new_v4()));
+impl ParquetOutput {
+    pub fn try_new(batch: &RecordBatch) -> Result<Self, ParquetError> {
+        let path = std::env::temp_dir().join(format!("{}.parquet", uuid::Uuid::new_v4()));
         let file = File::create(&path)?;
-        let writer = FileWriter::try_new(file, &batch.schema())?;
+        let writer = ArrowWriter::try_new(file, batch.schema(), None)?;
         Ok(Self {
             path,
             schema: batch.schema(),
@@ -52,7 +52,7 @@ impl ArrowIpcOutput {
         &self.path
     }
 
-    pub fn write(&mut self, batch: &RecordBatch) -> Result<(), ArrowError> {
+    pub fn write(&mut self, batch: &RecordBatch) -> Result<(), ParquetError> {
         self.writer.write(batch)?;
         if self.preview.is_none() {
             self.preview = Some(Self::generate_preview(batch));
@@ -62,7 +62,7 @@ impl ArrowIpcOutput {
         Ok(())
     }
 
-    pub fn finish(&mut self) -> Result<(), ArrowError> {
+    pub fn finish(&mut self) -> Result<(), ParquetError> {
         self.writer.finish()?;
         Ok(())
     }
@@ -102,11 +102,18 @@ impl ArrowIpcOutput {
     }
 }
 
+impl Drop for ParquetOutput {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use arrow::array::{Int32Array, RecordBatch};
     use arrow::datatypes::{DataType, Field, Schema};
+    use parquet::file::reader::{FileReader as _, SerializedFileReader};
     use std::sync::Arc;
 
     #[test]
@@ -118,7 +125,7 @@ mod tests {
         )]));
         let batch = RecordBatch::try_new(schema, vec![Arc::new(Int32Array::from(vec![1]))])
             .expect("valid record batch");
-        let mut output = ArrowIpcOutput::try_new(&batch).expect("valid IPC output");
+        let mut output = ParquetOutput::try_new(&batch).expect("valid Parquet output");
 
         output.write(&batch).expect("first batch should write");
         output.write(&batch).expect("second batch should write");
@@ -126,10 +133,23 @@ mod tests {
         assert_eq!(output.rows, 2);
         assert_eq!(output.columns, 1);
     }
-}
 
-impl Drop for ArrowIpcOutput {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+    #[test]
+    fn output_is_a_valid_parquet_file() {
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "value",
+            DataType::Int32,
+            false,
+        )]));
+        let batch = RecordBatch::try_new(schema, vec![Arc::new(Int32Array::from(vec![1]))])
+            .expect("valid record batch");
+        let mut output = ParquetOutput::try_new(&batch).expect("valid output");
+        output.write(&batch).expect("write batch");
+        output.finish().expect("finish output");
+
+        let reader = SerializedFileReader::new(File::open(output.path()).unwrap());
+
+        assert!(reader.is_ok(), "reader output must be Parquet");
+        assert_eq!(reader.unwrap().metadata().file_metadata().num_rows(), 1);
     }
 }

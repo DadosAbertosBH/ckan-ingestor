@@ -15,7 +15,7 @@ pub mod worker_thread;
 
 use anyhow::{Context, Result};
 use ckan_ingestor_lib::config::S3Settings;
-use ckan_ingestor_lib::datafusion_ducklake_factory::DatafusionDucklakeFactory;
+use ckan_ingestor_lib::ducklake_factory::DucklakeFactory;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
 use iggy::prelude::{
     AutoCommit, Client, CompressionAlgorithm, DirectConfig, IggyClient, IggyDuration, IggyExpiry,
@@ -111,7 +111,7 @@ pub async fn run() -> Result<()> {
     let publisher = IggyResultPublisher::new(result_producer);
 
     let s3 = create_s3_ingestor().await?;
-    let processor = RealJobProcessor::new(s3, DatafusionDucklakeFactory::from_env()?)?;
+    let processor = RealJobProcessor::new(s3, DucklakeFactory::from_env()?)?;
     let mut workers = Vec::with_capacity((settings.partitions * 2) as usize);
 
     for topic in [&settings.job_topic, &settings.retry_topic] {

@@ -16,6 +16,7 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
 use anyhow::Result;
+use arrow::datatypes::DataType;
 use ckan_ingestor_lib::ckan_resource::CkanResource;
 use ckan_ingestor_lib::readers::ckan_reader::CkanReader;
 use ckan_ingestor_lib::readers::json_reader::JsonReader;
@@ -75,6 +76,31 @@ fn reads_regular_json_array() -> Result<()> {
     assert_eq!(result.rows_processed, 2);
     assert_eq!(result.number_of_columns, 2);
     assert_eq!(result.preview[1]["name"], "Bia");
+    Ok(())
+}
+
+#[test]
+fn represents_all_null_json_columns_as_utf8() -> Result<()> {
+    let path = std::env::temp_dir().join(format!(
+        "ckan-ingestor-null-json-reader-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(&path, r#"[{"name":null}]"#)?;
+    let resource = CkanResource {
+        id: "null-json-resource".to_string(),
+        url: path.to_string_lossy().to_string(),
+        format: "JSON".to_string(),
+        datastore_active: false,
+    };
+
+    let result = JsonReader::new().read(&resource);
+    std::fs::remove_file(&path)?;
+    let result = result?;
+
+    assert_eq!(
+        result.parquet.schema.field_with_name("name")?.data_type(),
+        &DataType::Utf8
+    );
     Ok(())
 }
 

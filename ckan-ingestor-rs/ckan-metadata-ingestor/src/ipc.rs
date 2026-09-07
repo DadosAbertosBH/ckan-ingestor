@@ -7,16 +7,14 @@
 // by the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
+use crate::ckan_schemas::{PACKAGE_SCHEMA, RESOURCE_SCHEMA};
 use crate::fetcher::CkanPackageStream;
 use crate::package_processing::{drop_empty_list_columns, extract_resources, validate_list_shapes};
 use anyhow::{Context, Result};
-use arrow::datatypes::{DataType, Field, Schema};
-use arrow_json::{ReaderBuilder, reader::infer_json_schema_from_iterator};
+use arrow_json::ReaderBuilder;
 use ckan_ingestor_lib::arrow_ipc_output::ArrowIpcOutput;
 use serde_json::Value;
 use std::path::Path;
-
-const NOTES: &str = "notes";
 
 /// Typed Arrow IPC files derived from one CKAN package stream.
 pub struct StructuredIpc {
@@ -48,9 +46,7 @@ impl StructuredIpc {
         I: IntoIterator<Item = Result<Vec<Value>>>,
     {
         let mut package_output = None;
-        let mut package_schema = None;
         let mut resource_output = None;
-        let mut resource_schema = None;
         let mut package_count = 0;
         for page in pages {
             let mut package_rows = page?;
@@ -62,9 +58,7 @@ impl StructuredIpc {
                 &mut package_rows,
                 instance_url,
                 &mut package_output,
-                &mut package_schema,
                 &mut resource_output,
-                &mut resource_schema,
             )?;
         }
         if package_count == 0 {
@@ -107,20 +101,13 @@ fn write_normalized_batch(
     package_rows: &mut Vec<Value>,
     instance_url: &str,
     package_output: &mut Option<ArrowIpcOutput>,
-    package_schema: &mut Option<std::sync::Arc<Schema>>,
     resource_output: &mut Option<ArrowIpcOutput>,
-    resource_schema: &mut Option<std::sync::Arc<Schema>>,
 ) -> Result<()> {
-    for package in package_rows.iter_mut() {
-        if let Some(object) = package.as_object_mut() {
-            object.remove("extras");
-        }
-    }
     drop_empty_list_columns(package_rows);
     validate_list_shapes(package_rows)?;
     let resource_rows = extract_resources(package_rows, instance_url);
-    write_values(package_rows, package_output, package_schema)?;
-    write_values(&resource_rows, resource_output, resource_schema)?;
+    write_values(package_rows, package_output, &PACKAGE_SCHEMA)?;
+    write_values(&resource_rows, resource_output, &RESOURCE_SCHEMA)?;
     package_rows.clear();
     Ok(())
 }
@@ -128,15 +115,11 @@ fn write_normalized_batch(
 fn write_values(
     values: &[Value],
     output: &mut Option<ArrowIpcOutput>,
-    schema: &mut Option<std::sync::Arc<Schema>>,
+    schema: &std::sync::Arc<arrow::datatypes::Schema>,
 ) -> Result<()> {
     if values.is_empty() {
         return Ok(());
     }
-    if schema.is_none() {
-        *schema = Some(std::sync::Arc::new(infer_schema(values)?));
-    }
-    let schema = schema.as_ref().context("Arrow schema initialized")?;
     let mut decoder = ReaderBuilder::new(std::sync::Arc::clone(schema))
         .with_batch_size(values.len())
         .with_strict_mode(true)
@@ -154,28 +137,6 @@ fn write_values(
         .context("Arrow IPC output initialized")?
         .write(&batch)?;
     Ok(())
-}
-
-fn infer_schema(values: &[Value]) -> Result<Schema> {
-    let inferred_schema =
-        infer_json_schema_from_iterator(values.iter().map(Ok::<_, arrow::error::ArrowError>))?;
-    let fields = inferred_schema
-        .fields
-        .iter()
-        .map(|field| {
-            let field = field.as_ref().clone();
-            if field.name() == NOTES {
-                Field::new(NOTES, DataType::Utf8, true)
-            } else {
-                field
-            }
-        })
-        .collect::<Vec<_>>();
-    let mut fields = fields;
-    if !fields.iter().any(|field| field.name() == NOTES) {
-        fields.push(Field::new(NOTES, DataType::Utf8, true));
-    }
-    Ok(Schema::new_with_metadata(fields, inferred_schema.metadata))
 }
 
 fn finish_output(mut output: ArrowIpcOutput) -> Result<ArrowIpcOutput> {

@@ -5,10 +5,10 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0"
-arrow = "58.4.0"
-arrow-ipc = "58.4.0"
-arrow-json = "58.4.0"
-ckan_ingestor_lib = { path = "../ckan-ingestor-lib" }
+arrow = "=59.2.0"
+arrow-ipc = "=59.2.0"
+arrow-json = "=59.2.0"
+ckan_ingestor_lib = { path = "../ckan-ingestor-lib", default-features = false }
 duckdb = "1.5.5"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }

@@ -16,14 +16,15 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
 use anyhow::Result;
+use arrow::datatypes::{DataType, Field, Schema};
 use arrow_json::reader::{infer_json_schema, infer_json_schema_from_iterator, ReaderBuilder};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::sync::Arc;
 
 use crate::{
-    arrow_ipc_output::ArrowIpcOutput,
     ckan_resource::CkanResource,
+    parquet_output::ParquetOutput,
     readers::{
         ckan_reader::{download_to_temp, CkanReader, FailedResult, ReadResult, SuccessResult},
         temp_file_cleanup::TempFileCleanup,
@@ -69,7 +70,7 @@ impl JsonReader {
         Ok(SuccessResult::new(output, self.reader_name().to_string()))
     }
 
-    fn try_read_json(&self, path: &str) -> Result<ArrowIpcOutput> {
+    fn try_read_json(&self, path: &str) -> Result<ParquetOutput> {
         match self.read_json(BufReader::new(File::open(path)?)) {
             Ok(output) => Ok(output),
             Err(line_delimited_error) => {
@@ -82,14 +83,14 @@ impl JsonReader {
         }
     }
 
-    fn read_json_document(&self, document: serde_json::Value) -> Result<ArrowIpcOutput> {
+    fn read_json_document(&self, document: serde_json::Value) -> Result<ParquetOutput> {
         let records = match document {
             serde_json::Value::Array(records) => records,
             record => vec![record],
         };
         let schema =
             infer_json_schema_from_iterator(records.iter().map(Ok::<_, arrow::error::ArrowError>))?;
-        let mut decoder = ReaderBuilder::new(Arc::new(schema))
+        let mut decoder = ReaderBuilder::new(Arc::new(normalize_null_fields(schema)))
             .with_batch_size(8192)
             .build_decoder()?;
         let mut output = None;
@@ -97,11 +98,11 @@ impl JsonReader {
             decoder.serialize(records)?;
             if let Some(batch) = decoder.flush()? {
                 if output.is_none() {
-                    output = Some(ArrowIpcOutput::try_new(&batch)?);
+                    output = Some(ParquetOutput::try_new(&batch)?);
                 }
                 output
                     .as_mut()
-                    .expect("Arrow IPC output initialized")
+                    .expect("Parquet output initialized")
                     .write(&batch)?;
             }
         }
@@ -110,10 +111,10 @@ impl JsonReader {
         Ok(output)
     }
 
-    fn read_json<R: BufRead + Seek>(&self, mut schema_reader: R) -> Result<ArrowIpcOutput> {
+    fn read_json<R: BufRead + Seek>(&self, mut schema_reader: R) -> Result<ParquetOutput> {
         let (schema, _) = infer_json_schema(&mut schema_reader, None)?;
         schema_reader.seek(SeekFrom::Start(0))?;
-        let schema = Arc::new(schema);
+        let schema = Arc::new(normalize_null_fields(schema));
         let reader = ReaderBuilder::new(schema)
             .with_batch_size(8192)
             .build(schema_reader)?;
@@ -121,17 +122,33 @@ impl JsonReader {
         for batch_result in reader {
             let batch = batch_result?;
             if output.is_none() {
-                output = Some(ArrowIpcOutput::try_new(&batch)?);
+                output = Some(ParquetOutput::try_new(&batch)?);
             }
             output
                 .as_mut()
-                .expect("Arrow IPC output initialized")
+                .expect("Parquet output initialized")
                 .write(&batch)?;
         }
         let mut output = output.ok_or_else(|| anyhow::anyhow!("No data"))?;
         output.finish()?;
         Ok(output)
     }
+}
+
+fn normalize_null_fields(schema: Schema) -> Schema {
+    let metadata = schema.metadata;
+    let fields = schema
+        .fields
+        .into_iter()
+        .map(|field| {
+            let data_type = match field.data_type() {
+                DataType::Null => DataType::Utf8,
+                data_type => data_type.clone(),
+            };
+            Field::new(field.name(), data_type, field.is_nullable())
+        })
+        .collect::<Vec<_>>();
+    Schema::new_with_metadata(fields, metadata)
 }
 
 impl Default for JsonReader {

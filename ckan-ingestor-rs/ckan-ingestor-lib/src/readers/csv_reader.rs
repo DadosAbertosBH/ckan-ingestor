@@ -1,4 +1,4 @@
-use crate::arrow_ipc_output::ArrowIpcOutput;
+use crate::parquet_output::ParquetOutput;
 // ckan-ingestor-rs
 //
 // This file is part of ckan-ingestor-rs.
@@ -84,13 +84,13 @@ impl CsvReader {
             metadata.encoding.name,
             metadata.dialect.header.num_preamble_rows,
         )?;
-        let (arrow_ipc, strict_mode) = match try_read_csv(&csv_path, &metadata, true) {
+        let (parquet, strict_mode) = match try_read_csv(&csv_path, &metadata, true) {
             Ok(batches) => (batches, !has_mixed_line_endings),
             Err(_) => (try_read_csv(&csv_path, &metadata, false)?, false),
         };
 
         Ok(SuccessResult::from_csv(
-            arrow_ipc,
+            parquet,
             encoding,
             strict_mode,
             csv_delimiter,
@@ -118,7 +118,7 @@ fn stream_download(reader: &mut impl Read, writer: &mut impl Write) -> io::Resul
     io::copy(reader, writer)
 }
 
-fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<ArrowIpcOutput> {
+fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<ParquetOutput> {
     let dialect = &metadata.dialect;
     let format = Format::default()
         .with_header(dialect.header.has_header_row)
@@ -146,21 +146,21 @@ fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<Ar
         .with_batch_size(32_768)
         .build(reader)?;
 
-    let mut arrow_ipc = None;
+    let mut parquet = None;
     for batch_result in csv_reader {
         let batch = batch_result?;
-        if arrow_ipc.is_none() {
-            arrow_ipc = Some(ArrowIpcOutput::try_new(&batch)?);
+        if parquet.is_none() {
+            parquet = Some(ParquetOutput::try_new(&batch)?);
         }
 
-        arrow_ipc
+        parquet
             .as_mut()
-            .expect("Arrow IPC output initialized")
+            .expect("Parquet output initialized")
             .write(&batch)?;
     }
-    let mut arrow_ipc = arrow_ipc.ok_or_else(|| anyhow::anyhow!("No data"))?;
-    arrow_ipc.finish()?;
-    Ok(arrow_ipc)
+    let mut parquet = parquet.ok_or_else(|| anyhow::anyhow!("No data"))?;
+    parquet.finish()?;
+    Ok(parquet)
 }
 
 fn sniff_metadata(path: &str, delimiter_hint: Option<&str>) -> Result<Metadata> {
@@ -372,6 +372,7 @@ mod tests {
 
     #[test]
     fn csv_reader_api_stays_within_a_bounded_memory_amplification() -> Result<()> {
+        let _memory_guard = crate::test_alloc::memory_intensive_test_guard();
         let path = std::env::temp_dir().join(format!(
             "csv-sniff-memory-test-{}.csv",
             uuid::Uuid::new_v4()

@@ -7,9 +7,10 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use ckan_ingestor_lib::duckdb_factory::DuckdbFactory;
 use ckan_metadata_ingestor::{DuckdbCkanMetadataIngestor, MetadataSyncCommand, MetadataSyncResult};
 use duckdb::Connection;
+
+use crate::duckdb_factory::DuckdbFactory;
 
 #[derive(Debug, Clone)]
 pub struct ResourceCandidate {

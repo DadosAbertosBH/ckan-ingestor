@@ -8,16 +8,15 @@
 // (at your option) any later version.
 
 use anyhow::Result;
-use ckan_ingestor_lib::duckdb_factory::{DuckdbConfig, DuckdbFactory};
-use ckan_metadata_ingestor::{DuckdbCkanMetadataIngestor, MetadataSyncCommand, MetadataSyncResult};
+use ckan_metadata_ingestor::{
+    DuckdbCkanMetadataIngestor, MetadataSyncCommand, MetadataSyncResult, fetcher::PAGE_SIZE,
+};
 use duckdb::Connection as DuckdbConnection;
 use httpmock::MockServer;
 use serde_json::{Value, json};
 use std::ops::Deref;
-use tempfile::TempDir;
 
 struct TestDatabase {
-    _temp_dir: TempDir,
     connection: DuckdbConnection,
 }
 
@@ -33,15 +32,9 @@ struct Connection;
 
 impl Connection {
     fn open_in_memory() -> Result<TestDatabase> {
-        let temp_dir = tempfile::tempdir()?;
-        let factory = DuckdbFactory::new(DuckdbConfig::for_local_ducklake(
-            temp_dir.path().join("catalog.ducklake").to_string_lossy(),
-            temp_dir.path().join("data").to_string_lossy(),
-        ));
-        Ok(TestDatabase {
-            connection: factory.open()?,
-            _temp_dir: temp_dir,
-        })
+        let connection = DuckdbConnection::open_in_memory()?;
+        connection.execute_batch("INSTALL arrow FROM community; LOAD arrow;")?;
+        Ok(TestDatabase { connection })
     }
 }
 
@@ -63,7 +56,7 @@ impl TestIngest for DuckdbCkanMetadataIngestor<'_> {
         let request = server.mock(|when, then| {
             when.method("GET")
                 .path("/api/action/current_package_list_with_resources")
-                .query_param("limit", "100")
+                .query_param("limit", PAGE_SIZE.to_string())
                 .query_param("offset", "0");
             then.status(200).json_body(json!({"result": packages}));
         });
@@ -275,7 +268,7 @@ fn scalar_type_conflicts_are_promoted_to_varchar() {
 }
 
 #[test]
-fn rich_extras_are_ignored_and_legacy_json_column_is_preserved() {
+fn rich_extras_are_preserved_and_legacy_json_column_is_promoted_to_varchar() {
     let conn = Connection::open_in_memory().unwrap();
     conn.execute_batch("CREATE TABLE ckan_dataset AS SELECT 'old' AS id, 'old' AS name, '2024-01-01' AS metadata_modified, '[]'::JSON AS extras").unwrap();
     let ingestor = DuckdbCkanMetadataIngestor::new(&conn);
@@ -293,12 +286,12 @@ fn rich_extras_are_ignored_and_legacy_json_column_is_preserved() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(data_type, "JSON");
+    assert_eq!(data_type, "VARCHAR");
     assert_eq!(result.new_datasets, 1);
 }
 
 #[test]
-fn missing_fields_and_empty_lists_are_accepted_across_rows() {
+fn missing_static_fields_and_empty_lists_are_accepted_across_rows() {
     let conn = Connection::open_in_memory().unwrap();
     let ingestor = DuckdbCkanMetadataIngestor::new(&conn);
     let mut first = package("ds-1", "2024-01-01", "res-1", "2024-01-01");
@@ -314,7 +307,7 @@ fn missing_fields_and_empty_lists_are_accepted_across_rows() {
     second
         .as_object_mut()
         .unwrap()
-        .insert("optional".into(), json!("present"));
+        .insert("author".into(), json!("CKAN team"));
 
     let result = ingestor
         .ingest_packages(&command(), vec![first, second])
@@ -323,7 +316,7 @@ fn missing_fields_and_empty_lists_are_accepted_across_rows() {
     assert_eq!(result.new_datasets, 2);
     let null_count: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM ckan_dataset WHERE optional IS NULL",
+            "SELECT COUNT(*) FROM ckan_dataset WHERE author IS NULL",
             [],
             |row| row.get(0),
         )
@@ -332,7 +325,7 @@ fn missing_fields_and_empty_lists_are_accepted_across_rows() {
 }
 
 #[test]
-fn columns_containing_only_empty_or_null_lists_are_dropped() {
+fn stable_list_columns_are_preserved_when_empty_or_null() {
     let conn = Connection::open_in_memory().unwrap();
     let ingestor = DuckdbCkanMetadataIngestor::new(&conn);
     let mut first = package("ds-1", "2024-01-01", "res-1", "2024-01-01");
@@ -357,7 +350,7 @@ fn columns_containing_only_empty_or_null_lists_are_dropped() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(group_columns, 0);
+    assert_eq!(group_columns, 1);
 }
 
 #[test]
@@ -393,10 +386,7 @@ fn transaction_rolls_back_dataset_changes_when_resource_merge_fails() {
         )
         .unwrap();
     let mut invalid = package("ds-2", "2025-01-01", "res-2", "2025-01-01");
-    invalid["resources"][0]
-        .as_object_mut()
-        .unwrap()
-        .remove("last_modified");
+    invalid["resources"][0]["id"] = json!({"invalid": "resource identifier"});
 
     assert!(ingestor.ingest_packages(&command(), vec![invalid]).is_err());
     let dataset_count: i64 = conn

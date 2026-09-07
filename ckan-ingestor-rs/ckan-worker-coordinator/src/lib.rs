@@ -7,6 +7,7 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
+pub mod duckdb_factory;
 pub mod job_planner;
 pub mod job_publisher;
 pub mod job_repository;
@@ -15,8 +16,8 @@ pub mod metadata_publisher;
 pub mod metadata_worker_thread;
 pub mod mysql_job_repository;
 
+use crate::duckdb_factory::DuckdbFactory;
 use anyhow::{Context, Result};
-use ckan_ingestor_lib::duckdb_factory::DuckdbFactory;
 use iggy::prelude::{
     AutoCommit, Client, CompressionAlgorithm, DirectConfig, IggyClient, IggyDuration, IggyExpiry,
     MaxTopicSize, PollingStrategy, StreamClient, TopicClient,

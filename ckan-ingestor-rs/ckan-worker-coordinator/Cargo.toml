@@ -8,7 +8,7 @@ name = "ckan-worker-coordinator"
 path = "src/main.rs"
 
 [dependencies]
-ckan_ingestor_lib = { path = "../ckan-ingestor-lib" }
+ckan_ingestor_lib = { path = "../ckan-ingestor-lib", default-features = false }
 ckan_ingestor_worker_lib = { path = "../ckan-ingestor-worker-lib" }
 ckan_metadata_ingestor = { path = "../ckan-metadata-ingestor" }
 iggy = "=0.10.0"

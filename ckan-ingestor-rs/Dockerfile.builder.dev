@@ -1,7 +1,7 @@
 # ckan-ingestor-rs
 #
 # Development image used by the Rust GitLab CI job.
-FROM rust:1.97.1-slim-trixie
+FROM rustlang/rust:nightly-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -13,4 +13,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sccache \
     && rm -rf /var/lib/apt/lists/*
 
-RUN rustup component add rustfmt clippy
+RUN rustup component add rustfmt clippy rust-analyzer

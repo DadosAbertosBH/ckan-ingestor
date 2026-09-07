@@ -18,7 +18,7 @@ use std::any;
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::readers::temp_file_cleanup::TempFileCleanup;
-use crate::{arrow_ipc_output::ArrowIpcOutput, ckan_resource::CkanResource};
+use crate::{ckan_resource::CkanResource, parquet_output::ParquetOutput};
 use anyhow::Result;
 use reqwest::blocking::Client;
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
@@ -59,7 +59,7 @@ pub fn download_to_temp(client: &Client, url: &str, suffix: &str) -> Result<Stri
 }
 
 pub struct SuccessResult {
-    pub arrow_ipc: ArrowIpcOutput,
+    pub parquet: ParquetOutput,
     pub preview: Vec<serde_json::Value>,
     pub rows_processed: usize,
     pub number_of_columns: usize,
@@ -80,12 +80,12 @@ pub struct FailedResult {
 }
 
 impl SuccessResult {
-    pub fn new(arrow_ipc: ArrowIpcOutput, reader: String) -> Self {
+    pub fn new(parquet: ParquetOutput, reader: String) -> Self {
         Self {
-            preview: arrow_ipc.preview.clone().unwrap_or_default(),
-            rows_processed: arrow_ipc.rows,
-            number_of_columns: arrow_ipc.columns,
-            arrow_ipc,
+            preview: parquet.preview.clone().unwrap_or_default(),
+            rows_processed: parquet.rows,
+            number_of_columns: parquet.columns,
+            parquet,
             reader,
             encoding: None,
             csv_strict_mode: None,
@@ -96,7 +96,7 @@ impl SuccessResult {
     }
 
     pub fn from_csv(
-        arrow_ipc: ArrowIpcOutput,
+        parquet: ParquetOutput,
         encoding: String,
         csv_strict_mode: bool,
         csv_delimiter: String,
@@ -106,12 +106,12 @@ impl SuccessResult {
             encoding: Some(encoding),
             csv_strict_mode: Some(csv_strict_mode),
             csv_delimiter: Some(csv_delimiter),
-            ..Self::new(arrow_ipc, reader)
+            ..Self::new(parquet, reader)
         }
     }
 
     pub fn from_datastore(
-        arrow_ipc: ArrowIpcOutput,
+        parquet: ParquetOutput,
         expected_rows: usize,
         expected_columns: usize,
         reader: String,
@@ -119,7 +119,7 @@ impl SuccessResult {
         Self {
             expected_rows: Some(expected_rows),
             expected_columns: Some(expected_columns),
-            ..Self::new(arrow_ipc, reader)
+            ..Self::new(parquet, reader)
         }
     }
 }
@@ -208,18 +208,18 @@ mod tests {
         record_batch::RecordBatch,
     };
 
-    use crate::arrow_ipc_output::ArrowIpcOutput;
+    use crate::parquet_output::ParquetOutput;
 
     use super::SuccessResult;
 
-    fn output() -> ArrowIpcOutput {
+    fn output() -> ParquetOutput {
         let schema = Arc::new(Schema::new(vec![Field::new("value", DataType::Utf8, true)]));
         let batch = RecordBatch::try_new(
             schema,
             vec![Arc::new(StringArray::from(vec!["value"])) as ArrayRef],
         )
         .unwrap();
-        let mut output = ArrowIpcOutput::try_new(&batch).unwrap();
+        let mut output = ParquetOutput::try_new(&batch).unwrap();
         output.write(&batch).unwrap();
         output.finish().unwrap();
         output
@@ -264,16 +264,16 @@ mod tests {
     fn output_file_is_removed_when_result_is_dropped() {
         let path = {
             let result = SuccessResult::new(output(), "test".to_string());
-            result.arrow_ipc.path().to_path_buf()
+            result.parquet.path().to_path_buf()
         };
 
         assert!(!path.exists());
     }
 
     #[test]
-    fn ipc_output_can_be_opened_as_a_file() {
+    fn parquet_output_can_be_opened_as_a_file() {
         let result = SuccessResult::new(output(), "test".to_string());
 
-        assert!(File::open(result.arrow_ipc.path()).is_ok());
+        assert!(File::open(result.parquet.path()).is_ok());
     }
 }

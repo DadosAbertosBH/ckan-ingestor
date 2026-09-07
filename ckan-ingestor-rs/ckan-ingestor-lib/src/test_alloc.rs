@@ -17,11 +17,19 @@
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, MutexGuard};
 
 pub(crate) struct TrackingAllocator;
 
 static LIVE_BYTES: AtomicUsize = AtomicUsize::new(0);
 static PEAK_BYTES: AtomicUsize = AtomicUsize::new(0);
+static MEMORY_INTENSIVE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+pub(crate) fn memory_intensive_test_guard() -> MutexGuard<'static, ()> {
+    MEMORY_INTENSIVE_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 fn record_allocation(size: usize) {
     let live = LIVE_BYTES.fetch_add(size, Ordering::Relaxed) + size;
