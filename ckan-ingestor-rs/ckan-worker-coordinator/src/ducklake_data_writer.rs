@@ -14,54 +14,49 @@ use arrow::{
     array::{RecordBatch, StringViewArray, TimestampMicrosecondArray},
     datatypes::{DataType, Field, Schema, TimeUnit},
 };
-use ducklake::{Column, IfExistsStrategy, TableName, WriteDataFile};
-use object_store::{parse_url_opts, ObjectStoreExt, WriteMultipart};
+use ckan_ingestor_lib::parquet_output::ParquetOutput;
+use ducklake::{Column, Ducklake, IfExistsStrategy, TableName, WriteDataFile};
+use object_store::{ObjectStoreExt, WriteMultipart, parse_url_opts};
 use tokio::io::AsyncReadExt;
 use url::Url;
 
-use crate::{data_writer::DataWriter, parquet_output::ParquetOutput};
+use crate::data_writer::DataWriter;
 
-pub(crate) const LAST_UPDATE_TABLE: &str = "ckan_resource_last_update";
+pub const LAST_UPDATE_TABLE: &str = "ckan_resource_last_update";
 
+#[derive(Clone)]
 pub struct DucklakeDataWriter {
-    client: Arc<ducklake::Ducklake>,
+    client: Arc<Ducklake>,
     storage_options: Vec<(String, String)>,
 }
 
 impl DucklakeDataWriter {
-    pub fn new(
-        client: Arc<ducklake::Ducklake>,
-        storage_options: impl Into<Vec<(String, String)>>,
-    ) -> Self {
+    pub fn new(client: Arc<Ducklake>, storage_options: impl Into<Vec<(String, String)>>) -> Self {
         Self {
             client,
             storage_options: storage_options.into(),
         }
     }
-}
 
-impl DataWriter for DucklakeDataWriter {
-    async fn ingest(&self, resource_id: &str, parquet: &ParquetOutput) -> Result<()> {
-        let columns = parquet
-            .schema
-            .fields()
-            .iter()
-            .map(|field| {
-                Column::try_from(field.as_ref()).with_context(|| {
-                    format!("converting Arrow field '{}' to DuckLake", field.name())
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
+    async fn initialize_table_impl(
+        &self,
+        name: &str,
+        schema: &arrow::datatypes::SchemaRef,
+    ) -> Result<()> {
         let table_name = TableName {
             schema: "main".into(),
-            name: resource_id.into(),
+            name: name.into(),
         };
-        let mut transaction = self.client.transaction().await?;
-
         if self.client.table_exists(table_name.clone()).await? {
-            transaction.table(table_name.clone())?.delete()?;
+            return Ok(());
         }
-        let mut table = transaction.create_table(
+        let columns = schema
+            .fields()
+            .iter()
+            .map(|field| Column::try_from(field.as_ref()))
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let mut transaction = self.client.transaction().await?;
+        transaction.create_table(
             table_name,
             columns,
             None,
@@ -69,9 +64,20 @@ impl DataWriter for DucklakeDataWriter {
             None,
             IfExistsStrategy::Fail,
         )?;
-        let (_, path_generator) = table.get_write_info()?;
-        let partitions = Default::default();
-        let relative_path = path_generator.generate_relative(&partitions);
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    async fn append_batch(&self, table_name: &str, batch: &RecordBatch) -> Result<()> {
+        if batch.num_rows() == 0 {
+            return Ok(());
+        }
+        let mut parquet = ParquetOutput::try_new(batch)?;
+        parquet.write(batch)?;
+        parquet.finish()?;
+        let table = self.client.table(table_name).await?;
+        let (_, path_generator) = table.get_write_info().await?;
+        let relative_path = path_generator.generate_relative(&Default::default());
         let absolute_path = format!("{}{relative_path}", path_generator.base_path());
         copy_data_file(parquet.path(), &absolute_path, &self.storage_options).await?;
         table
@@ -81,28 +87,36 @@ impl DataWriter for DucklakeDataWriter {
                 partition_values: None,
             }])
             .await
-            .context("registering the Parquet data file")?;
-        drop(table);
-        append_last_update(&mut transaction, resource_id)?;
-        transaction
-            .commit()
-            .await
-            .context("committing the resource table and last-update row")?;
+            .context("registering metadata Parquet file")?;
         Ok(())
     }
 }
 
-pub(crate) async fn initialize_last_update_table(client: &ducklake::Ducklake) -> Result<()> {
+impl DataWriter for DucklakeDataWriter {
+    async fn initialize_table(
+        &self,
+        table_name: &str,
+        schema: &arrow::datatypes::SchemaRef,
+    ) -> Result<()> {
+        self.initialize_table_impl(table_name, schema).await
+    }
+
+    async fn ingest(&self, table_name: &str, batch: &RecordBatch) -> Result<()> {
+        self.append_batch(table_name, batch).await
+    }
+}
+
+pub async fn initialize_last_update_table(client: &Ducklake) -> Result<()> {
     if client.table_exists(LAST_UPDATE_TABLE).await? {
         return Ok(());
     }
-    let mut transaction = client.transaction().await?;
     let schema = last_update_schema();
     let columns = schema
         .fields()
         .iter()
         .map(|field| Column::try_from(field.as_ref()))
         .collect::<std::result::Result<Vec<_>, _>>()?;
+    let mut transaction = client.transaction().await?;
     transaction.create_table(
         LAST_UPDATE_TABLE,
         columns,
@@ -111,32 +125,25 @@ pub(crate) async fn initialize_last_update_table(client: &ducklake::Ducklake) ->
         None,
         IfExistsStrategy::Fail,
     )?;
-    transaction
-        .commit()
-        .await
-        .context("creating the last-update table")?;
+    transaction.commit().await?;
     Ok(())
 }
 
-fn append_last_update(
+pub fn append_last_update(
     transaction: &mut ducklake::Transaction<'_>,
     resource_id: &str,
 ) -> Result<()> {
-    let mut table = transaction
-        .table(LAST_UPDATE_TABLE)
-        .context("opening the last-update table for inline data")?;
-    let schema = last_update_schema();
+    let mut table = transaction.table(LAST_UPDATE_TABLE)?;
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_micros() as i64;
-    let batch = RecordBatch::try_new(
-        schema,
+    table.write_inline_data(vec![RecordBatch::try_new(
+        last_update_schema(),
         vec![
             Arc::new(StringViewArray::from(vec![resource_id])),
             Arc::new(TimestampMicrosecondArray::from(vec![timestamp])),
         ],
-    )?;
-    table.write_inline_data(vec![batch])?;
+    )?])?;
     Ok(())
 }
 
@@ -172,20 +179,18 @@ async fn copy_data_file(
             writer.wait_for_capacity(4).await?;
         }
         writer.finish().await?;
-    } else {
-        let destination_path;
-        let destination = if destination.starts_with("file://") {
-            destination_path = Url::parse(destination)?
-                .to_file_path()
-                .map_err(|_| anyhow::anyhow!("invalid local data file URL: {destination}"))?;
-            destination_path.as_path()
-        } else {
-            std::path::Path::new(destination)
-        };
-        if let Some(parent) = destination.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        tokio::fs::copy(source, destination).await?;
+        return Ok(());
     }
+    let destination_path = if destination.starts_with("file://") {
+        Url::parse(destination)?
+            .to_file_path()
+            .map_err(|_| anyhow::anyhow!("invalid local data file URL: {destination}"))?
+    } else {
+        destination.into()
+    };
+    if let Some(parent) = destination_path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    tokio::fs::copy(source, destination_path).await?;
     Ok(())
 }

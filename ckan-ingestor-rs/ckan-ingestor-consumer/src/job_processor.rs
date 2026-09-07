@@ -29,19 +29,7 @@ use tokio::runtime::Runtime;
 
 use crate::messages::{JobMessage, JobResultMessage, JobStatus};
 use crate::parquet_uploader::ParquetUploader;
-
-// ---------------------------------------------------------------------------
-// JobProcessor trait
-// ---------------------------------------------------------------------------
-
-/// Processes a `JobMessage` and produces a final `JobResultMessage`.
-///
-/// Runs synchronously on the worker's dedicated OS thread — the heavy
-/// blocking work (duckdb) does not need `spawn_blocking` here because
-/// each partition owns its own thread.
-pub trait JobProcessor: Clone + Send + 'static {
-    fn process(&self, job: JobMessage) -> JobResultMessage;
-}
+use message_processor::MessageProcessor;
 
 // ---------------------------------------------------------------------------
 // RealJobProcessor — production implementation
@@ -76,7 +64,7 @@ impl Clone for RealJobProcessor {
     }
 }
 
-impl JobProcessor for RealJobProcessor {
+impl MessageProcessor<JobMessage, JobResultMessage> for RealJobProcessor {
     fn process(&self, job: JobMessage) -> JobResultMessage {
         match run_conversion(&self.runtime, &self.uploader, &job, &self.s3) {
             Ok(result) => result,

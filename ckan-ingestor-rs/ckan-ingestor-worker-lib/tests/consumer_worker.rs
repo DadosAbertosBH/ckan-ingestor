@@ -8,7 +8,8 @@
 // (at your option) any later version.
 
 use anyhow::Result;
-use ckan_ingestor_worker_lib::{BrokerMessage, ConsumerWorker, MessageHandler, MessageSource};
+use ckan_ingestor_worker_lib::{ConsumerWorker, MessageHandler};
+use message_processor::{BrokerMessage, MessageSource};
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;

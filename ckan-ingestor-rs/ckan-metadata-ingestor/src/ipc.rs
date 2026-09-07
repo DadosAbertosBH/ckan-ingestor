@@ -8,7 +8,7 @@
 // (at your option) any later version.
 
 use crate::ckan_schemas::{PACKAGE_SCHEMA, RESOURCE_SCHEMA};
-use crate::fetcher::CkanPackageStream;
+use crate::fetcher::{CkanDatasetFetcher, CkanPackageStream};
 use crate::package_processing::{drop_empty_list_columns, extract_resources, validate_list_shapes};
 use anyhow::{Context, Result};
 use arrow_json::ReaderBuilder;
@@ -23,6 +23,10 @@ pub struct StructuredIpc {
 }
 
 impl StructuredIpc {
+    pub fn fetch(instance_url: &str) -> Result<Self> {
+        Self::write(CkanDatasetFetcher::fetch(instance_url)?, instance_url)
+    }
+
     pub fn from_packages<I>(packages: I) -> Result<Self>
     where
         I: IntoIterator<Item = Value>,
@@ -80,20 +84,12 @@ impl StructuredIpc {
         self.resources.as_ref().map(|output| output.path())
     }
 
-    pub(crate) fn package_rows(&self) -> usize {
+    pub fn package_rows(&self) -> usize {
         self.packages.rows
     }
 
-    pub(crate) fn resource_rows(&self) -> usize {
+    pub fn resource_rows(&self) -> usize {
         self.resources.as_ref().map_or(0, |output| output.rows)
-    }
-
-    pub(crate) fn packages(&self) -> &ArrowIpcOutput {
-        &self.packages
-    }
-
-    pub(crate) fn resources(&self) -> Option<&ArrowIpcOutput> {
-        self.resources.as_ref()
     }
 }
 

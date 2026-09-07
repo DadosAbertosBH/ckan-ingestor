@@ -10,16 +10,10 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use iggy::prelude::{IggyMessage, IggyProducer, Partitioning};
+use iggy_processor::iggy::prelude::{IggyMessage, IggyProducer, Partitioning};
+use message_processor::ResultPublisher;
 
 use crate::messages::JobResultMessage;
-
-pub trait ResultPublisher: Clone {
-    fn publish(
-        &self,
-        result: JobResultMessage,
-    ) -> impl std::future::Future<Output = Result<(), anyhow::Error>> + Send;
-}
 
 #[derive(Clone)]
 pub struct IggyResultPublisher {
@@ -34,7 +28,7 @@ impl IggyResultPublisher {
     }
 }
 
-impl ResultPublisher for IggyResultPublisher {
+impl ResultPublisher<JobResultMessage> for IggyResultPublisher {
     async fn publish(&self, result: JobResultMessage) -> Result<(), anyhow::Error> {
         let payload = serde_json::to_string(&result).map_err(|error| anyhow::anyhow!(error))?;
         let message = IggyMessage::from_str(&payload)?;
@@ -51,36 +45,5 @@ impl ResultPublisher for IggyResultPublisher {
                     error
                 )
             })
-    }
-}
-
-#[cfg(test)]
-pub(crate) mod tests {
-    use super::*;
-    use std::sync::Mutex;
-
-    #[derive(Clone)]
-    pub(crate) struct MockPublisher {
-        pub published: Arc<Mutex<Vec<JobResultMessage>>>,
-        failure: Option<String>,
-    }
-
-    impl MockPublisher {
-        pub fn new() -> Self {
-            Self {
-                published: Arc::new(Mutex::new(vec![])),
-                failure: None,
-            }
-        }
-    }
-
-    impl ResultPublisher for MockPublisher {
-        async fn publish(&self, result: JobResultMessage) -> Result<(), anyhow::Error> {
-            if let Some(failure) = &self.failure {
-                anyhow::bail!(failure.clone());
-            }
-            self.published.lock().unwrap().push(result);
-            Ok(())
-        }
     }
 }

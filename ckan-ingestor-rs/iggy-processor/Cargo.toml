@@ -1,0 +1,10 @@
+[package]
+name = "iggy_processor"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0"
+futures = "0.3"
+iggy = "=0.10.0"
+message_processor = { path = "../message-processor" }

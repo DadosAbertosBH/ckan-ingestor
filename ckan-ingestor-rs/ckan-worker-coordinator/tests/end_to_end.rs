@@ -9,7 +9,7 @@
 
 use anyhow::Context;
 use ckan_worker_coordinator::{IggySettings, ensure_topology};
-use iggy::prelude::{Client, IggyClient, TopicClient};
+use iggy_processor::iggy::prelude::{Client, IggyClient, TopicClient};
 use testcontainers::core::{IntoContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};

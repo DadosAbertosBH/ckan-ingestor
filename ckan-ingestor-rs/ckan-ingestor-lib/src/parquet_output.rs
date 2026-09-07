@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 
 use arrow::{
     array::RecordBatch,
+    compute::cast,
     datatypes::{DataType, Field, Fields, Schema, SchemaRef},
 };
 use parquet::{arrow::ArrowWriter, errors::ParquetError, file::metadata::ParquetMetaData};
@@ -59,7 +60,13 @@ impl ParquetOutput {
     }
 
     pub fn write(&mut self, batch: &RecordBatch) -> Result<(), ParquetError> {
-        let batch = RecordBatch::try_new(self.schema.clone(), batch.columns().to_vec())?;
+        let columns = batch
+            .columns()
+            .iter()
+            .zip(self.schema.fields())
+            .map(|(column, field)| cast(column, field.data_type()))
+            .collect::<Result<Vec<_>, _>>()?;
+        let batch = RecordBatch::try_new(self.schema.clone(), columns)?;
         self.writer.write(&batch)?;
         if self.preview.is_none() {
             self.preview = Some(Self::generate_preview(&batch));

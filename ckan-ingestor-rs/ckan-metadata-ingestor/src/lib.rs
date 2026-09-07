@@ -11,13 +11,9 @@ pub mod fetcher;
 pub mod models;
 
 mod ckan_schemas;
-mod duckdb;
-mod ingestor;
 mod ipc;
 mod package_processing;
 
-pub use ::duckdb as duckdb_driver;
 pub use fetcher::CkanDatasetFetcher;
-pub use ingestor::DuckdbCkanMetadataIngestor;
 pub use ipc::StructuredIpc;
 pub use models::{MetadataSyncCommand, MetadataSyncResult};

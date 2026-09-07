@@ -7,13 +7,10 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use anyhow::{Context, Result};
-use arrow::{
-    array::{RecordBatch, StringViewArray, TimestampMicrosecondArray},
-    datatypes::{DataType, Field, Schema, TimeUnit},
-};
+use arrow::datatypes::Schema;
 use arrow_ipc::convert::fb_to_schema;
 use base64::Engine;
 use ckan_ingestor_lib::ducklake_factory::DucklakeFactory;
@@ -23,7 +20,7 @@ use ducklake::{
     WriteDataFile,
 };
 
-const LAST_UPDATE_TABLE: &str = "ckan_resource_last_update";
+use crate::ducklake_data_writer::{append_last_update, initialize_last_update_table};
 
 #[derive(Clone)]
 pub struct ParquetRegistrar {
@@ -36,7 +33,8 @@ impl ParquetRegistrar {
     }
 
     pub async fn initialize(&self) -> Result<()> {
-        self.factory.initialize().await
+        let client = self.factory.client().await?;
+        initialize_last_update_table(&client).await
     }
 
     /// Registers a pre-uploaded file. `write_data_files` receives complete
@@ -138,32 +136,6 @@ fn statistics(artifact: &ParquetArtifact) -> Result<DataFileStatistics> {
     })
 }
 
-fn append_last_update(
-    transaction: &mut ducklake::Transaction<'_>,
-    resource_id: &str,
-) -> Result<()> {
-    let mut table = transaction.table(LAST_UPDATE_TABLE)?;
-    let schema = Arc::new(Schema::new(vec![
-        Field::new("ckan_resource_id", DataType::Utf8View, false),
-        Field::new(
-            "last_modified",
-            DataType::Timestamp(TimeUnit::Microsecond, None),
-            false,
-        ),
-    ]));
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_micros() as i64;
-    table.write_inline_data(vec![RecordBatch::try_new(
-        schema,
-        vec![
-            Arc::new(StringViewArray::from(vec![resource_id])),
-            Arc::new(TimestampMicrosecondArray::from(vec![timestamp])),
-        ],
-    )?])?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::ParquetRegistrar;
@@ -206,6 +178,13 @@ mod tests {
         );
         let registrar = ParquetRegistrar::new(factory);
         registrar.initialize().await.unwrap();
+        let client = registrar.factory.client().await.unwrap();
+        assert!(
+            client
+                .table_exists(crate::ducklake_data_writer::LAST_UPDATE_TABLE)
+                .await
+                .unwrap()
+        );
         let schema = Schema::new(vec![Field::new("id", DataType::Int32, true)]);
         let schema_ipc_base64 = base64::engine::general_purpose::STANDARD.encode(
             IpcSchemaEncoder::new()

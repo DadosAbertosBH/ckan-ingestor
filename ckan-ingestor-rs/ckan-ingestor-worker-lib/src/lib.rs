@@ -7,11 +7,9 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use anyhow::{Result, anyhow};
-use futures::StreamExt;
-use iggy::prelude::IggyConsumer;
+use anyhow::Result;
+use message_processor::{BrokerMessage, MessageSource};
 use serde::{Deserialize, Serialize};
-use std::future::Future;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use tokio::sync::Notify;
@@ -192,48 +190,6 @@ mod artifact_tests {
         let decoded: JobResultMessage = serde_json::from_slice(&encoded).unwrap();
 
         assert_eq!(decoded.artifact, message.artifact);
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BrokerMessage {
-    pub payload: Vec<u8>,
-    pub partition: u32,
-    pub offset: u64,
-}
-
-pub trait MessageSource {
-    fn recv(&mut self) -> impl Future<Output = Result<BrokerMessage>>;
-    fn commit(&mut self, partition: u32, offset: u64) -> impl Future<Output = Result<()>>;
-}
-
-pub struct IggySource {
-    consumer: IggyConsumer,
-}
-
-impl IggySource {
-    pub fn new(consumer: IggyConsumer) -> Self {
-        Self { consumer }
-    }
-}
-
-impl MessageSource for IggySource {
-    async fn recv(&mut self) -> Result<BrokerMessage> {
-        let received = self
-            .consumer
-            .next()
-            .await
-            .ok_or_else(|| anyhow!("Iggy consumer stopped"))??;
-        Ok(BrokerMessage {
-            payload: received.message.payload.to_vec(),
-            partition: received.partition_id,
-            offset: received.message.header.offset,
-        })
-    }
-
-    async fn commit(&mut self, partition: u32, offset: u64) -> Result<()> {
-        self.consumer.store_offset(offset, Some(partition)).await?;
-        Ok(())
     }
 }
 

@@ -11,7 +11,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use ckan_metadata_ingestor::MetadataSyncResult;
-use iggy::prelude::{IggyMessage, IggyProducer, Partitioning};
+use iggy_processor::iggy::prelude::{IggyMessage, IggyProducer, Partitioning};
 
 #[derive(Clone)]
 pub struct MetadataPublisher {

@@ -10,7 +10,8 @@
 use std::time::Duration;
 
 use anyhow::Context;
-use ckan_ingestor_worker_lib::{BrokerMessage, JobResultMessage, JobStatus, MessageHandler};
+use ckan_ingestor_worker_lib::{JobResultMessage, JobStatus, MessageHandler};
+use message_processor::BrokerMessage;
 
 use crate::{job_publisher::JobPublisher, parquet_registrar::ParquetRegistrar};
 

@@ -8,24 +8,31 @@
 // (at your option) any later version.
 
 use anyhow::Context;
-use ckan_ingestor_worker_lib::{BrokerMessage, ConsumerWorker, MessageHandler};
+use ckan_ingestor_worker_lib::{ConsumerWorker, MessageHandler};
 
-use crate::job_processor::JobProcessor;
-use crate::message_source::MessageSource;
 use crate::messages::{JobMessage, JobResultMessage, JobStatus};
-use crate::result_publisher::ResultPublisher;
+use message_processor::{BrokerMessage, MessageProcessor, MessageSource, ResultPublisher};
 
-pub struct WorkerThread<M: MessageSource, P: ResultPublisher + Send + 'static, Proc: JobProcessor> {
+pub struct WorkerThread<
+    M: MessageSource,
+    P: ResultPublisher<JobResultMessage> + Send + 'static,
+    Proc: MessageProcessor<JobMessage, JobResultMessage> + Clone + Send + 'static,
+> {
     inner: ConsumerWorker<M, JobHandler<P, Proc>>,
 }
 
-struct JobHandler<P: ResultPublisher + Send + 'static, Proc: JobProcessor> {
+struct JobHandler<
+    P: ResultPublisher<JobResultMessage> + Send + 'static,
+    Proc: MessageProcessor<JobMessage, JobResultMessage> + Clone + Send + 'static,
+> {
     publisher: P,
     processor: Proc,
 }
 
-impl<P: ResultPublisher + Send + 'static, Proc: JobProcessor> MessageHandler
-    for JobHandler<P, Proc>
+impl<
+    P: ResultPublisher<JobResultMessage> + Send + 'static,
+    Proc: MessageProcessor<JobMessage, JobResultMessage> + Clone + Send + 'static,
+> MessageHandler for JobHandler<P, Proc>
 {
     async fn handle(&self, message: &BrokerMessage) -> anyhow::Result<()> {
         let job: JobMessage = serde_json::from_slice(&message.payload).unwrap_or_else(|error| {
@@ -84,8 +91,8 @@ impl<P: ResultPublisher + Send + 'static, Proc: JobProcessor> MessageHandler
 impl<M, P, Proc> WorkerThread<M, P, Proc>
 where
     M: MessageSource + Send + 'static,
-    P: ResultPublisher + Send + 'static,
-    Proc: JobProcessor + Send + 'static,
+    P: ResultPublisher<JobResultMessage> + Send + 'static,
+    Proc: MessageProcessor<JobMessage, JobResultMessage> + Clone + Send + 'static,
 {
     pub fn new(topic: String, slot: usize, source: M, publisher: P, processor: Proc) -> Self {
         Self {
@@ -113,9 +120,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::job_processor::JobProcessor;
-    use crate::message_source::{BrokerMessage, tests::MockSource};
-    use crate::result_publisher::tests::MockPublisher;
+    use message_processor::{
+        BrokerMessage, MessageProcessor,
+        test_support::{MockMessageSource, MockResultPublisher},
+    };
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
@@ -129,7 +137,7 @@ mod tests {
         processed: Arc<AtomicBool>,
     }
 
-    impl JobProcessor for StubProcessor {
+    impl MessageProcessor<JobMessage, JobResultMessage> for StubProcessor {
         fn process(&self, job: JobMessage) -> JobResultMessage {
             JobResultMessage {
                 reader: Some(String::new()),
@@ -156,7 +164,7 @@ mod tests {
         }
     }
 
-    impl JobProcessor for RuntimeBlockingProcessor {
+    impl MessageProcessor<JobMessage, JobResultMessage> for RuntimeBlockingProcessor {
         fn process(&self, job: JobMessage) -> JobResultMessage {
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -190,9 +198,9 @@ mod tests {
             offset: 42,
         })
         .unwrap();
-        let source = MockSource::new(rx);
+        let source = MockMessageSource::new(rx);
         let committed = source.committed.clone();
-        let publisher = MockPublisher::new();
+        let publisher = MockResultPublisher::new();
         let published = publisher.published.clone();
         let mut worker = WorkerThread::new("jobs".into(), 0, source, publisher, StubProcessor);
         worker.run();
@@ -224,14 +232,19 @@ mod tests {
             offset: 42,
         })
         .unwrap();
-        let source = MockSource::new(rx);
+        let source = MockMessageSource::new(rx);
         let committed = source.committed.clone();
         let processed = Arc::new(AtomicBool::new(false));
         let processor = RuntimeBlockingProcessor {
             processed: processed.clone(),
         };
-        let mut worker =
-            WorkerThread::new("jobs".into(), 0, source, MockPublisher::new(), processor);
+        let mut worker = WorkerThread::new(
+            "jobs".into(),
+            0,
+            source,
+            MockResultPublisher::new(),
+            processor,
+        );
         worker.run();
 
         for _ in 0..100 {

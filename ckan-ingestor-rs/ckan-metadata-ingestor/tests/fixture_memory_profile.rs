@@ -7,21 +7,13 @@
 // by the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use ckan_metadata_ingestor::{DuckdbCkanMetadataIngestor, MetadataSyncCommand};
+use ckan_metadata_ingestor::StructuredIpc;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::Command;
 use std::thread;
-
-fn open_in_memory_duckdb() -> duckdb::Connection {
-    let connection = duckdb::Connection::open_in_memory().unwrap();
-    connection
-        .execute_batch("INSTALL arrow FROM community; LOAD arrow;")
-        .unwrap();
-    connection
-}
 
 #[test]
 #[ignore = "profiling test; run explicitly with -- --ignored --nocapture"]
@@ -42,37 +34,29 @@ fn reports_peak_rss_for_one_200_package_page() {
 fn reports_peak_rss_for_four_consecutive_paginated_syncs() {
     let first_page = pbh_fixture_path("pbh_first_100.json");
     let second_page = pbh_fixture_path("pbh_offset_100.json");
-    let responses = (0..4)
-        .flat_map(|_| [Some(first_page.clone()), Some(second_page.clone()), None])
-        .collect();
-    let base_url = fixture_server_responses(responses);
-    let conn = open_in_memory_duckdb();
-    let command = MetadataSyncCommand {
-        sync_id: "memory-profile".into(),
-        instance_id: "pbh".into(),
-        instance_name: "PBH".into(),
-        instance_url: base_url,
-    };
-    let ingestor = DuckdbCkanMetadataIngestor::new(&conn);
-
     let results = (0..4)
         .map(|_| {
-            let result = ingestor.sync(&command).unwrap();
-            (result, peak_rss_bytes())
+            let base_url = fixture_server_responses(vec![
+                Some(first_page.clone()),
+                Some(second_page.clone()),
+                None,
+            ]);
+            let result = StructuredIpc::fetch(&base_url).unwrap();
+            (
+                result.package_rows(),
+                result.resource_rows(),
+                peak_rss_bytes(),
+            )
         })
         .collect::<Vec<_>>();
 
     eprintln!(
         "memory_profile={{sync_peaks: {:?}, packages: {}, resources: {}}}",
-        results.iter().map(|(_, peak)| peak).collect::<Vec<_>>(),
-        results[3].0.dataset_count,
-        results[3].0.resource_count,
+        results.iter().map(|(_, _, peak)| peak).collect::<Vec<_>>(),
+        results[3].0,
+        results[3].1,
     );
-    assert!(
-        results
-            .iter()
-            .all(|(result, _)| result.dataset_count == 200)
-    );
+    assert!(results.iter().all(|(packages, _, _)| *packages == 200));
 }
 
 #[test]
@@ -100,24 +84,16 @@ fn profile_sync(fixture_names: &[&str]) -> MemoryProfile {
         .map(|name| pbh_fixture_path(name))
         .collect::<Vec<_>>();
     let base_url = fixture_server(fixture_paths);
-    let conn = open_in_memory_duckdb();
     let initial_peak = peak_rss_bytes();
-    let command = MetadataSyncCommand {
-        sync_id: "memory-profile".into(),
-        instance_id: "pbh".into(),
-        instance_name: "PBH".into(),
-        instance_url: base_url,
-    };
-    let result = DuckdbCkanMetadataIngestor::new(&conn)
-        .sync(&command)
-        .unwrap();
+    let result = StructuredIpc::fetch(&base_url).unwrap();
     let sync_peak = peak_rss_bytes();
     eprintln!(
         "memory_profile={{initial_peak: {initial_peak}, sync_peak: {sync_peak}, packages: {}, resources: {}}}",
-        result.dataset_count, result.resource_count,
+        result.package_rows(),
+        result.resource_rows(),
     );
     MemoryProfile {
-        packages: result.dataset_count,
+        packages: result.package_rows() as i64,
     }
 }
 

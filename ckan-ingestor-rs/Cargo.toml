@@ -2,6 +2,8 @@
 members = [
     "ckan-ingestor-lib",
     "ckan-ingestor-worker-lib",
+    "message-processor",
+    "iggy-processor",
     "ckan-metadata-ingestor",
     "ckan-ingestor-consumer",
     "ckan-worker-coordinator",

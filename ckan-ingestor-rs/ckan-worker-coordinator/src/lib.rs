@@ -7,7 +7,8 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-pub mod duckdb_factory;
+pub mod data_writer;
+pub mod ducklake_data_writer;
 pub mod job_planner;
 pub mod job_publisher;
 pub mod job_repository;
@@ -18,9 +19,8 @@ pub mod mysql_job_repository;
 pub mod parquet_registrar;
 pub mod parquet_worker_thread;
 
-use crate::duckdb_factory::DuckdbFactory;
 use anyhow::{Context, Result};
-use iggy::prelude::{
+use iggy_processor::iggy::prelude::{
     AutoCommit, Client, CompressionAlgorithm, DirectConfig, IggyClient, IggyDuration, IggyExpiry,
     MaxTopicSize, PollingStrategy, StreamClient, TopicClient,
 };
@@ -30,6 +30,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
 
+use crate::ducklake_data_writer::DucklakeDataWriter;
 use crate::job_planner::JobPlanner;
 use crate::job_publisher::JobPublisher;
 use crate::metadata_processor::RealMetadataProcessor;
@@ -39,7 +40,8 @@ use crate::mysql_job_repository::MySqlJobRepository;
 use crate::parquet_registrar::ParquetRegistrar;
 use crate::parquet_worker_thread::ParquetHandler;
 use ckan_ingestor_lib::ducklake_factory::DucklakeFactory;
-use ckan_ingestor_worker_lib::{ConsumerWorker, IggySource};
+use ckan_ingestor_worker_lib::ConsumerWorker;
+use iggy_processor::IggySource;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IggySettings {
@@ -175,9 +177,12 @@ pub async fn run() -> Result<()> {
     parquet_consumer.init().await?;
     let factory = DucklakeFactory::from_env()?;
     factory.initialize().await?;
-    let registrar = ParquetRegistrar::new(factory);
+    let registrar = ParquetRegistrar::new(factory.clone());
+    registrar.initialize().await?;
     let jobs = JobPublisher::new(result_producer, job_producer, retry_producer);
-    let processor = RealMetadataProcessor::new(DuckdbFactory::from_env())?;
+    let metadata_writer =
+        DucklakeDataWriter::new(factory.client().await?, factory.storage_options().to_vec());
+    let processor = RealMetadataProcessor::new(factory.clone(), metadata_writer);
     let mut worker = ConsumerWorker::new(
         settings.metadata_sync_topic.clone(),
         0,

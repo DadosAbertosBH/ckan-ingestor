@@ -8,7 +8,7 @@
 // (at your option) any later version.
 
 use ckan_ingestor_worker_lib::{JobMessage, JobResultMessage};
-use iggy::prelude::{IggyMessage, IggyProducer, Partitioning};
+use iggy_processor::iggy::prelude::{IggyMessage, IggyProducer, Partitioning};
 use std::str::FromStr;
 use std::sync::Arc;
 

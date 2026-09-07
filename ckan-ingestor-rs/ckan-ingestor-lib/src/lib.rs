@@ -17,13 +17,7 @@
 pub mod arrow_ipc_output;
 pub mod ckan_resource;
 pub mod config;
-#[cfg(feature = "ducklake-backend")]
-pub mod data_ingestor;
-#[cfg(feature = "ducklake-backend")]
-pub mod data_writer;
 pub mod dataset_fetcher;
-#[cfg(feature = "ducklake-backend")]
-pub mod ducklake_data_writer;
 #[cfg(feature = "ducklake-backend")]
 pub mod ducklake_factory;
 pub mod ingestor_outcome;

@@ -9,7 +9,7 @@
 
 use anyhow::Context;
 use ckan_ingestor_consumer::{IggySettings, ensure_topology};
-use iggy::prelude::{Client, IggyClient, StreamClient, TopicClient};
+use iggy_processor::iggy::prelude::{Client, IggyClient, StreamClient, TopicClient};
 use testcontainers::core::{IntoContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
@@ -57,9 +57,9 @@ async fn creates_the_approved_stream_and_topics() -> anyhow::Result<()> {
     let stream_id = settings.stream.as_str().try_into()?;
     assert!(client.get_stream(&stream_id).await?.is_some());
     for topic in [
-        settings.job_topic,
+        settings.source_topic,
         settings.retry_topic,
-        settings.parquet_result_topic,
+        settings.result_topic,
     ] {
         let topic_id = topic.as_str().try_into()?;
         let details = client

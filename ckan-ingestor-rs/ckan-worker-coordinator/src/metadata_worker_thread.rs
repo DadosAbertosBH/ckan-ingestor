@@ -7,10 +7,9 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use ckan_ingestor_worker_lib::{
-    BrokerMessage, JobMessage, JobResultMessage, JobStatus, MessageHandler,
-};
+use ckan_ingestor_worker_lib::{JobMessage, JobResultMessage, JobStatus, MessageHandler};
 use ckan_metadata_ingestor::MetadataSyncCommand;
+use message_processor::BrokerMessage;
 use uuid::Uuid;
 
 use crate::job_planner::{JobPlan, JobPlanner};
@@ -44,16 +43,17 @@ impl MetadataHandler {
 impl MessageHandler for MetadataHandler {
     async fn handle(&self, message: &BrokerMessage) -> anyhow::Result<()> {
         let command = serde_json::from_slice::<MetadataSyncCommand>(&message.payload)?;
-        let result = self.processor.process(command.clone());
+        let result = self.processor.process(command.clone()).await;
         if result.status == "success" {
             for JobPlan {
                 candidate,
                 enqueue,
                 retry,
-            } in self
-                .planner
-                .classify(self.processor.outdated_resources(&command.instance_url)?)?
-            {
+            } in self.planner.classify(
+                self.processor
+                    .outdated_resources(&command.instance_url)
+                    .await?,
+            )? {
                 if enqueue {
                     let id = Uuid::new_v4().to_string();
                     let mut pending = JobResultMessage::pending(

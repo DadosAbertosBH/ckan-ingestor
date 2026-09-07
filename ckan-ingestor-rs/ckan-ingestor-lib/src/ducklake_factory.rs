@@ -15,7 +15,6 @@ use tokio::sync::OnceCell;
 use url::Url;
 
 use crate::config::S3Settings;
-use crate::ducklake_data_writer::{initialize_last_update_table, DucklakeDataWriter};
 
 #[derive(Clone)]
 pub struct DucklakeFactory {
@@ -66,16 +65,13 @@ impl DucklakeFactory {
             .map_err(Into::into)
     }
 
-    pub async fn writer(&self) -> Result<DucklakeDataWriter> {
-        Ok(DucklakeDataWriter::new(
-            self.client().await?,
-            self.storage_options.clone(),
-        ))
+    pub fn storage_options(&self) -> &[(String, String)] {
+        &self.storage_options
     }
 
     pub async fn initialize(&self) -> Result<()> {
-        let client = self.open_client().await?;
-        initialize_last_update_table(&client).await
+        self.client().await?;
+        Ok(())
     }
 
     async fn open_client(&self) -> std::result::Result<Arc<Ducklake>, DucklakeError> {
@@ -147,8 +143,6 @@ fn postgres_url(uri: &str) -> Result<String> {
 mod tests {
     use tempfile::tempdir;
 
-    use crate::ducklake_data_writer::LAST_UPDATE_TABLE;
-
     use super::{postgres_url, DucklakeFactory};
 
     #[test]
@@ -171,7 +165,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn initializes_the_resource_last_update_table() {
+    async fn initializes_the_ducklake_catalog() {
         let temp = tempdir().unwrap();
         let factory = DucklakeFactory::for_sqlite(
             &temp.path().join("catalog.sqlite"),
@@ -180,13 +174,6 @@ mod tests {
 
         factory.initialize().await.unwrap();
 
-        let client = factory.client().await.unwrap();
-        assert!(client.table_exists(LAST_UPDATE_TABLE).await.unwrap());
-        assert!(client
-            .transaction()
-            .await
-            .unwrap()
-            .table(LAST_UPDATE_TABLE)
-            .is_ok());
+        factory.client().await.unwrap();
     }
 }

@@ -29,12 +29,16 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY ckan-ingestor-lib/Cargo.toml ckan-ingestor-lib/
 COPY ckan-ingestor-worker-lib/Cargo.toml ckan-ingestor-worker-lib/
+COPY message-processor/Cargo.toml message-processor/
+COPY iggy-processor/Cargo.toml iggy-processor/
 COPY ckan-metadata-ingestor/Cargo.toml ckan-metadata-ingestor/
 COPY ckan-ingestor-consumer/Cargo.toml ckan-ingestor-consumer/
 COPY ckan-worker-coordinator/Cargo.toml ckan-worker-coordinator/
-RUN mkdir -p ckan-ingestor-lib/src ckan-ingestor-worker-lib/src ckan-metadata-ingestor/src ckan-ingestor-consumer/src ckan-worker-coordinator/src && \
+RUN mkdir -p ckan-ingestor-lib/src ckan-ingestor-worker-lib/src message-processor/src iggy-processor/src ckan-metadata-ingestor/src ckan-ingestor-consumer/src ckan-worker-coordinator/src && \
     touch ckan-ingestor-lib/src/lib.rs && \
     touch ckan-ingestor-worker-lib/src/lib.rs && \
+    touch message-processor/src/lib.rs && \
+    touch iggy-processor/src/lib.rs && \
     touch ckan-metadata-ingestor/src/lib.rs && \
     touch ckan-ingestor-consumer/src/main.rs && \
     touch ckan-worker-coordinator/src/main.rs && \
@@ -49,37 +53,16 @@ RUN cargo chef cook --release --recipe-path recipe.json
 # fixtures, and local metadata out of this COPY preserves the build cache.
 COPY ckan-ingestor-lib/src/ ckan-ingestor-lib/src/
 COPY ckan-ingestor-worker-lib/src/ ckan-ingestor-worker-lib/src/
+COPY message-processor/src/ message-processor/src/
+COPY iggy-processor/src/ iggy-processor/src/
 COPY ckan-metadata-ingestor/src/ ckan-metadata-ingestor/src/
 COPY ckan-ingestor-consumer/src/ ckan-ingestor-consumer/src/
 COPY ckan-worker-coordinator/src/ ckan-worker-coordinator/src/
 
-# The Python API uses DuckDB 1.5.5, whose DuckLake extension supports catalog
-# format 1.0. Download the same engine for the worker so both clients can open
-# the shared PostgreSQL-backed DuckLake catalog. duckdb-rs 1.10501 supplies a
-# compatible C ABI binding for this patch release.
-ARG DUCKDB_VERSION=1.5.5
 ARG WORKER_PACKAGE=ckan_ingestor_consumer
 ARG WORKER_BINARY=ckan-ingestor-consumer
-RUN ARCH="$(dpkg --print-architecture)" && \
-    case "$ARCH" in \
-        amd64) DUCKDB_ARCH=amd64 ;; \
-        arm64) DUCKDB_ARCH=arm64 ;; \
-        *) echo "Unsupported DuckDB architecture: $ARCH" >&2; exit 1 ;; \
-    esac && \
-    mkdir -p /opt/duckdb && \
-    curl --fail --location --silent --show-error \
-      --connect-timeout 60 \
-      --max-time 420 \
-      --retry 3 \
-      --retry-all-errors \
-      --retry-delay 5 \
-      "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/libduckdb-linux-${DUCKDB_ARCH}.zip" \
-      --output /tmp/libduckdb.zip && \
-    unzip -q /tmp/libduckdb.zip -d /opt/duckdb && \
-    DUCKDB_LIB_DIR=/opt/duckdb DUCKDB_INCLUDE_DIR=/opt/duckdb \
-    cargo build --release -p ${WORKER_PACKAGE} && \
-    cp target/release/${WORKER_BINARY} /usr/local/bin/worker && \
-    cp -f /opt/duckdb/libduckdb.so /usr/local/lib/
+RUN cargo build --release -p ${WORKER_PACKAGE} && \
+    cp target/release/${WORKER_BINARY} /usr/local/bin/worker
 
 # --- Runtime image ---
 FROM debian:trixie-slim
@@ -89,8 +72,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/bin/worker /usr/local/bin/
-COPY --from=builder /usr/local/lib/libduckdb.so /usr/local/lib/
-RUN ldconfig
 
 ENV RUST_LOG=info
 

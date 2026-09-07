@@ -16,9 +16,7 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 use arrow::datatypes::DataType;
 use arrow_ipc::reader::FileReader;
-use ckan_metadata_ingestor::{
-    DuckdbCkanMetadataIngestor, MetadataSyncCommand, StructuredIpc, fetcher::PAGE_SIZE,
-};
+use ckan_metadata_ingestor::{StructuredIpc, fetcher::PAGE_SIZE};
 use httpmock::MockServer;
 use std::fs::File;
 
@@ -430,7 +428,7 @@ fn writes_resources_with_a_stable_schema_across_pages() {
 }
 
 #[test]
-fn sync_ingests_typed_ipcs_with_read_arrow() {
+fn fetch_writes_typed_ipcs() {
     let server = MockServer::start();
     let response = serde_json::json!({
         "result": [{
@@ -452,30 +450,16 @@ fn sync_ingests_typed_ipcs_with_read_arrow() {
             .query_param("offset", "0");
         then.status(200).json_body(response);
     });
-    let conn = duckdb::Connection::open_in_memory().expect("in-memory DuckDB should open");
-    conn.execute_batch("INSTALL arrow FROM community; LOAD arrow;")
-        .expect("DuckDB Arrow extension should load");
-    let ingestor = DuckdbCkanMetadataIngestor::new(&conn);
-    let command = MetadataSyncCommand {
-        sync_id: "sync-1".into(),
-        instance_id: "instance-1".into(),
-        instance_name: "Test".into(),
-        instance_url: server.url(""),
-    };
-
-    let result = ingestor.sync(&command).expect("sync should succeed");
+    let ipc = StructuredIpc::fetch(&server.url("")).expect("fetch should write IPC files");
 
     mock.assert();
-    assert_eq!(result.dataset_count, 1);
-    assert_eq!(result.resource_count, 1);
-    assert_eq!(result.new_datasets, 1);
-    assert_eq!(result.new_resources, 1);
-    let temporary_stages: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'incoming_metadata'",
-            [],
-            |row| row.get(0),
-        )
+    assert_eq!(ipc.package_rows(), 1);
+    assert_eq!(ipc.resource_rows(), 1);
+    let packages = FileReader::try_new(File::open(ipc.package_path()).unwrap(), None)
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap()
         .unwrap();
-    assert_eq!(temporary_stages, 0);
+    assert!(packages.column_by_name("id").is_some());
 }

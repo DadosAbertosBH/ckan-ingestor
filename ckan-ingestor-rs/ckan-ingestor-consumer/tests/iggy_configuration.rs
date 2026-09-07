@@ -10,7 +10,7 @@
 use ckan_ingestor_consumer::IggySettings;
 
 #[test]
-fn defaults_use_the_approved_iggy_topology() {
+fn defaults_use_generic_source_and_result_topics() {
     let settings = IggySettings::default();
 
     assert_eq!(settings.address, "localhost:8090");
@@ -21,9 +21,9 @@ fn defaults_use_the_approved_iggy_topology() {
         "iggy://iggy:iggy@localhost:8090"
     );
     assert_eq!(settings.stream, "ckan-ingestor");
-    assert_eq!(settings.job_topic, "jobs");
+    assert_eq!(settings.source_topic, "jobs");
     assert_eq!(settings.retry_topic, "jobs-retry");
-    assert_eq!(settings.parquet_result_topic, "parquet-results");
+    assert_eq!(settings.result_topic, "parquet-results");
     assert_eq!(settings.consumer_group, "ckan-worker");
     assert_eq!(settings.partitions, 10);
 }
