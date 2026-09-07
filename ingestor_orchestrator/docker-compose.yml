@@ -218,7 +218,7 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: "1024M"
+          memory: "256M"
     depends_on:
       iggy:
         condition: service_healthy
