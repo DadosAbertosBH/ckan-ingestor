@@ -111,7 +111,9 @@ pub async fn run() -> Result<()> {
     let publisher = IggyResultPublisher::new(result_producer);
 
     let s3 = create_s3_ingestor().await?;
-    let processor = RealJobProcessor::new(s3, DucklakeFactory::from_env()?)?;
+    let factory = DucklakeFactory::from_env()?;
+    factory.initialize().await?;
+    let processor = RealJobProcessor::new(s3, factory)?;
     let mut workers = Vec::with_capacity((settings.partitions * 2) as usize);
 
     for topic in [&settings.job_topic, &settings.retry_topic] {

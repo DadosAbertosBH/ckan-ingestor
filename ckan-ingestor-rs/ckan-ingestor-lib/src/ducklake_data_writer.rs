@@ -78,23 +78,19 @@ impl DataWriter for DucklakeDataWriter {
             }])
             .await
             .context("registering the Parquet data file")?;
+        drop(table);
+        append_last_update(&mut transaction, resource_id)?;
         transaction
             .commit()
             .await
-            .context("committing the resource table")?;
-        replace_last_update(&self.client, resource_id).await?;
+            .context("committing the resource table and last-update row")?;
         Ok(())
     }
 }
 
-async fn replace_last_update(client: &ducklake::Ducklake, resource_id: &str) -> Result<()> {
+pub(crate) async fn initialize_last_update_table(client: &ducklake::Ducklake) -> Result<()> {
     if client.table_exists(LAST_UPDATE_TABLE).await? {
-        let mut transaction = client.transaction().await?;
-        transaction.table(LAST_UPDATE_TABLE)?.delete()?;
-        transaction
-            .commit()
-            .await
-            .context("removing the previous inline last-update row")?;
+        return Ok(());
     }
     let mut transaction = client.transaction().await?;
     let schema = last_update_schema();
@@ -115,9 +111,17 @@ async fn replace_last_update(client: &ducklake::Ducklake, resource_id: &str) -> 
         .commit()
         .await
         .context("creating the last-update table")?;
+    Ok(())
+}
 
-    let mut transaction = client.transaction().await?;
-    let mut table = transaction.table(LAST_UPDATE_TABLE)?;
+fn append_last_update(
+    transaction: &mut ducklake::Transaction<'_>,
+    resource_id: &str,
+) -> Result<()> {
+    let mut table = transaction
+        .table(LAST_UPDATE_TABLE)
+        .context("opening the last-update table for inline data")?;
+    let schema = last_update_schema();
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_micros() as i64;
@@ -129,10 +133,6 @@ async fn replace_last_update(client: &ducklake::Ducklake, resource_id: &str) -> 
         ],
     )?;
     table.write_inline_data(vec![batch])?;
-    transaction
-        .commit()
-        .await
-        .context("committing the inline last-update row")?;
     Ok(())
 }
 

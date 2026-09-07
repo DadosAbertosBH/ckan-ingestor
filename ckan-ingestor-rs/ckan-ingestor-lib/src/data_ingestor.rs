@@ -170,6 +170,7 @@ mod tests {
             &temp.path().join("catalog.sqlite"),
             &temp.path().join("data"),
         );
+        factory.initialize().await.unwrap();
         let reader = MultipleReader::new(vec![Box::new(BatchReader {
             batches,
             formats: vec!["CSV".into()],
@@ -259,7 +260,7 @@ mod tests {
                 .iter()
                 .map(RecordBatch::num_rows)
                 .sum::<usize>(),
-            1
+            2
         );
     }
 
@@ -271,6 +272,7 @@ mod tests {
             &temp.path().join("catalog.sqlite"),
             &temp.path().join("data"),
         );
+        factory.initialize().await.unwrap();
         let reader = MultipleReader::new(vec![Box::new(FailingReader {
             formats: vec!["CSV".into()],
         })]);
@@ -337,6 +339,7 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
+        runtime.block_on(factory.initialize()).unwrap();
         runtime.block_on(async {
             let started = Instant::now();
             let outcome = DataIngestor::new(factory.writer().await.unwrap(), &reader)

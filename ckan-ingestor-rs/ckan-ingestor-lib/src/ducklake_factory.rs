@@ -15,7 +15,7 @@ use tokio::sync::OnceCell;
 use url::Url;
 
 use crate::config::S3Settings;
-use crate::ducklake_data_writer::DucklakeDataWriter;
+use crate::ducklake_data_writer::{initialize_last_update_table, DucklakeDataWriter};
 
 #[derive(Clone)]
 pub struct DucklakeFactory {
@@ -61,21 +61,7 @@ impl DucklakeFactory {
 
     pub async fn client(&self) -> Result<Arc<Ducklake>> {
         self.client
-            .get_or_try_init(|| async {
-                let connect = ConnectOptions::new(&self.catalog_url)
-                    .with_migrate(true)
-                    .with_storage_options(self.storage_options.clone());
-                let client = match Ducklake::connect(connect).await {
-                    Ok(client) => client,
-                    Err(DucklakeError::CatalogNotInitialized) => {
-                        let create = CreateOptions::new(&self.catalog_url, &self.data_path)
-                            .with_storage_options(self.storage_options.clone());
-                        Ducklake::create(create).await?
-                    }
-                    Err(error) => return Err(error),
-                };
-                Ok::<_, DucklakeError>(Arc::new(client))
-            })
+            .get_or_try_init(|| self.open_client())
             .await
             .map(Arc::clone)
             .map_err(Into::into)
@@ -86,6 +72,27 @@ impl DucklakeFactory {
             self.client().await?,
             self.storage_options.clone(),
         ))
+    }
+
+    pub async fn initialize(&self) -> Result<()> {
+        let client = self.open_client().await?;
+        initialize_last_update_table(&client).await
+    }
+
+    async fn open_client(&self) -> std::result::Result<Arc<Ducklake>, DucklakeError> {
+        let connect = ConnectOptions::new(&self.catalog_url)
+            .with_migrate(true)
+            .with_storage_options(self.storage_options.clone());
+        let client = match Ducklake::connect(connect).await {
+            Ok(client) => client,
+            Err(DucklakeError::CatalogNotInitialized) => {
+                let create = CreateOptions::new(&self.catalog_url, &self.data_path)
+                    .with_storage_options(self.storage_options.clone());
+                Ducklake::create(create).await?
+            }
+            Err(error) => return Err(error),
+        };
+        Ok(Arc::new(client))
     }
 }
 
@@ -139,7 +146,11 @@ fn postgres_url(uri: &str) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::postgres_url;
+    use tempfile::tempdir;
+
+    use crate::ducklake_data_writer::LAST_UPDATE_TABLE;
+
+    use super::{postgres_url, DucklakeFactory};
 
     #[test]
     fn converts_the_existing_libpq_catalog_setting_to_a_postgresql_url() {
@@ -158,5 +169,25 @@ mod tests {
             postgres_url("postgres:dbname=lake user=worker@local password=p@ss").unwrap(),
             "postgresql://worker%40local:p%40ss@localhost:5432/lake"
         );
+    }
+
+    #[tokio::test]
+    async fn initializes_the_resource_last_update_table() {
+        let temp = tempdir().unwrap();
+        let factory = DucklakeFactory::for_sqlite(
+            &temp.path().join("catalog.sqlite"),
+            &temp.path().join("data"),
+        );
+
+        factory.initialize().await.unwrap();
+
+        let client = factory.client().await.unwrap();
+        assert!(client.table_exists(LAST_UPDATE_TABLE).await.unwrap());
+        assert!(client
+            .transaction()
+            .await
+            .unwrap()
+            .table(LAST_UPDATE_TABLE)
+            .is_ok());
     }
 }
