@@ -46,8 +46,12 @@ impl DataWriter for DucklakeDataWriter {
             .schema
             .fields()
             .iter()
-            .map(|field| Column::try_from(field.as_ref()))
-            .collect::<std::result::Result<Vec<_>, _>>()?;
+            .map(|field| {
+                Column::try_from(field.as_ref()).with_context(|| {
+                    format!("converting Arrow field '{}' to DuckLake", field.name())
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
         let table_name = TableName {
             schema: "main".into(),
             name: resource_id.into(),

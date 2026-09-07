@@ -16,7 +16,7 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
 use anyhow::Result;
-use arrow::datatypes::{DataType, Field, Schema};
+use arrow::datatypes::{DataType, Field, Fields, Schema};
 use arrow_json::reader::{infer_json_schema, infer_json_schema_from_iterator, ReaderBuilder};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
@@ -140,15 +140,31 @@ fn normalize_null_fields(schema: Schema) -> Schema {
     let fields = schema
         .fields
         .into_iter()
-        .map(|field| {
-            let data_type = match field.data_type() {
-                DataType::Null => DataType::Utf8,
-                data_type => data_type.clone(),
-            };
-            Field::new(field.name(), data_type, field.is_nullable())
-        })
+        .map(|field| normalize_null_field(&field))
         .collect::<Vec<_>>();
     Schema::new_with_metadata(fields, metadata)
+}
+
+fn normalize_null_field(field: &Field) -> Field {
+    Field::new(
+        field.name(),
+        normalize_null_data_type(field.data_type()),
+        field.is_nullable(),
+    )
+}
+
+fn normalize_null_data_type(data_type: &DataType) -> DataType {
+    match data_type {
+        DataType::Null => DataType::Utf8,
+        DataType::Struct(fields) => DataType::Struct(Fields::from(
+            fields
+                .iter()
+                .map(|field| normalize_null_field(field))
+                .collect::<Vec<_>>(),
+        )),
+        DataType::List(field) => DataType::List(Arc::new(normalize_null_field(field))),
+        data_type => data_type.clone(),
+    }
 }
 
 impl Default for JsonReader {

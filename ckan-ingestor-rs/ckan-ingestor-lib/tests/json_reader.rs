@@ -105,6 +105,43 @@ fn represents_all_null_json_columns_as_utf8() -> Result<()> {
 }
 
 #[test]
+fn represents_nested_null_json_fields_as_utf8() -> Result<()> {
+    let path = std::env::temp_dir().join(format!(
+        "ckan-ingestor-nested-null-json-reader-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(&path, r#"[{"metadata":{"source":null}}]"#)?;
+    let resource = CkanResource {
+        id: "nested-null-json-resource".to_string(),
+        url: path.to_string_lossy().to_string(),
+        format: "JSON".to_string(),
+        datastore_active: false,
+    };
+
+    let result = JsonReader::new().read(&resource);
+    std::fs::remove_file(&path)?;
+    let result = result?;
+
+    let DataType::Struct(fields) = result
+        .parquet
+        .schema
+        .field_with_name("metadata")?
+        .data_type()
+    else {
+        panic!("metadata should be a struct");
+    };
+    assert_eq!(
+        fields
+            .iter()
+            .find(|field| field.name() == "source")
+            .unwrap()
+            .data_type(),
+        &DataType::Utf8
+    );
+    Ok(())
+}
+
+#[test]
 fn reads_remote_datapackage_json() -> Result<()> {
     let server = MockServer::start();
     let body = std::fs::read(concat!(
