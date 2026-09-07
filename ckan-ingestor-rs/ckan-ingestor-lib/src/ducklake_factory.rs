@@ -50,7 +50,6 @@ impl DucklakeFactory {
         }
     }
 
-    #[cfg(test)]
     pub fn for_sqlite(catalog_path: &std::path::Path, data_path: &std::path::Path) -> Self {
         Self::new(
             format!("sqlite://{}", catalog_path.display()),

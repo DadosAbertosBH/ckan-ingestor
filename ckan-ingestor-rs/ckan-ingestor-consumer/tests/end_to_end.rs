@@ -59,7 +59,7 @@ async fn creates_the_approved_stream_and_topics() -> anyhow::Result<()> {
     for topic in [
         settings.job_topic,
         settings.retry_topic,
-        settings.result_topic,
+        settings.parquet_result_topic,
     ] {
         let topic_id = topic.as_str().try_into()?;
         let details = client

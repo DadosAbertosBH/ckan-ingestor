@@ -54,7 +54,7 @@ impl<P: ResultPublisher + Send + 'static, Proc: JobProcessor> MessageHandler
             csv_delimiter: None,
             expected_columns: None,
             datastore_active: Some(false),
-            resource_id: None,
+            resource_id: job.resource_id.clone(),
             dataset_name: None,
             resource_name: None,
             resource_url: None,
@@ -63,6 +63,7 @@ impl<P: ResultPublisher + Send + 'static, Proc: JobProcessor> MessageHandler
             ckan_url: None,
             error_message: None,
             preview: None,
+            artifact: None,
         };
         self.publisher
             .publish(processing)
@@ -141,7 +142,7 @@ mod tests {
                 csv_delimiter: None,
                 expected_columns: None,
                 datastore_active: Some(false),
-                resource_id: None,
+                resource_id: job.resource_id,
                 dataset_name: None,
                 resource_name: None,
                 resource_url: None,
@@ -150,6 +151,7 @@ mod tests {
                 ckan_url: None,
                 error_message: None,
                 preview: None,
+                artifact: None,
             }
         }
     }

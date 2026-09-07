@@ -16,6 +16,7 @@ mod ingestor;
 mod ipc;
 mod package_processing;
 
+pub use ::duckdb as duckdb_driver;
 pub use fetcher::CkanDatasetFetcher;
 pub use ingestor::DuckdbCkanMetadataIngestor;
 pub use ipc::StructuredIpc;

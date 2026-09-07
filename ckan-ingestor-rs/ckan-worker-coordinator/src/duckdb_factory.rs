@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 use anyhow::Result;
-use duckdb::{Config, Connection};
+use ckan_metadata_ingestor::duckdb_driver::{Config, Connection};
 
 const USER_AGENT: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0";

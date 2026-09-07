@@ -16,8 +16,7 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
 use ckan_ingestor_lib::ckan_resource::CkanResource;
-use ckan_ingestor_lib::data_ingestor::DataIngestor;
-use ckan_ingestor_lib::ducklake_factory::DucklakeFactory;
+use ckan_ingestor_lib::readers::ckan_reader::CkanReader;
 use ckan_ingestor_lib::readers::csv_reader::CsvReader;
 use ckan_ingestor_lib::readers::datastore_reader::DatastoreReader;
 use ckan_ingestor_lib::readers::document_reader::DocumentReader;
@@ -29,6 +28,7 @@ use std::{sync::Arc, time::Duration};
 use tokio::runtime::Runtime;
 
 use crate::messages::{JobMessage, JobResultMessage, JobStatus};
+use crate::parquet_uploader::ParquetUploader;
 
 // ---------------------------------------------------------------------------
 // JobProcessor trait
@@ -49,18 +49,18 @@ pub trait JobProcessor: Clone + Send + 'static {
 
 pub struct RealJobProcessor {
     s3: S3DocumentIngestor,
-    factory: DucklakeFactory,
+    uploader: ParquetUploader,
     runtime: Arc<Runtime>,
 }
 
 impl RealJobProcessor {
-    pub fn new(s3: S3DocumentIngestor, factory: DucklakeFactory) -> anyhow::Result<Self> {
+    pub fn new(s3: S3DocumentIngestor, uploader: ParquetUploader) -> anyhow::Result<Self> {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
         Ok(Self {
             s3,
-            factory,
+            uploader,
             runtime: Arc::new(runtime),
         })
     }
@@ -70,7 +70,7 @@ impl Clone for RealJobProcessor {
     fn clone(&self) -> Self {
         Self {
             s3: self.s3.clone(),
-            factory: self.factory.clone(),
+            uploader: self.uploader.clone(),
             runtime: self.runtime.clone(),
         }
     }
@@ -78,8 +78,8 @@ impl Clone for RealJobProcessor {
 
 impl JobProcessor for RealJobProcessor {
     fn process(&self, job: JobMessage) -> JobResultMessage {
-        match run_ingestion(&self.runtime, &self.factory, &job, &self.s3) {
-            Ok(outcome) => job_result_from_outcome(job.job_id.clone(), outcome),
+        match run_conversion(&self.runtime, &self.uploader, &job, &self.s3) {
+            Ok(result) => result,
             Err(e) => {
                 let error_str = format!("{}", e);
                 let truncated = &error_str[..error_str.len().min(16_000)];
@@ -95,7 +95,7 @@ impl JobProcessor for RealJobProcessor {
                     csv_delimiter: None,
                     expected_columns: None,
                     datastore_active: Some(false),
-                    resource_id: None,
+                    resource_id: job.resource_id.clone(),
                     dataset_name: None,
                     resource_name: None,
                     resource_url: None,
@@ -104,29 +104,23 @@ impl JobProcessor for RealJobProcessor {
                     ckan_url: None,
                     error_message: Some(truncated.to_string()),
                     preview: None,
+                    artifact: None,
                 }
             }
         }
     }
 }
 
-fn job_result_from_outcome(
+fn job_result_from_success(
     job_id: String,
-    outcome: ckan_ingestor_lib::ingestor_outcome::IngestionOutcome,
+    resource_id: String,
+    outcome: ckan_ingestor_lib::readers::ckan_reader::SuccessResult,
+    artifact: ckan_ingestor_worker_lib::ParquetArtifact,
 ) -> JobResultMessage {
-    if outcome.status == ckan_ingestor_lib::ingestor_outcome::IngestionStatus::Failed
-        && let Some(error_message) = &outcome.error_message
-    {
-        log::error!("Job {} failed: {}", job_id, error_message);
-    }
-
     JobResultMessage {
         job_id: Some(job_id),
         reader: Some(outcome.reader),
-        status: match outcome.status {
-            ckan_ingestor_lib::ingestor_outcome::IngestionStatus::Success => JobStatus::Success,
-            ckan_ingestor_lib::ingestor_outcome::IngestionStatus::Failed => JobStatus::Failed,
-        },
+        status: JobStatus::Success,
         rows_processed: i64::try_from(outcome.rows_processed).ok(),
         expected_rows: outcome
             .expected_rows
@@ -137,25 +131,26 @@ fn job_result_from_outcome(
         expected_columns: outcome
             .expected_columns
             .and_then(|value| i64::try_from(value).ok()),
-        datastore_active: Some(outcome.datastore_active),
-        resource_id: None,
+        datastore_active: None,
+        resource_id,
         dataset_name: None,
         resource_name: None,
         resource_url: None,
         resource_format: None,
         instance_id: None,
         ckan_url: None,
-        error_message: outcome.error_message,
+        error_message: None,
         preview: Some(outcome.preview),
+        artifact: Some(artifact),
     }
 }
 
-fn run_ingestion(
+fn run_conversion(
     runtime: &Runtime,
-    factory: &DucklakeFactory,
+    uploader: &ParquetUploader,
     job: &JobMessage,
     s3: &S3DocumentIngestor,
-) -> Result<ckan_ingestor_lib::ingestor_outcome::IngestionOutcome, anyhow::Error> {
+) -> Result<JobResultMessage, anyhow::Error> {
     let resource = CkanResource {
         id: job.resource_id.clone(),
         url: job.resource_url.clone(),
@@ -180,74 +175,137 @@ fn run_ingestion(
         Box::new(JsonReader::with_client(http_client)),
         Box::new(DocumentReader::new(s3)),
     ]);
-    runtime.block_on(async {
-        let ingestor = DataIngestor::new(factory.writer().await?, &reader);
-        Ok(ingestor.ingest_ckan_data(&resource).await)
-    })
+    match reader.read(&resource) {
+        Ok(result) => {
+            let artifact = runtime.block_on(uploader.upload(
+                &job.resource_id,
+                &job.job_id,
+                &result.parquet,
+            ))?;
+            Ok(job_result_from_success(
+                job.job_id.clone(),
+                job.resource_id.clone(),
+                result,
+                artifact,
+            ))
+        }
+        Err(failed) => Ok(job_result_from_failure(
+            &job.job_id,
+            &job.resource_id,
+            job.datastore_active,
+            failed,
+        )),
+    }
+}
+
+fn job_result_from_failure(
+    job_id: &str,
+    resource_id: &str,
+    datastore_active: bool,
+    failed: ckan_ingestor_lib::readers::ckan_reader::FailedResult,
+) -> JobResultMessage {
+    JobResultMessage {
+        job_id: Some(job_id.into()),
+        status: JobStatus::Failed,
+        resource_id: resource_id.into(),
+        dataset_name: None,
+        resource_name: None,
+        resource_url: None,
+        resource_format: None,
+        instance_id: None,
+        ckan_url: None,
+        datastore_active: Some(datastore_active),
+        reader: Some(failed.reader),
+        rows_processed: Some(0),
+        expected_rows: failed
+            .expected_rows
+            .and_then(|value| i64::try_from(value).ok()),
+        encoding: None,
+        csv_strict_mode: None,
+        csv_delimiter: None,
+        expected_columns: failed
+            .expected_columns
+            .and_then(|value| i64::try_from(value).ok()),
+        error_message: Some(failed.error.to_string()),
+        preview: Some(vec![]),
+        artifact: None,
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use ckan_ingestor_lib::ingestor_outcome::{IngestionOutcome, IngestionStatus};
+    use std::sync::Arc;
 
-    use super::job_result_from_outcome;
+    use arrow::{
+        array::StringArray,
+        datatypes::{DataType, Field, Schema},
+        record_batch::RecordBatch,
+    };
+    use ckan_ingestor_lib::{
+        parquet_output::ParquetOutput,
+        readers::ckan_reader::{FailedResult, SuccessResult},
+    };
+    use ckan_ingestor_worker_lib::ParquetArtifact;
+
+    use super::{job_result_from_failure, job_result_from_success};
     use crate::messages::JobStatus;
 
+    fn successful_result() -> SuccessResult {
+        let batch = RecordBatch::try_new(
+            Arc::new(Schema::new(vec![Field::new("name", DataType::Utf8, false)])),
+            vec![Arc::new(StringArray::from(vec!["Ana", "Bia"]))],
+        )
+        .unwrap();
+        let mut parquet = ParquetOutput::try_new(&batch).unwrap();
+        parquet.write(&batch).unwrap();
+        parquet.finish().unwrap();
+        SuccessResult::from_csv(
+            parquet,
+            "latin-1".into(),
+            false,
+            ";".into(),
+            "test-reader".into(),
+        )
+    }
+
     #[test]
-    fn maps_the_reader_outcome_to_the_python_owned_result_contract() {
-        let result = job_result_from_outcome(
-            "job-1".to_string(),
-            IngestionOutcome {
-                reader: "test-reader".to_string(),
-                rows_processed: 42,
-                preview: vec![serde_json::json!({"name": "Ana"})],
-                expected_rows: Some(50),
-                encoding: Some("latin-1".to_string()),
-                csv_strict_mode: Some(false),
-                csv_delimiter: Some(";".to_string()),
-                datastore_active: true,
-                expected_columns: Some(3),
-                error_message: None,
-                status: IngestionStatus::Success,
+    fn maps_successful_conversion_to_the_internal_artifact_contract() {
+        let result = job_result_from_success(
+            "job-1".into(),
+            "resource-1".into(),
+            successful_result(),
+            ParquetArtifact {
+                uri: "s3://warehouse/resource-1/job-1.parquet".into(),
+                schema_ipc_base64: "schema".into(),
+                num_rows: 2,
+                file_size_bytes: 100,
+                footer_size_bytes: None,
+                column_statistics: vec![],
             },
         );
 
         assert_eq!(result.status, JobStatus::Success);
-        assert_eq!(result.rows_processed, Some(42));
-        assert_eq!(result.expected_rows, Some(50));
-        assert_eq!(result.expected_columns, Some(3));
-        assert_eq!(result.csv_strict_mode, Some(false));
+        assert_eq!(result.resource_id, "resource-1");
+        assert_eq!(result.rows_processed, Some(2));
         assert_eq!(result.csv_delimiter.as_deref(), Some(";"));
         assert_eq!(
-            result.preview,
-            Some(vec![serde_json::json!({"name": "Ana"})])
+            result.artifact.unwrap().uri,
+            "s3://warehouse/resource-1/job-1.parquet"
         );
     }
 
     #[test]
-    fn maps_failed_outcomes_to_the_protocol_failed_status() {
-        let result = job_result_from_outcome(
-            "job-1".to_string(),
-            IngestionOutcome {
-                reader: "test-reader".to_string(),
-                rows_processed: 0,
-                preview: vec![],
-                expected_rows: None,
-                encoding: None,
-                csv_strict_mode: None,
-                csv_delimiter: None,
-                datastore_active: false,
-                expected_columns: None,
-                error_message: Some("No data to create table from".to_string()),
-                status: IngestionStatus::Failed,
-            },
-        );
+    fn maps_failed_conversion_to_the_protocol_failed_status() {
+        let failed =
+            FailedResult::from_string("No data to create table from", "test-reader".into());
+        let result = job_result_from_failure("job-1", "resource-1", false, failed);
 
         assert_eq!(result.status, JobStatus::Failed);
+        assert_eq!(result.resource_id, "resource-1");
         assert_eq!(
             result.error_message.as_deref(),
             Some("No data to create table from")
         );
-        assert_eq!(serde_json::to_value(&result).unwrap()["status"], "FAILED");
+        assert!(result.artifact.is_none());
     }
 }

@@ -42,7 +42,7 @@ impl ResultPublisher for IggyResultPublisher {
             .job_id
             .as_deref()
             .expect("worker results require job_id");
-        let partitioning = Arc::new(Partitioning::messages_key_str(job_id)?);
+        let partitioning = Arc::new(Partitioning::messages_key_str(&result.resource_id)?);
         self.producer
             .send_with_partitioning(vec![message], Some(partitioning))
             .await

@@ -74,29 +74,21 @@ impl S3Settings {
         format!("{}://{}", scheme, self.endpoint)
     }
 
-    /// Build a `rust-s3` `Bucket` configured for this settings. Custom
-    /// endpoint (RustFS or another S3-compatible service) is used when
-    /// `endpoint` is not the default
-    /// S3 host.
-    pub fn bucket(&self) -> anyhow::Result<Box<s3::bucket::Bucket>> {
-        let region = s3::region::Region::Custom {
-            region: self.region.clone(),
-            endpoint: self.endpoint_url(),
-        };
-        let credentials = s3::creds::Credentials::new(
-            Some(&self.access_key_id),
-            Some(&self.secret_access_key),
-            None,
-            None,
-            None,
-        )?;
-        let bucket = s3::bucket::Bucket::new(&self.bucket, region, credentials)?;
-        let bucket = if self.url_style == "path" {
-            bucket.with_path_style()
-        } else {
-            bucket
-        };
-        Ok(bucket)
+    pub fn object_store_options(&self) -> Vec<(String, String)> {
+        vec![
+            ("aws_access_key_id".into(), self.access_key_id.clone()),
+            (
+                "aws_secret_access_key".into(),
+                self.secret_access_key.clone(),
+            ),
+            ("aws_region".into(), self.region.clone()),
+            ("aws_endpoint".into(), self.endpoint_url()),
+            (
+                "aws_virtual_hosted_style_request".into(),
+                (self.url_style != "path").to_string(),
+            ),
+            ("aws_allow_http".into(), (!self.use_ssl).to_string()),
+        ]
     }
 }
 

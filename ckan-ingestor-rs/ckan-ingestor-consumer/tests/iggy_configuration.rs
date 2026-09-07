@@ -23,7 +23,7 @@ fn defaults_use_the_approved_iggy_topology() {
     assert_eq!(settings.stream, "ckan-ingestor");
     assert_eq!(settings.job_topic, "jobs");
     assert_eq!(settings.retry_topic, "jobs-retry");
-    assert_eq!(settings.result_topic, "job-results");
+    assert_eq!(settings.parquet_result_topic, "parquet-results");
     assert_eq!(settings.consumer_group, "ckan-worker");
     assert_eq!(settings.partitions, 10);
 }

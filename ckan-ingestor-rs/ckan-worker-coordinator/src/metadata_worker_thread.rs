@@ -81,7 +81,7 @@ impl MessageHandler for MetadataHandler {
                     let skipped = JobResultMessage {
                         job_id: None,
                         status: JobStatus::Success,
-                        resource_id: Some(candidate.resource_id.clone()),
+                        resource_id: candidate.resource_id.clone(),
                         dataset_name: Some(candidate.dataset_name),
                         resource_name: candidate.resource_name,
                         resource_url: candidate.resource_url,
@@ -98,6 +98,7 @@ impl MessageHandler for MetadataHandler {
                         expected_columns: None,
                         error_message: None,
                         preview: None,
+                        artifact: None,
                     };
                     self.jobs.skipped(&skipped, &candidate.resource_id).await?;
                 }

@@ -8,7 +8,7 @@ name = "ckan-worker-coordinator"
 path = "src/main.rs"
 
 [dependencies]
-ckan_ingestor_lib = { path = "../ckan-ingestor-lib", default-features = false }
+ckan_ingestor_lib = { path = "../ckan-ingestor-lib" }
 ckan_ingestor_worker_lib = { path = "../ckan-ingestor-worker-lib" }
 ckan_metadata_ingestor = { path = "../ckan-metadata-ingestor" }
 iggy = "=0.10.0"
@@ -19,10 +19,14 @@ serde = "1.0"
 anyhow = "1.0"
 log = "0.4"
 env_logger = "0.11"
-duckdb = { version = "1.5.5" }
+ducklake = { version = "=0.0.16", default-features = false, features = ["aws", "postgres", "sqlite"] }
+arrow = "=59.2.0"
+arrow-ipc = "=59.2.0"
+base64 = "0.22"
 rustls = { version = "0.23", features = ["ring"] }
 mysql = "26"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 testcontainers = "0.28"
+tempfile = "3"

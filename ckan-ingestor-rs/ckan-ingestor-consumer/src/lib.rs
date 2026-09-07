@@ -10,12 +10,12 @@
 pub mod job_processor;
 pub mod message_source;
 pub mod messages;
+pub mod parquet_uploader;
 pub mod result_publisher;
 pub mod worker_thread;
 
 use anyhow::{Context, Result};
 use ckan_ingestor_lib::config::S3Settings;
-use ckan_ingestor_lib::ducklake_factory::DucklakeFactory;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
 use iggy::prelude::{
     AutoCommit, Client, CompressionAlgorithm, DirectConfig, IggyClient, IggyDuration, IggyExpiry,
@@ -29,6 +29,7 @@ use tokio::sync::Notify;
 
 use crate::job_processor::RealJobProcessor;
 use crate::message_source::IggySource;
+use crate::parquet_uploader::ParquetUploader;
 use crate::result_publisher::IggyResultPublisher;
 use crate::worker_thread::WorkerThread;
 
@@ -40,7 +41,7 @@ pub struct IggySettings {
     pub stream: String,
     pub job_topic: String,
     pub retry_topic: String,
-    pub result_topic: String,
+    pub parquet_result_topic: String,
     pub consumer_group: String,
     pub partitions: u32,
 }
@@ -54,7 +55,7 @@ impl Default for IggySettings {
             stream: "ckan-ingestor".into(),
             job_topic: "jobs".into(),
             retry_topic: "jobs-retry".into(),
-            result_topic: "job-results".into(),
+            parquet_result_topic: "parquet-results".into(),
             consumer_group: "ckan-worker".into(),
             partitions: 10,
         }
@@ -85,7 +86,8 @@ impl IggySettings {
             stream: env::var("IGGY_STREAM").unwrap_or(defaults.stream),
             job_topic: env::var("IGGY_TOPIC").unwrap_or(defaults.job_topic),
             retry_topic: env::var("IGGY_TOPIC_RETRY").unwrap_or(defaults.retry_topic),
-            result_topic: env::var("IGGY_TOPIC_RESULTS").unwrap_or(defaults.result_topic),
+            parquet_result_topic: env::var("IGGY_PARQUET_RESULT_TOPIC")
+                .unwrap_or(defaults.parquet_result_topic),
             consumer_group: env::var("IGGY_GROUP_ID").unwrap_or(defaults.consumer_group),
             partitions,
         })
@@ -104,16 +106,14 @@ pub async fn run() -> Result<()> {
     ensure_topology(&admin, &settings).await?;
 
     let result_producer = admin
-        .producer(&settings.stream, &settings.result_topic)?
+        .producer(&settings.stream, &settings.parquet_result_topic)?
         .direct(DirectConfig::builder().batch_length(1).build())
         .build();
     result_producer.init().await?;
     let publisher = IggyResultPublisher::new(result_producer);
 
     let s3 = create_s3_ingestor().await?;
-    let factory = DucklakeFactory::from_env()?;
-    factory.initialize().await?;
-    let processor = RealJobProcessor::new(s3, factory)?;
+    let processor = RealJobProcessor::new(s3, ParquetUploader::new(S3Settings::from_env()))?;
     let mut workers = Vec::with_capacity((settings.partitions * 2) as usize);
 
     for topic in [&settings.job_topic, &settings.retry_topic] {
@@ -174,7 +174,7 @@ pub async fn ensure_topology(client: &IggyClient, settings: &IggySettings) -> Re
     for (topic_name, partitions) in [
         (&settings.job_topic, settings.partitions),
         (&settings.retry_topic, settings.partitions),
-        (&settings.result_topic, settings.partitions),
+        (&settings.parquet_result_topic, settings.partitions),
     ] {
         let topic = topic_name.as_str().try_into()?;
         if client.get_topic(&stream, &topic).await?.is_none()

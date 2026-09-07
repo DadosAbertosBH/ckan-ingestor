@@ -111,6 +111,10 @@ impl<T: JobTransport> JobPublisher<T> {
     pub async fn skipped(&self, result: &JobResultMessage, key: &str) -> anyhow::Result<()> {
         self.send(Destination::Results, key, result).await
     }
+
+    pub async fn result(&self, result: &JobResultMessage, key: &str) -> anyhow::Result<()> {
+        self.send(Destination::Results, key, result).await
+    }
 }
 
 #[cfg(test)]

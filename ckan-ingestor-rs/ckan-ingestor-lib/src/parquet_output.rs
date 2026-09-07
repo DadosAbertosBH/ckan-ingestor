@@ -18,8 +18,11 @@
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
-use arrow::{array::RecordBatch, datatypes::SchemaRef};
-use parquet::{arrow::ArrowWriter, errors::ParquetError};
+use arrow::{
+    array::RecordBatch,
+    datatypes::{DataType, Field, Fields, Schema, SchemaRef},
+};
+use parquet::{arrow::ArrowWriter, errors::ParquetError, file::metadata::ParquetMetaData};
 
 const PREVIEW_MAX_VALUE_LEN: usize = 1000;
 const PREVIEW_MAX_ROWS: usize = 5;
@@ -31,20 +34,23 @@ pub struct ParquetOutput {
     pub rows: usize,
     pub columns: usize,
     pub preview: Option<Vec<serde_json::Value>>,
+    metadata: Option<ParquetMetaData>,
 }
 
 impl ParquetOutput {
     pub fn try_new(batch: &RecordBatch) -> Result<Self, ParquetError> {
         let path = std::env::temp_dir().join(format!("{}.parquet", uuid::Uuid::new_v4()));
         let file = File::create(&path)?;
-        let writer = ArrowWriter::try_new(file, batch.schema(), None)?;
+        let schema = schema_with_field_ids(&batch.schema());
+        let writer = ArrowWriter::try_new(file, schema.clone(), None)?;
         Ok(Self {
             path,
-            schema: batch.schema(),
+            schema,
             writer,
             rows: 0,
             columns: 0,
             preview: None,
+            metadata: None,
         })
     }
 
@@ -53,9 +59,10 @@ impl ParquetOutput {
     }
 
     pub fn write(&mut self, batch: &RecordBatch) -> Result<(), ParquetError> {
-        self.writer.write(batch)?;
+        let batch = RecordBatch::try_new(self.schema.clone(), batch.columns().to_vec())?;
+        self.writer.write(&batch)?;
         if self.preview.is_none() {
-            self.preview = Some(Self::generate_preview(batch));
+            self.preview = Some(Self::generate_preview(&batch));
         }
         self.rows += batch.num_rows();
         self.columns = self.columns.max(batch.num_columns());
@@ -63,8 +70,16 @@ impl ParquetOutput {
     }
 
     pub fn finish(&mut self) -> Result<(), ParquetError> {
-        self.writer.finish()?;
+        self.metadata = Some(self.writer.finish()?);
         Ok(())
+    }
+
+    pub fn metadata(&self) -> Option<&ParquetMetaData> {
+        self.metadata.as_ref()
+    }
+
+    pub fn file_size(&self) -> std::io::Result<u64> {
+        Ok(std::fs::metadata(&self.path)?.len())
     }
 
     fn generate_preview(batch: &RecordBatch) -> Vec<serde_json::Value> {
@@ -100,6 +115,52 @@ impl ParquetOutput {
             other => other,
         }
     }
+}
+
+fn schema_with_field_ids(schema: &Schema) -> SchemaRef {
+    fn assign(field: &Field, next_id: &mut i32) -> Field {
+        let id = *next_id;
+        *next_id += 1;
+        let data_type = match field.data_type() {
+            DataType::List(child) => DataType::List(std::sync::Arc::new(assign(child, next_id))),
+            DataType::LargeList(child) => {
+                DataType::LargeList(std::sync::Arc::new(assign(child, next_id)))
+            }
+            DataType::FixedSizeList(child, size) => {
+                DataType::FixedSizeList(std::sync::Arc::new(assign(child, next_id)), *size)
+            }
+            DataType::ListView(child) => {
+                DataType::ListView(std::sync::Arc::new(assign(child, next_id)))
+            }
+            DataType::LargeListView(child) => {
+                DataType::LargeListView(std::sync::Arc::new(assign(child, next_id)))
+            }
+            DataType::Struct(children) => DataType::Struct(Fields::from(
+                children
+                    .iter()
+                    .map(|child| assign(child, next_id))
+                    .collect::<Vec<_>>(),
+            )),
+            DataType::Map(child, sorted) => {
+                DataType::Map(std::sync::Arc::new(assign(child, next_id)), *sorted)
+            }
+            other => other.clone(),
+        };
+        let mut metadata = field.metadata().clone();
+        metadata.insert("PARQUET:field_id".into(), id.to_string());
+        field
+            .clone()
+            .with_data_type(data_type)
+            .with_metadata(metadata)
+    }
+
+    let mut next_id = 1;
+    let fields = schema
+        .fields()
+        .iter()
+        .map(|field| assign(field, &mut next_id))
+        .collect::<Vec<_>>();
+    std::sync::Arc::new(Schema::new_with_metadata(fields, schema.metadata().clone()))
 }
 
 impl Drop for ParquetOutput {
@@ -151,5 +212,45 @@ mod tests {
 
         assert!(reader.is_ok(), "reader output must be Parquet");
         assert_eq!(reader.unwrap().metadata().file_metadata().num_rows(), 1);
+    }
+
+    #[test]
+    fn output_assigns_depth_first_ducklake_field_ids() {
+        let nested = Field::new(
+            "nested",
+            DataType::Struct(vec![Field::new("value", DataType::Utf8, true)].into()),
+            true,
+        );
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int32, false),
+            nested,
+        ]));
+        let batch = RecordBatch::new_empty(schema);
+
+        let output = ParquetOutput::try_new(&batch).unwrap();
+
+        assert_eq!(output.schema.field(0).metadata()["PARQUET:field_id"], "1");
+        assert_eq!(output.schema.field(1).metadata()["PARQUET:field_id"], "2");
+        let DataType::Struct(fields) = output.schema.field(1).data_type() else {
+            panic!("nested field should remain a struct");
+        };
+        assert_eq!(fields[0].metadata()["PARQUET:field_id"], "3");
+    }
+
+    #[test]
+    fn finished_output_exposes_local_file_metadata() {
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "value",
+            DataType::Int32,
+            false,
+        )]));
+        let batch =
+            RecordBatch::try_new(schema, vec![Arc::new(Int32Array::from(vec![1, 2]))]).unwrap();
+        let mut output = ParquetOutput::try_new(&batch).unwrap();
+        output.write(&batch).unwrap();
+        output.finish().unwrap();
+
+        assert_eq!(output.metadata().unwrap().file_metadata().num_rows(), 2);
+        assert!(output.file_size().unwrap() > 0);
     }
 }

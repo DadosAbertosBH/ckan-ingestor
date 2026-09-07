@@ -8,7 +8,7 @@ name = "ckan-ingestor-consumer"
 path = "src/main.rs"
 
 [dependencies]
-ckan_ingestor_lib = { path = "../ckan-ingestor-lib" }
+ckan_ingestor_lib = { path = "../ckan-ingestor-lib", default-features = false }
 ckan_ingestor_worker_lib = { path = "../ckan-ingestor-worker-lib" }
 iggy = "=0.10.0"
 tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "macros", "sync", "signal", "time"] }
@@ -20,6 +20,11 @@ log = "0.4"
 env_logger = "0.11"
 reqwest = { version = "0.12", features = ["blocking", "json"] }
 rustls = { version = "0.23", features = ["ring"] }
+object_store = { version = "=0.13.2", default-features = false, features = ["aws", "fs"] }
+url = "2"
+base64 = "0.22"
+arrow-ipc = "=59.2.0"
+arrow = "=59.2.0"
 
 [dev-dependencies]
 httpmock = "0.7"

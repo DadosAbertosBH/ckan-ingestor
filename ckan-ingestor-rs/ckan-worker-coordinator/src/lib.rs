@@ -15,6 +15,8 @@ pub mod metadata_processor;
 pub mod metadata_publisher;
 pub mod metadata_worker_thread;
 pub mod mysql_job_repository;
+pub mod parquet_registrar;
+pub mod parquet_worker_thread;
 
 use crate::duckdb_factory::DuckdbFactory;
 use anyhow::{Context, Result};
@@ -34,6 +36,9 @@ use crate::metadata_processor::RealMetadataProcessor;
 use crate::metadata_publisher::MetadataPublisher;
 use crate::metadata_worker_thread::MetadataHandler;
 use crate::mysql_job_repository::MySqlJobRepository;
+use crate::parquet_registrar::ParquetRegistrar;
+use crate::parquet_worker_thread::ParquetHandler;
+use ckan_ingestor_lib::ducklake_factory::DucklakeFactory;
 use ckan_ingestor_worker_lib::{ConsumerWorker, IggySource};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,6 +50,8 @@ pub struct IggySettings {
     pub job_topic: String,
     pub retry_topic: String,
     pub result_topic: String,
+    pub parquet_result_topic: String,
+    pub parquet_consumer_group: String,
     pub metadata_sync_topic: String,
     pub metadata_sync_result_topic: String,
     pub metadata_consumer_group: String,
@@ -61,6 +68,8 @@ impl Default for IggySettings {
             job_topic: "jobs".into(),
             retry_topic: "jobs-retry".into(),
             result_topic: "job-results".into(),
+            parquet_result_topic: "parquet-results".into(),
+            parquet_consumer_group: "ducklake-writer".into(),
             metadata_sync_topic: "ckan_metadata_sync".into(),
             metadata_sync_result_topic: "ckan_metadata_sync_result".into(),
             metadata_consumer_group: "ckan-metadata-sync-worker".into(),
@@ -94,6 +103,10 @@ impl IggySettings {
             job_topic: env::var("IGGY_TOPIC").unwrap_or(defaults.job_topic),
             retry_topic: env::var("IGGY_TOPIC_RETRY").unwrap_or(defaults.retry_topic),
             result_topic: env::var("IGGY_TOPIC_RESULTS").unwrap_or(defaults.result_topic),
+            parquet_result_topic: env::var("IGGY_PARQUET_RESULT_TOPIC")
+                .unwrap_or(defaults.parquet_result_topic),
+            parquet_consumer_group: env::var("IGGY_PARQUET_GROUP_ID")
+                .unwrap_or(defaults.parquet_consumer_group),
             metadata_sync_topic: env::var("IGGY_METADATA_SYNC_TOPIC")
                 .unwrap_or(defaults.metadata_sync_topic),
             metadata_sync_result_topic: env::var("IGGY_METADATA_SYNC_RESULT_TOPIC")
@@ -145,6 +158,25 @@ pub async fn run() -> Result<()> {
         .batch_length(1)
         .build();
     consumer.init().await?;
+    let parquet_client = connected_client(&connection_string).await?;
+    let mut parquet_consumer = parquet_client
+        .consumer_group(
+            &settings.parquet_consumer_group,
+            &settings.stream,
+            &settings.parquet_result_topic,
+        )?
+        .auto_commit(AutoCommit::Disabled)
+        .create_consumer_group_if_not_exists()
+        .auto_join_consumer_group()
+        .polling_strategy(PollingStrategy::next())
+        .poll_interval(IggyDuration::from(Duration::from_millis(10)))
+        .batch_length(1)
+        .build();
+    parquet_consumer.init().await?;
+    let factory = DucklakeFactory::from_env()?;
+    factory.initialize().await?;
+    let registrar = ParquetRegistrar::new(factory);
+    let jobs = JobPublisher::new(result_producer, job_producer, retry_producer);
     let processor = RealMetadataProcessor::new(DuckdbFactory::from_env())?;
     let mut worker = ConsumerWorker::new(
         settings.metadata_sync_topic.clone(),
@@ -152,17 +184,25 @@ pub async fn run() -> Result<()> {
         IggySource::new(consumer),
         MetadataHandler::new(
             MetadataPublisher::new(producer),
-            JobPublisher::new(result_producer, job_producer, retry_producer),
+            jobs.clone(),
             JobPlanner::new(Box::new(MySqlJobRepository::from_env()?)),
             processor,
         ),
     );
     worker.run();
+    let mut parquet_worker = ConsumerWorker::new(
+        settings.parquet_result_topic.clone(),
+        0,
+        IggySource::new(parquet_consumer),
+        ParquetHandler::new(registrar, jobs),
+    );
+    parquet_worker.run();
     let shutdown = Arc::new(Notify::new());
     install_shutdown_handler(shutdown.clone());
     info!("CKAN worker coordinator started");
     shutdown.notified().await;
     tokio::task::spawn_blocking(move || worker.shutdown()).await?;
+    tokio::task::spawn_blocking(move || parquet_worker.shutdown()).await?;
     info!("CKAN worker coordinator stopped");
     Ok(())
 }
@@ -187,6 +227,7 @@ pub async fn ensure_topology(client: &IggyClient, settings: &IggySettings) -> Re
         (&settings.job_topic, settings.partitions),
         (&settings.retry_topic, settings.partitions),
         (&settings.result_topic, settings.partitions),
+        (&settings.parquet_result_topic, settings.partitions),
         (&settings.metadata_sync_topic, 1),
         (&settings.metadata_sync_result_topic, 1),
     ] {

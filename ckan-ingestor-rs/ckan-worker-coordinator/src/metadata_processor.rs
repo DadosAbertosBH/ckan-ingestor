@@ -7,8 +7,8 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
+use ckan_metadata_ingestor::duckdb_driver::Connection;
 use ckan_metadata_ingestor::{DuckdbCkanMetadataIngestor, MetadataSyncCommand, MetadataSyncResult};
-use duckdb::Connection;
 
 use crate::duckdb_factory::DuckdbFactory;
 
@@ -80,7 +80,7 @@ pub fn query_outdated_resources(
 #[allow(clippy::items_after_test_module)]
 mod tests {
     use super::query_outdated_resources;
-    use duckdb::Connection;
+    use ckan_metadata_ingestor::duckdb_driver::Connection;
 
     #[test]
     fn outdated_resources_are_scoped_to_the_ckan_url() -> anyhow::Result<()> {

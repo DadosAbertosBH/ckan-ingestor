@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 default = ["ducklake-backend"]
-ducklake-backend = ["dep:ducklake", "dep:object_store", "dep:tokio", "dep:url"]
+ducklake-backend = ["dep:ducklake"]
 
 [dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"] }
@@ -20,16 +20,15 @@ arrow-ipc = "=59.2.0"
 parquet = { version = "=59.2.0", features = ["arrow"] }
 uuid = { version = "1.17.0", features = ["v4"] }
 bytes = "1.10"
-rust-s3 = { version = "0.37", default-features = false, features = ["sync-rustls-tls"] }
+object_store = { version = "=0.13.2", default-features = false, features = ["aws", "fs"] }
+tokio = { version = "1.0", features = ["fs", "io-util", "macros", "rt", "sync"] }
+url = "2"
 csv-nose = { git = "https://github.com/guitcastro/csv-nose.git", branch = "fix/reduce-dialect-scoring-memory" }
 flate2 = "1"
 encoding_rs = "0.8"
 encoding_rs_io = "0.1"
 regex = "1"
 ducklake = { version = "=0.0.16", default-features = false, features = ["aws", "postgres", "sqlite"], optional = true }
-object_store = { version = "=0.13.2", default-features = false, features = ["aws", "fs"], optional = true }
-tokio = { version = "1.0", features = ["fs", "io-util", "macros", "rt", "sync"], optional = true }
-url = { version = "2", optional = true }
 
 [dev-dependencies]
 httpmock = "0.7"

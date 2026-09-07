@@ -56,8 +56,7 @@ pub struct JobResultMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub job_id: Option<String>,
     pub status: JobStatus,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub resource_id: Option<String>,
+    pub resource_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dataset_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -90,6 +89,29 @@ pub struct JobResultMessage {
     pub error_message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preview: Option<Vec<serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact: Option<ParquetArtifact>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ParquetArtifact {
+    pub uri: String,
+    pub schema_ipc_base64: String,
+    pub num_rows: u64,
+    pub file_size_bytes: u64,
+    pub footer_size_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub column_statistics: Vec<ParquetColumnStatistics>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ParquetColumnStatistics {
+    pub field_id: i64,
+    pub size_bytes: Option<u64>,
+    pub min_value: Option<String>,
+    pub max_value: Option<String>,
+    pub null_count: Option<u64>,
+    pub contains_nan: Option<bool>,
 }
 
 impl JobResultMessage {
@@ -102,7 +124,7 @@ impl JobResultMessage {
         Self {
             job_id: Some(job_id.into()),
             status: JobStatus::Pending,
-            resource_id: Some(resource_id.into()),
+            resource_id: resource_id.into(),
             dataset_name: Some(dataset_name.into()),
             resource_name: None,
             resource_url: None,
@@ -119,7 +141,58 @@ impl JobResultMessage {
             expected_columns: None,
             error_message: None,
             preview: None,
+            artifact: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod artifact_tests {
+    use super::{JobResultMessage, JobStatus, ParquetArtifact, ParquetColumnStatistics};
+
+    #[test]
+    fn parquet_artifact_round_trips_through_the_job_result_contract() {
+        let message = JobResultMessage {
+            job_id: Some("job-1".into()),
+            status: JobStatus::Success,
+            resource_id: "resource-1".into(),
+            dataset_name: None,
+            resource_name: None,
+            resource_url: None,
+            resource_format: None,
+            instance_id: None,
+            ckan_url: None,
+            datastore_active: None,
+            reader: Some("CsvReader".into()),
+            rows_processed: Some(2),
+            expected_rows: None,
+            encoding: None,
+            csv_strict_mode: None,
+            csv_delimiter: None,
+            expected_columns: None,
+            error_message: None,
+            preview: None,
+            artifact: Some(ParquetArtifact {
+                uri: "s3://warehouse/resource-1/job-1.parquet".into(),
+                schema_ipc_base64: "schema".into(),
+                num_rows: 2,
+                file_size_bytes: 128,
+                footer_size_bytes: Some(32),
+                column_statistics: vec![ParquetColumnStatistics {
+                    field_id: 1,
+                    size_bytes: Some(64),
+                    min_value: Some("a".into()),
+                    max_value: Some("z".into()),
+                    null_count: Some(0),
+                    contains_nan: None,
+                }],
+            }),
+        };
+
+        let encoded = serde_json::to_vec(&message).unwrap();
+        let decoded: JobResultMessage = serde_json::from_slice(&encoded).unwrap();
+
+        assert_eq!(decoded.artifact, message.artifact);
     }
 }
 
