@@ -2,6 +2,7 @@ suite: CNPG DuckLake env vars
 templates:
   - deployment-api.yaml
   - deployment-worker.yaml
+  - deployment-worker-coordinator.yaml
 tests:
   - it: should not render DUCKLAKE_HOST when postgres is not deployed
     asserts:
@@ -40,7 +41,7 @@ tests:
                 name: RELEASE-NAME-ingestor-orchestrator-postgres-app
                 key: username
         template: deployment-api.yaml
-      - contains:
+      - notContains:
           path: spec.template.spec.containers[0].env
           content:
             name: DUCKLAKE_CATALOG_URI
@@ -49,6 +50,15 @@ tests:
                 name: RELEASE-NAME-ingestor-orchestrator-postgres-app
                 key: uri
         template: deployment-api.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DUCKLAKE_CATALOG_URI
+            valueFrom:
+              secretKeyRef:
+                name: RELEASE-NAME-ingestor-orchestrator-postgres-app
+                key: uri
+        template: deployment-worker-coordinator.yaml
 
   - it: should inject DUCKLAKE_HOST into init container
     set:

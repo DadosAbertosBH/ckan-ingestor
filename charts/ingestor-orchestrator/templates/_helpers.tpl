@@ -90,11 +90,6 @@ CNPG DuckLake env vars — maps CNPG secret keys to DUCKLAKE_ prefix.
 */}}
 {{- define "ingestor-orchestrator.cnpgDucklakeEnv" -}}
 {{- if .Values.postgres.deploy }}
-- name: DUCKLAKE_CATALOG_URI
-  valueFrom:
-    secretKeyRef:
-      name: {{ include "ingestor-orchestrator.fullname" . }}-postgres-app
-      key: uri
 - name: DUCKLAKE_HOST
   valueFrom:
     secretKeyRef:
@@ -120,5 +115,18 @@ CNPG DuckLake env vars — maps CNPG secret keys to DUCKLAKE_ prefix.
     secretKeyRef:
       name: {{ include "ingestor-orchestrator.fullname" . }}-postgres-app
       key: password
+{{- end }}
+{{- end }}
+
+{{/*
+CNPG DuckLake catalog URI for the Rust coordinator.
+*/}}
+{{- define "ingestor-orchestrator.cnpgDucklakeCatalogUriEnv" -}}
+{{- if .Values.postgres.deploy }}
+- name: DUCKLAKE_CATALOG_URI
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "ingestor-orchestrator.fullname" . }}-postgres-app
+      key: uri
 {{- end }}
 {{- end }}

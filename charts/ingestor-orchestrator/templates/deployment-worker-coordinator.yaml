@@ -58,6 +58,7 @@ spec:
             - name: S3_URL_STYLE
               value: {{ .Values.ducklake.dataPath.urlStyle | quote }}
             {{- include "ingestor-orchestrator.cnpgDucklakeEnv" . | nindent 12 }}
+            {{- include "ingestor-orchestrator.cnpgDucklakeCatalogUriEnv" . | nindent 12 }}
           envFrom:
             - configMapRef:
                 name: {{ include "ingestor-orchestrator.fullname" . }}
