@@ -102,6 +102,12 @@ impl ArrowIpcOutput {
     }
 }
 
+impl Drop for ArrowIpcOutput {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -125,11 +131,5 @@ mod tests {
 
         assert_eq!(output.rows, 2);
         assert_eq!(output.columns, 1);
-    }
-}
-
-impl Drop for ArrowIpcOutput {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
     }
 }

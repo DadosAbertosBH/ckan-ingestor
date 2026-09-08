@@ -457,7 +457,6 @@ fn fetch_writes_typed_ipcs() {
     assert_eq!(ipc.resource_rows(), 1);
     let packages = FileReader::try_new(File::open(ipc.package_path()).unwrap(), None)
         .unwrap()
-        .into_iter()
         .next()
         .unwrap()
         .unwrap();

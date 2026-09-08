@@ -185,19 +185,19 @@ async fn merge_table(
     let mut new = 0_i64;
     let mut updated_ids = HashSet::new();
     let mut selected = vec![false; incoming.num_rows()];
-    for row in 0..incoming.num_rows() {
+    for (row, is_selected) in selected.iter_mut().enumerate() {
         let id = value(&incoming, "id", row)?.context("metadata id cannot be null")?;
         let incoming_value = value(&incoming, updated_at, row)?.unwrap_or_default();
         match existing_rows.get(&id) {
             None => {
                 new += 1;
                 existing_rows.insert(id, (row, incoming_value));
-                selected[row] = true;
+                *is_selected = true;
             }
             Some((_, existing_value)) if incoming_value > *existing_value => {
                 updated_ids.insert(id.clone());
                 existing_rows.insert(id, (row, incoming_value));
-                selected[row] = true;
+                *is_selected = true;
             }
             _ => {}
         }

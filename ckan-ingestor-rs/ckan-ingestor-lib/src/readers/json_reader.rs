@@ -140,7 +140,7 @@ fn normalize_null_fields(schema: Schema) -> Schema {
     let fields = schema
         .fields
         .into_iter()
-        .map(|field| normalize_null_field(&field))
+        .map(|field| normalize_null_field(field))
         .collect::<Vec<_>>();
     Schema::new_with_metadata(fields, metadata)
 }

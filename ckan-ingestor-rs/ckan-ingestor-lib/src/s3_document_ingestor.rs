@@ -16,7 +16,6 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 use crate::config::S3Settings;
 use anyhow::{Context, Result};
-use bytes::Bytes;
 use object_store::{parse_url_opts, path::Path, Attribute, Attributes, ObjectStore, PutOptions};
 use reqwest::blocking::Client as HttpClient;
 use std::sync::Arc;
@@ -48,7 +47,7 @@ impl S3DocumentIngestor {
     pub fn ingest(&self, filename: &str, download_url: &str, content_type: &str) -> Result<String> {
         let client = HttpClient::new();
         let resp = client.get(download_url).send()?;
-        let bytes = Bytes::from(resp.bytes()?);
+        let bytes = resp.bytes()?;
         let object_url = format!("docs/{filename}");
         let mut attributes = Attributes::new();
         attributes.insert(Attribute::ContentType, content_type.to_owned().into());

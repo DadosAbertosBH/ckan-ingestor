@@ -90,6 +90,12 @@ pub mod test_support {
         }
     }
 
+    impl<OutcomingMessage> Default for MockResultPublisher<OutcomingMessage> {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl<OutcomingMessage> MockResultPublisher<OutcomingMessage> {
         pub fn new() -> Self {
             Self {
