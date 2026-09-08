@@ -40,6 +40,15 @@ tests:
                 name: RELEASE-NAME-ingestor-orchestrator-postgres-app
                 key: username
         template: deployment-api.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DUCKLAKE_CATALOG_URI
+            valueFrom:
+              secretKeyRef:
+                name: RELEASE-NAME-ingestor-orchestrator-postgres-app
+                key: uri
+        template: deployment-api.yaml
 
   - it: should inject DUCKLAKE_HOST into init container
     set:
