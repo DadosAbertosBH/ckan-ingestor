@@ -64,6 +64,8 @@ build-ckan-builder-dev:
         --file ckan-ingestor-rs/Dockerfile.builder.dev \
         --push .
   rules:
+    - if: $CI_COMMIT_TAG
+      when: never
     - changes:
         - "ckan-ingestor-rs/Dockerfile.builder.dev"
 
