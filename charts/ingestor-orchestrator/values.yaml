@@ -154,7 +154,7 @@ postgres:
       memory: "256Mi"
       cpu: "100m"
     limits:
-      memory: "512Mi"
+      memory: "1Gi"
   # -- Backup configuration (CloudNativePG barmanObjectStore)
   backup:
     # -- Enable backup via barmanObjectStore (S3-compatible)

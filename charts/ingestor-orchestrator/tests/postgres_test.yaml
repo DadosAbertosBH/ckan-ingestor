@@ -24,3 +24,6 @@ tests:
       - equal:
           path: spec.instances
           value: 1
+      - equal:
+          path: spec.resources.limits.memory
+          value: 1Gi
