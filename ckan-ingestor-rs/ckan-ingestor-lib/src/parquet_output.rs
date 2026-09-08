@@ -129,6 +129,9 @@ fn schema_with_field_ids(schema: &Schema) -> SchemaRef {
         let id = *next_id;
         *next_id += 1;
         let data_type = match field.data_type() {
+            // Arrow infers entirely empty CSV columns as Null, which DuckLake
+            // cannot register. Preserve their null values as nullable text.
+            DataType::Null => DataType::Utf8,
             DataType::List(child) => DataType::List(std::sync::Arc::new(assign(child, next_id))),
             DataType::LargeList(child) => {
                 DataType::LargeList(std::sync::Arc::new(assign(child, next_id)))

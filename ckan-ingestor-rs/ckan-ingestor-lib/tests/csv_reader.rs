@@ -263,6 +263,33 @@ fn parses_numeric_columns_with_whitespace_padded_dash_as_null() -> Result<()> {
 }
 
 #[test]
+fn represents_an_entirely_empty_csv_column_as_nullable_text() -> Result<()> {
+    let mut csv = tempfile::NamedTempFile::new()?;
+    csv.write_all(b"id,always_empty\n1,\n2,\n")?;
+
+    let reader = CsvReader::new(test_client());
+    let resource = CkanResource {
+        id: "all-null-column".to_string(),
+        url: csv.path().to_str().unwrap().to_string(),
+        format: "CSV".to_string(),
+        datastore_active: false,
+    };
+
+    let result = reader.read(&resource)?;
+    let batches: Vec<_> =
+        ParquetRecordBatchReaderBuilder::try_new(std::fs::File::open(result.parquet.path())?)?
+            .build()?
+            .collect::<std::result::Result<_, _>>()?;
+
+    assert_eq!(
+        batches[0].schema().field(1).data_type(),
+        &arrow::datatypes::DataType::Utf8
+    );
+    assert_eq!(batches[0].column(1).null_count(), 2);
+    Ok(())
+}
+
+#[test]
 fn parse_remote_gzip_csv() -> Result<()> {
     let server = MockServer::start();
     let mut compressed = Vec::new();

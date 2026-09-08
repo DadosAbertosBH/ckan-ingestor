@@ -26,8 +26,6 @@ use encoding_rs_io::DecodeReaderBytesBuilder;
 use flate2::read::GzDecoder;
 use regex::Regex;
 use std::fs::File;
-#[cfg(test)]
-use std::io::Write;
 use std::io::{self, BufRead, BufReader, Read};
 use std::path::PathBuf;
 
@@ -97,25 +95,6 @@ impl CsvReader {
             self.reader_name().to_string(),
         ))
     }
-}
-
-#[cfg(test)]
-fn download_body_error(
-    url: &str,
-    status: reqwest::StatusCode,
-    content_type: &str,
-    content_encoding: &str,
-    error: io::Error,
-) -> anyhow::Error {
-    let message = format!(
-        "error reading CSV response body from {url} (HTTP status {status}, Content-Type: {content_type}, Content-Encoding: {content_encoding}): {error}"
-    );
-    anyhow::Error::new(error).context(message)
-}
-
-#[cfg(test)]
-fn stream_download(reader: &mut impl Read, writer: &mut impl Write) -> io::Result<u64> {
-    io::copy(reader, writer)
 }
 
 fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<ParquetOutput> {
@@ -319,6 +298,23 @@ mod tests {
             .timeout(Duration::from_secs(300))
             .build()
             .unwrap()
+    }
+
+    fn download_body_error(
+        url: &str,
+        status: reqwest::StatusCode,
+        content_type: &str,
+        content_encoding: &str,
+        error: io::Error,
+    ) -> anyhow::Error {
+        let message = format!(
+            "error reading CSV response body from {url} (HTTP status {status}, Content-Type: {content_type}, Content-Encoding: {content_encoding}): {error}"
+        );
+        anyhow::Error::new(error).context(message)
+    }
+
+    fn stream_download(reader: &mut impl Read, writer: &mut impl Write) -> io::Result<u64> {
+        io::copy(reader, writer)
     }
 
     #[test]
