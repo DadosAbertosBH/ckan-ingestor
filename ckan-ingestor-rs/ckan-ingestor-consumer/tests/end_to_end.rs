@@ -35,7 +35,7 @@ async fn start_iggy() -> anyhow::Result<ContainerAsync<GenericImage>> {
 #[tokio::test]
 #[ignore = "requires Docker"]
 async fn creates_the_approved_stream_and_topics() -> anyhow::Result<()> {
-    let container = timeout(Duration::from_secs(30), start_iggy())
+    let container = timeout(Duration::from_secs(120), start_iggy())
         .await
         .context("timed out while starting the Iggy container")??;
     let host = container.get_host().await?;
