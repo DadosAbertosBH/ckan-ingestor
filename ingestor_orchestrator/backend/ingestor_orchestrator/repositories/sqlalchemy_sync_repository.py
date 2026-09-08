@@ -27,6 +27,15 @@ class SqlAlchemySyncRepository(SyncRepository):
     def __init__(self, session: AsyncSession):
         self._session = session
 
+    async def get_sync(self, sync_id: str) -> MetadataSync | None:
+        query = (
+            select(MetadataSync)
+            .options(selectinload(MetadataSync.instance))
+            .where(MetadataSync.id == sync_id)
+        )
+        result = await self._session.execute(query)
+        return result.scalar_one_or_none()
+
     async def list_syncs(
         self,
         instance_id: str | None = None,

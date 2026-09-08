@@ -119,6 +119,17 @@ class TestSyncService:
 
 
 class TestSyncsApi:
+    async def test_get_sync_returns_failure_error(self, sess, instance):
+        from ingestor_orchestrator.api.syncs import get_sync
+        from ingestor_orchestrator.repositories import SqlAlchemySyncRepository
+
+        record = await SyncService(sess).start_sync(instance.id)
+        await SyncService(sess).finish_sync(record, {"error_message": "parsing error: true"}, status="failure")
+
+        response = await get_sync(record.id, repo=SqlAlchemySyncRepository(sess))
+
+        assert response.status == "failure"
+        assert response.error_message == "parsing error: true"
     pytestmark = pytest.mark.asyncio
 
     async def test_list_syncs_returns_records_with_instance_name(self, sess, instance):

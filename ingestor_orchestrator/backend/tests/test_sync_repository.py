@@ -48,6 +48,17 @@ async def _create_sync(sess, instance: CkanInstance, *, start_delta: int = 0, **
 
 
 class TestSyncRepository:
+    async def test_get_sync_returns_record_with_instance(self, db_session, default_instance):
+        """get_sync returns the requested sync and its instance."""
+        sync = await _create_sync(db_session, default_instance)
+        await db_session.commit()
+
+        result = await SqlAlchemySyncRepository(db_session).get_sync(sync.id)
+
+        assert result is not None
+        assert result.id == sync.id
+        assert result.instance.name == default_instance.name
+
     async def test_list_syncs_returns_all_ordered_by_start_time_desc(
         self, db_session, default_instance
     ):

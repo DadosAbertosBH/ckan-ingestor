@@ -97,6 +97,7 @@ export function useApi() {
     const qs = query.toString();
     return request<MetadataSync[]>(`/syncs/${qs ? "?" + qs : ""}`);
   };
+  const fetchSync = (id: string) => request<MetadataSync>(`/syncs/${id}`);
   const fetchDatasets = (params?: {
     instance_id?: string;
     search?: string;
@@ -126,6 +127,7 @@ export function useApi() {
     fetchResources,
     fetchResource,
     fetchSyncs,
+    fetchSync,
     fetchDatasets,
   };
 }

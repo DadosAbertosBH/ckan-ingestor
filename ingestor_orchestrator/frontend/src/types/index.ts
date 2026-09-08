@@ -110,6 +110,8 @@ export interface MetadataSync {
   instance_name: string | null;
   start_time: string;
   end_time: string | null;
+  status: "pending" | "success" | "failure" | null;
+  error_message: string | null;
   total_packages: number;
   new_datasets: number;
   new_resources: number;

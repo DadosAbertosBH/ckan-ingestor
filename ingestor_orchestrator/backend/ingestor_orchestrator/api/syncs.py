@@ -15,7 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ingestor_orchestrator.db import get_db
@@ -35,6 +35,35 @@ def get_sync_repository(
 router = APIRouter(prefix="/api/syncs", tags=["syncs"])
 
 
+def sync_response(sync) -> MetadataSyncResponse:
+    return MetadataSyncResponse(
+        id=sync.id,
+        instance_id=sync.instance_id,
+        instance_name=sync.instance.name if sync.instance else None,
+        start_time=sync.start_time,
+        end_time=sync.end_time,
+        status=sync.status,
+        error_message=sync.error_message,
+        total_packages=sync.total_packages,
+        new_datasets=sync.new_datasets,
+        new_resources=sync.new_resources,
+        updated_datasets=sync.updated_datasets,
+        updated_resources=sync.updated_resources,
+    )
+
+
+@router.get("/{sync_id}", response_model=MetadataSyncResponse)
+async def get_sync(
+    sync_id: str,
+    repo: SyncRepository = Depends(get_sync_repository),
+):
+    """Return one metadata sync, including its terminal error when present."""
+    sync = await repo.get_sync(sync_id)
+    if sync is None:
+        raise HTTPException(status_code=404, detail="Sync not found")
+    return sync_response(sync)
+
+
 @router.get("/", response_model=list[MetadataSyncResponse])
 async def list_syncs(
     instance_id: Optional[str] = None,
@@ -46,19 +75,6 @@ async def list_syncs(
     syncs = await repo.list_syncs(instance_id=instance_id, limit=limit, offset=offset)
 
     return [
-        MetadataSyncResponse(
-            id=s.id,
-            instance_id=s.instance_id,
-            instance_name=s.instance.name if s.instance else None,
-            start_time=s.start_time,
-            end_time=s.end_time,
-            status=s.status,
-            error_message=s.error_message,
-            total_packages=s.total_packages,
-            new_datasets=s.new_datasets,
-            new_resources=s.new_resources,
-            updated_datasets=s.updated_datasets,
-            updated_resources=s.updated_resources,
-        )
+        sync_response(s)
         for s in syncs
     ]

@@ -36,6 +36,12 @@ const router = createRouter({
       component: () => import("@/views/SyncsView.vue"),
     },
     {
+      path: "/syncs/:id",
+      name: "sync-detail",
+      component: () => import("@/views/SyncDetailView.vue"),
+      props: true,
+    },
+    {
       path: "/datasets",
       name: "datasets",
       component: () => import("@/views/DatasetsView.vue"),

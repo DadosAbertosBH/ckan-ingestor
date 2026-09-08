@@ -22,6 +22,11 @@ from ingestor_orchestrator.models import MetadataSync
 
 class SyncRepository(ABC):
     @abstractmethod
+    async def get_sync(self, sync_id: str) -> MetadataSync | None:
+        """Return one metadata sync with its associated instance."""
+        ...
+
+    @abstractmethod
     async def list_syncs(
         self,
         instance_id: str | None = None,

@@ -37,11 +37,12 @@
                     <th>New Resources</th>
                     <th>Updated Datasets</th>
                     <th>Updated Resources</th>
+                    <th>Status</th>
                 </tr>
             </thead>
             <tbody>
                 <tr v-for="sync in syncs" :key="sync.id">
-                    <td>{{ sync.instance_name || sync.instance_id }}</td>
+                    <td><router-link :to="{ name: 'sync-detail', params: { id: sync.id } }" class="sync-link">{{ sync.instance_name || sync.instance_id }}</router-link></td>
                     <td>{{ formatTime(sync.start_time) }}</td>
                     <td class="mono">{{ formatSyncDuration(sync) }}</td>
                     <td>{{ sync.total_packages }}</td>
@@ -49,9 +50,10 @@
                     <td>{{ sync.new_resources }}</td>
                     <td>{{ sync.updated_datasets }}</td>
                     <td>{{ sync.updated_resources }}</td>
+                    <td><span :class="['status', sync.status || 'pending']">{{ statusLabel(sync.status) }}</span></td>
                 </tr>
                 <tr v-if="syncs.length === 0">
-                    <td colspan="8" class="empty-state">No syncs found</td>
+                    <td colspan="9" class="empty-state">No syncs found</td>
                 </tr>
             </tbody>
         </table>
@@ -134,6 +136,10 @@ function formatSyncDuration(sync: MetadataSync): string {
     const ms =
         new Date(sync.end_time).getTime() - new Date(sync.start_time).getTime();
     return formatDuration(Math.max(0, ms));
+}
+
+function statusLabel(status: MetadataSync["status"]): string {
+    return status === "failure" ? "Failed" : status === "success" ? "Success" : "Pending";
 }
 
 onMounted(async () => {
@@ -249,6 +255,13 @@ onMounted(async () => {
     font-size: 13px;
     color: #9ca3af;
 }
+
+.sync-link { color: #93c5fd; text-decoration: none; }
+.sync-link:hover { text-decoration: underline; }
+.status { border-radius: 999px; padding: 3px 8px; font-size: 12px; font-weight: 600; }
+.status.success { background: #14532d; color: #86efac; }
+.status.failure { background: #7f1d1d; color: #fca5a5; }
+.status.pending { background: #3f3f46; color: #d4d4d8; }
 
 .empty-state {
     text-align: center;

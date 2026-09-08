@@ -18,6 +18,7 @@ function createTestRouter() {
     history: createMemoryHistory(),
     routes: [
       { path: "/syncs", name: "syncs", component: { template: "<div/>" } },
+      { path: "/syncs/:id", name: "sync-detail", component: { template: "<div/>" } },
     ],
   });
 }
@@ -41,6 +42,8 @@ const sampleSync = {
   new_resources: 10,
   updated_datasets: 1,
   updated_resources: 4,
+  status: "failure",
+  error_message: "parsing error: true",
 };
 
 describe("SyncsView", () => {
@@ -68,6 +71,7 @@ describe("SyncsView", () => {
     expect(ths).toContain("New Resources");
     expect(ths).toContain("Updated Datasets");
     expect(ths).toContain("Updated Resources");
+    expect(ths).toContain("Status");
   });
 
   it("renders sync rows", async () => {
@@ -80,6 +84,8 @@ describe("SyncsView", () => {
     expect(wrapper.text()).toContain("10");
     expect(wrapper.text()).toContain("1");
     expect(wrapper.text()).toContain("4");
+    expect(wrapper.text()).toContain("Failed");
+    expect(wrapper.find('a[href="/syncs/sync-1"]').exists()).toBe(true);
   });
 
   it("shows empty state when no syncs", async () => {
