@@ -50,20 +50,27 @@ impl<T: DataWriter> RealMetadataProcessor<T> {
     pub async fn process(&self, command: MetadataSyncCommand) -> MetadataSyncResult {
         match self.sync(&command).await {
             Ok(result) => result,
-            Err(error) => MetadataSyncResult {
-                sync_id: command.sync_id,
-                instance_id: command.instance_id,
-                instance_name: command.instance_name,
-                status: "failure".into(),
-                total_packages: 0,
-                new_datasets: 0,
-                new_resources: 0,
-                updated_datasets: 0,
-                updated_resources: 0,
-                dataset_count: 0,
-                resource_count: 0,
-                error_message: Some(error.to_string().chars().take(16_000).collect()),
-            },
+            Err(error) => {
+                log::error!(
+                    "metadata sync {} for {} failed: {error:#}",
+                    command.sync_id,
+                    command.instance_name
+                );
+                MetadataSyncResult {
+                    sync_id: command.sync_id,
+                    instance_id: command.instance_id,
+                    instance_name: command.instance_name,
+                    status: "failure".into(),
+                    total_packages: 0,
+                    new_datasets: 0,
+                    new_resources: 0,
+                    updated_datasets: 0,
+                    updated_resources: 0,
+                    dataset_count: 0,
+                    resource_count: 0,
+                    error_message: Some(error.to_string().chars().take(16_000).collect()),
+                }
+            }
         }
     }
 
@@ -119,17 +126,23 @@ impl<T: DataWriter> RealMetadataProcessor<T> {
 
         self.writer
             .initialize_table("ckan_dataset", &datasets.batch.schema())
-            .await?;
+            .await
+            .context("initializing DuckLake table 'ckan_dataset'")?;
         if let Some(resources) = &resources {
             self.writer
                 .initialize_table("ckan_resource", &resources.batch.schema())
-                .await?;
+                .await
+                .context("initializing DuckLake table 'ckan_resource'")?;
         }
-        self.writer.ingest("ckan_dataset", &datasets.batch).await?;
+        self.writer
+            .ingest("ckan_dataset", &datasets.batch)
+            .await
+            .context("writing DuckLake table 'ckan_dataset'")?;
         if let Some(resources) = &resources {
             self.writer
                 .ingest("ckan_resource", &resources.batch)
-                .await?;
+                .await
+                .context("writing DuckLake table 'ckan_resource'")?;
         }
 
         Ok(MetadataSyncResult {
@@ -173,7 +186,9 @@ async fn merge_table(
         .first()
         .context("metadata IPC contains no record batches")?
         .schema();
-    let existing = load_table(client, factory, table_name).await?;
+    let existing = load_table(client, factory, table_name)
+        .await
+        .with_context(|| format!("loading DuckLake table '{table_name}'"))?;
     let existing = existing
         .iter()
         .map(|batch| align_batch(batch, &schema))
@@ -431,6 +446,22 @@ mod tests {
         calls: Arc<Mutex<Vec<(String, usize)>>>,
     }
 
+    struct FailingWriter;
+
+    impl DataWriter for FailingWriter {
+        async fn initialize_table(
+            &self,
+            _table_name: &str,
+            _schema: &arrow::datatypes::SchemaRef,
+        ) -> Result<()> {
+            anyhow::bail!("parsing error: true")
+        }
+
+        async fn ingest(&self, _table_name: &str, _batch: &RecordBatch) -> Result<()> {
+            Ok(())
+        }
+    }
+
     impl DataWriter for RecordingWriter {
         async fn initialize_table(
             &self,
@@ -583,5 +614,21 @@ mod tests {
                 ("ingest:ckan_resource".into(), 1),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn reports_the_ducklake_table_when_metadata_writing_fails() {
+        let temp = tempdir().unwrap();
+        let factory = DucklakeFactory::for_sqlite(
+            &temp.path().join("catalog.sqlite"),
+            &temp.path().join("data"),
+        );
+        factory.initialize().await.unwrap();
+        let processor = RealMetadataProcessor::new(factory, FailingWriter);
+        let ipc = StructuredIpc::from_packages([package("2025-01-01", "2025-01-02")]).unwrap();
+
+        let error = processor.ingest_ipc(&command(), &ipc).await.unwrap_err();
+
+        assert!(error.to_string().contains("initializing DuckLake table 'ckan_dataset'"));
     }
 }
