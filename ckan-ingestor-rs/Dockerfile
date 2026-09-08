@@ -35,13 +35,16 @@ COPY ckan-metadata-ingestor/Cargo.toml ckan-metadata-ingestor/
 COPY ckan-ingestor-consumer/Cargo.toml ckan-ingestor-consumer/
 COPY ckan-worker-coordinator/Cargo.toml ckan-worker-coordinator/
 RUN mkdir -p ckan-ingestor-lib/src ckan-ingestor-worker-lib/src message-processor/src iggy-processor/src ckan-metadata-ingestor/src ckan-ingestor-consumer/src ckan-worker-coordinator/src && \
-    touch ckan-ingestor-lib/src/lib.rs && \
-    touch ckan-ingestor-worker-lib/src/lib.rs && \
-    touch message-processor/src/lib.rs && \
-    touch iggy-processor/src/lib.rs && \
-    touch ckan-metadata-ingestor/src/lib.rs && \
-    touch ckan-ingestor-consumer/src/main.rs && \
-    touch ckan-worker-coordinator/src/main.rs && \
+    for target in \
+        ckan-ingestor-lib/src/lib.rs \
+        ckan-ingestor-worker-lib/src/lib.rs \
+        message-processor/src/lib.rs \
+        iggy-processor/src/lib.rs \
+        ckan-metadata-ingestor/src/lib.rs \
+        ckan-ingestor-consumer/src/main.rs \
+        ckan-worker-coordinator/src/main.rs; do \
+        printf '#![allow(unused_crate_dependencies)]\\n' > "$target"; \
+    done && \
     cargo chef prepare --recipe-path recipe.json
 
 # Cook downloads and compiles *all* dependencies into /src/target. This RUN
