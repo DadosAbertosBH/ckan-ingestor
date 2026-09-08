@@ -629,6 +629,10 @@ mod tests {
 
         let error = processor.ingest_ipc(&command(), &ipc).await.unwrap_err();
 
-        assert!(error.to_string().contains("initializing DuckLake table 'ckan_dataset'"));
+        assert!(
+            error
+                .to_string()
+                .contains("initializing DuckLake table 'ckan_dataset'")
+        );
     }
 }
