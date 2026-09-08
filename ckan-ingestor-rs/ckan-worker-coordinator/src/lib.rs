@@ -12,12 +12,12 @@ pub mod ducklake_data_writer;
 pub mod job_planner;
 pub mod job_publisher;
 pub mod job_repository;
+pub mod metadata_message_processor;
 pub mod metadata_processor;
 pub mod metadata_publisher;
-pub mod metadata_worker_thread;
 pub mod mysql_job_repository;
+pub mod parquet_message_processor;
 pub mod parquet_registrar;
-pub mod parquet_worker_thread;
 
 use anyhow::{Context, Result};
 use iggy_processor::iggy::prelude::{
@@ -33,15 +33,15 @@ use tokio::sync::Notify;
 use crate::ducklake_data_writer::DucklakeDataWriter;
 use crate::job_planner::JobPlanner;
 use crate::job_publisher::JobPublisher;
+use crate::metadata_message_processor::MetadataProcessor;
 use crate::metadata_processor::RealMetadataProcessor;
 use crate::metadata_publisher::MetadataPublisher;
-use crate::metadata_worker_thread::MetadataHandler;
 use crate::mysql_job_repository::MySqlJobRepository;
+use crate::parquet_message_processor::ParquetProcessor;
 use crate::parquet_registrar::ParquetRegistrar;
-use crate::parquet_worker_thread::ParquetHandler;
 use ckan_ingestor_lib::ducklake_factory::DucklakeFactory;
-use ckan_ingestor_worker_lib::ConsumerWorker;
 use iggy_processor::IggySource;
+use message_processor::ConsumerWorker;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IggySettings {
@@ -183,31 +183,32 @@ pub async fn run() -> Result<()> {
     let metadata_writer =
         DucklakeDataWriter::new(factory.client().await?, factory.storage_options().to_vec());
     let processor = RealMetadataProcessor::new(factory.clone(), metadata_writer);
-    let mut worker = ConsumerWorker::new(
+    let mut metadata_consumer = ConsumerWorker::new(
         settings.metadata_sync_topic.clone(),
         0,
         IggySource::new(consumer),
-        MetadataHandler::new(
-            MetadataPublisher::new(producer),
+        MetadataPublisher::new(producer),
+        MetadataProcessor::new(
             jobs.clone(),
             JobPlanner::new(Box::new(MySqlJobRepository::from_env()?)),
             processor,
         ),
     );
-    worker.run();
-    let mut parquet_worker = ConsumerWorker::new(
+    metadata_consumer.run();
+    let mut parquet_consumer = ConsumerWorker::new(
         settings.parquet_result_topic.clone(),
         0,
         IggySource::new(parquet_consumer),
-        ParquetHandler::new(registrar, jobs),
+        jobs,
+        ParquetProcessor::new(registrar),
     );
-    parquet_worker.run();
+    parquet_consumer.run();
     let shutdown = Arc::new(Notify::new());
     install_shutdown_handler(shutdown.clone());
     info!("CKAN worker coordinator started");
     shutdown.notified().await;
-    tokio::task::spawn_blocking(move || worker.shutdown()).await?;
-    tokio::task::spawn_blocking(move || parquet_worker.shutdown()).await?;
+    tokio::task::spawn_blocking(move || metadata_consumer.shutdown()).await?;
+    tokio::task::spawn_blocking(move || parquet_consumer.shutdown()).await?;
     info!("CKAN worker coordinator stopped");
     Ok(())
 }

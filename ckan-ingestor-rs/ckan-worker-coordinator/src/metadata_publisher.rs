@@ -12,10 +12,19 @@ use std::sync::Arc;
 
 use ckan_metadata_ingestor::MetadataSyncResult;
 use iggy_processor::iggy::prelude::{IggyMessage, IggyProducer, Partitioning};
+use message_processor::ResultPublisher;
+
+use crate::metadata_message_processor::MetadataResult;
 
 #[derive(Clone)]
 pub struct MetadataPublisher {
     producer: Arc<IggyProducer>,
+}
+
+impl ResultPublisher<MetadataResult> for MetadataPublisher {
+    async fn publish(&self, result: MetadataResult) -> Result<(), anyhow::Error> {
+        self.publish(result.0).await
+    }
 }
 
 impl MetadataPublisher {

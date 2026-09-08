@@ -8,15 +8,25 @@
 // (at your option) any later version.
 
 use anyhow::Result;
+use futures::Stream;
 use serde::{Serialize, de::DeserializeOwned};
 use std::future::Future;
 
-pub trait MessageProcessor<IncomingMessage: Serialize, OutcomingMessage: DeserializeOwned> {
-    fn process(&self, message: IncomingMessage) -> OutcomingMessage;
+pub mod worker_handler;
+pub use worker_handler::ConsumerWorker;
+
+pub trait OutgoingMessage: Serialize {
+    fn partition_key(&self) -> &str;
 }
 
-pub trait ResultPublisher<OutcomingMessage>: Clone {
-    fn publish(&self, result: OutcomingMessage) -> impl Future<Output = Result<()>> + Send;
+pub trait MessageProcessor {
+    type IncomingMessage: DeserializeOwned;
+    type OutgoingMessage: OutgoingMessage;
+    fn process(&self, message: Self::IncomingMessage) -> impl Stream<Item = Self::OutgoingMessage>;
+}
+
+pub trait ResultPublisher<T: OutgoingMessage>: Clone {
+    fn publish(&self, message: T) -> impl Future<Output = Result<()>>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,7 +48,7 @@ pub mod test_support {
     use anyhow::{Result, anyhow};
     use tokio::sync::mpsc;
 
-    use crate::{BrokerMessage, MessageSource, ResultPublisher};
+    use crate::{BrokerMessage, MessageSource, OutgoingMessage, ResultPublisher};
 
     pub struct MockMessageSource {
         receiver: mpsc::Receiver<BrokerMessage>,
@@ -88,7 +98,7 @@ pub mod test_support {
         }
     }
 
-    impl<OutcomingMessage: Send> ResultPublisher<OutcomingMessage>
+    impl<OutcomingMessage: OutgoingMessage> ResultPublisher<OutcomingMessage>
         for MockResultPublisher<OutcomingMessage>
     {
         async fn publish(&self, result: OutcomingMessage) -> Result<()> {
@@ -101,28 +111,40 @@ pub mod test_support {
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
+    use futures::StreamExt;
     use serde::{Deserialize, Serialize};
 
-    use super::{BrokerMessage, MessageProcessor, MessageSource, ResultPublisher};
-
-    #[derive(Clone, Serialize)]
-    struct Input(u8);
+    use super::{BrokerMessage, MessageProcessor, MessageSource, OutgoingMessage, ResultPublisher};
 
     #[derive(Deserialize)]
+    struct Input(u8);
+
+    #[derive(Deserialize, Serialize)]
     struct Output(u8);
+
+    impl OutgoingMessage for Output {
+        fn partition_key(&self) -> &str {
+            "test"
+        }
+    }
 
     #[derive(Clone)]
     struct Increment;
 
-    impl MessageProcessor<Input, Output> for Increment {
-        fn process(&self, message: Input) -> Output {
-            Output(message.0 + 1)
+    impl MessageProcessor for Increment {
+        type IncomingMessage = Input;
+        type OutgoingMessage = Output;
+
+        fn process(&self, message: Input) -> impl futures::Stream<Item = Output> {
+            futures::stream::iter([Output(message.0 + 1)])
         }
     }
 
-    #[test]
-    fn defines_a_typed_message_transformation_contract() {
-        assert_eq!(Increment.process(Input(41)).0, 42);
+    #[tokio::test]
+    async fn defines_a_typed_message_transformation_contract() {
+        let output = Increment.process(Input(41)).next().await.unwrap();
+
+        assert_eq!(output.0, 42);
     }
 
     #[derive(Clone)]
@@ -138,21 +160,6 @@ mod tests {
     fn defines_a_typed_result_publication_contract() {
         let publisher = Publisher;
         std::mem::drop(publisher.publish(Output(42)));
-    }
-
-    struct BorrowingProcessor<'a>(&'a str);
-
-    impl MessageProcessor<Input, Output> for BorrowingProcessor<'_> {
-        fn process(&self, message: Input) -> Output {
-            Output(message.0 + self.0.len() as u8)
-        }
-    }
-
-    #[test]
-    fn does_not_require_threading_or_ownership_bounds() {
-        let processor = BorrowingProcessor("a reference");
-
-        assert_eq!(processor.process(Input(1)).0, 12);
     }
 
     struct Source;

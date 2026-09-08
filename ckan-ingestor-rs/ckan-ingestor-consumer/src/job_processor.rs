@@ -15,6 +15,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
+use async_stream::stream;
 use ckan_ingestor_lib::ckan_resource::CkanResource;
 use ckan_ingestor_lib::readers::ckan_reader::CkanReader;
 use ckan_ingestor_lib::readers::csv_reader::CsvReader;
@@ -23,6 +24,7 @@ use ckan_ingestor_lib::readers::document_reader::DocumentReader;
 use ckan_ingestor_lib::readers::json_reader::JsonReader;
 use ckan_ingestor_lib::readers::multiple_reader::MultipleReader;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
+use futures::Stream;
 use reqwest::blocking::Client;
 use std::{sync::Arc, time::Duration};
 use tokio::runtime::Runtime;
@@ -35,13 +37,13 @@ use message_processor::MessageProcessor;
 // RealJobProcessor — production implementation
 // ---------------------------------------------------------------------------
 
-pub struct RealJobProcessor {
+pub struct JobProcessor {
     s3: S3DocumentIngestor,
     uploader: ParquetUploader,
     runtime: Arc<Runtime>,
 }
 
-impl RealJobProcessor {
+impl JobProcessor {
     pub fn new(s3: S3DocumentIngestor, uploader: ParquetUploader) -> anyhow::Result<Self> {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -54,7 +56,7 @@ impl RealJobProcessor {
     }
 }
 
-impl Clone for RealJobProcessor {
+impl Clone for JobProcessor {
     fn clone(&self) -> Self {
         Self {
             s3: self.s3.clone(),
@@ -64,37 +66,30 @@ impl Clone for RealJobProcessor {
     }
 }
 
-impl MessageProcessor<JobMessage, JobResultMessage> for RealJobProcessor {
-    fn process(&self, job: JobMessage) -> JobResultMessage {
-        match run_conversion(&self.runtime, &self.uploader, &job, &self.s3) {
-            Ok(result) => result,
-            Err(e) => {
-                let error_str = format!("{}", e);
-                let truncated = &error_str[..error_str.len().min(16_000)];
-                log::error!("Job {} failed: {}", job.job_id, truncated);
-                JobResultMessage {
-                    reader: Some(String::new()),
-                    job_id: job.job_id.clone(),
-                    status: JobStatus::Failed,
-                    rows_processed: None,
-                    expected_rows: None,
-                    encoding: None,
-                    csv_strict_mode: None,
-                    csv_delimiter: None,
-                    expected_columns: None,
-                    datastore_active: Some(false),
-                    resource_id: job.resource_id.clone(),
-                    dataset_name: None,
-                    resource_name: None,
-                    resource_url: None,
-                    resource_format: None,
-                    instance_id: None,
-                    ckan_url: None,
-                    error_message: Some(truncated.to_string()),
-                    preview: None,
-                    artifact: None,
-                }
-            }
+impl MessageProcessor for JobProcessor {
+    type IncomingMessage = JobMessage;
+    type OutgoingMessage = JobResultMessage;
+
+    fn process(&self, job: JobMessage) -> impl Stream<Item = JobResultMessage> {
+        stream! {
+            let processing = processing_job(&job);
+            yield processing;
+
+            let runtime = Arc::clone(&self.runtime);
+            let uploader = self.uploader.clone();
+            let s3 = self.s3.clone();
+            let conversion_job = job.clone();
+            let message = match tokio::task::spawn_blocking(move || {
+                run_conversion(&runtime, &uploader, &conversion_job, &s3)
+            })
+            .await
+            {
+                Ok(Ok(result)) => result,
+                Ok(Err(error)) => failed_job(&job, error),
+                Err(error) => failed_job(&job, error),
+            };
+
+            yield message;
         }
     }
 }
@@ -183,6 +178,59 @@ fn run_conversion(
             job.datastore_active,
             failed,
         )),
+    }
+}
+
+fn failed_job(job: &JobMessage, error: impl std::fmt::Display) -> JobResultMessage {
+    let error_str = format!("{error}");
+    let truncated = &error_str[..error_str.len().min(16_000)];
+    log::error!("Job {} failed: {}", job.job_id, truncated);
+    JobResultMessage {
+        reader: Some(String::new()),
+        job_id: job.job_id.clone(),
+        status: JobStatus::Failed,
+        rows_processed: None,
+        expected_rows: None,
+        encoding: None,
+        csv_strict_mode: None,
+        csv_delimiter: None,
+        expected_columns: None,
+        datastore_active: Some(false),
+        resource_id: job.resource_id.clone(),
+        dataset_name: None,
+        resource_name: None,
+        resource_url: None,
+        resource_format: None,
+        instance_id: None,
+        ckan_url: None,
+        error_message: Some(truncated.to_string()),
+        preview: None,
+        artifact: None,
+    }
+}
+
+fn processing_job(job: &JobMessage) -> JobResultMessage {
+    JobResultMessage {
+        reader: Some(String::new()),
+        job_id: job.job_id.clone(),
+        status: JobStatus::Processing,
+        rows_processed: None,
+        expected_rows: None,
+        encoding: None,
+        csv_strict_mode: None,
+        csv_delimiter: None,
+        expected_columns: None,
+        datastore_active: Some(false),
+        resource_id: job.resource_id.clone(),
+        dataset_name: None,
+        resource_name: None,
+        resource_url: None,
+        resource_format: None,
+        instance_id: None,
+        ckan_url: None,
+        error_message: None,
+        preview: None,
+        artifact: None,
     }
 }
 

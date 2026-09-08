@@ -9,6 +9,7 @@
 
 use ckan_ingestor_worker_lib::{JobMessage, JobResultMessage};
 use iggy_processor::iggy::prelude::{IggyMessage, IggyProducer, Partitioning};
+use message_processor::{OutgoingMessage, ResultPublisher};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -111,6 +112,13 @@ impl<T: JobTransport> JobPublisher<T> {
 
     pub async fn result(&self, result: &JobResultMessage, key: &str) -> anyhow::Result<()> {
         self.send(Destination::Results, key, result).await
+    }
+}
+
+impl<T: JobTransport + Send + 'static> ResultPublisher<JobResultMessage> for JobPublisher<T> {
+    async fn publish(&self, result: JobResultMessage) -> anyhow::Result<()> {
+        let key = result.partition_key().to_owned();
+        self.result(&result, &key).await
     }
 }
 

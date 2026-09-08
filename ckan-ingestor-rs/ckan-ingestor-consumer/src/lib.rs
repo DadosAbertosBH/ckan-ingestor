@@ -10,8 +10,6 @@
 pub mod job_processor;
 pub mod messages;
 pub mod parquet_uploader;
-pub mod result_publisher;
-pub mod worker_thread;
 
 use anyhow::{Context, Result};
 use ckan_ingestor_lib::config::S3Settings;
@@ -26,11 +24,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
 
-use crate::job_processor::RealJobProcessor;
+use crate::job_processor::JobProcessor;
 use crate::parquet_uploader::ParquetUploader;
-use crate::result_publisher::IggyResultPublisher;
-use crate::worker_thread::WorkerThread;
-use iggy_processor::IggySource;
+use iggy_processor::{IggyResultPublisher, IggySource};
+use message_processor::ConsumerWorker;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IggySettings {
@@ -111,7 +108,7 @@ pub async fn run() -> Result<()> {
     let publisher = IggyResultPublisher::new(result_producer);
 
     let s3 = create_s3_ingestor().await?;
-    let processor = RealJobProcessor::new(s3, ParquetUploader::new(S3Settings::from_env()))?;
+    let processor = JobProcessor::new(s3, ParquetUploader::new(S3Settings::from_env()))?;
     let mut workers = Vec::with_capacity((settings.partitions * 2) as usize);
 
     for topic in [&settings.source_topic, &settings.retry_topic] {
@@ -128,7 +125,7 @@ pub async fn run() -> Result<()> {
                 .build();
             consumer.init().await?;
             let source = IggySource::new(consumer);
-            let mut worker = WorkerThread::new(
+            let mut worker = ConsumerWorker::new(
                 topic.clone(),
                 slot as usize,
                 source,

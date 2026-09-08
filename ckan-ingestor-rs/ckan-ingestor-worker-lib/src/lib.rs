@@ -7,12 +7,8 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use anyhow::Result;
-use message_processor::{BrokerMessage, MessageSource};
+use message_processor::OutgoingMessage;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use std::thread::JoinHandle;
-use tokio::sync::Notify;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
@@ -34,7 +30,7 @@ impl std::fmt::Display for JobStatus {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct JobMessage {
     pub job_id: String,
     pub resource_id: String,
@@ -143,6 +139,12 @@ impl JobResultMessage {
     }
 }
 
+impl OutgoingMessage for JobResultMessage {
+    fn partition_key(&self) -> &str {
+        &self.resource_id
+    }
+}
+
 #[cfg(test)]
 mod artifact_tests {
     use super::{JobResultMessage, JobStatus, ParquetArtifact, ParquetColumnStatistics};
@@ -190,79 +192,5 @@ mod artifact_tests {
         let decoded: JobResultMessage = serde_json::from_slice(&encoded).unwrap();
 
         assert_eq!(decoded.artifact, message.artifact);
-    }
-}
-
-pub trait MessageHandler: Send + 'static {
-    fn handle(&self, message: &BrokerMessage) -> impl Future<Output = Result<()>>;
-}
-
-pub struct ConsumerWorker<M: MessageSource, H: MessageHandler> {
-    topic: String,
-    slot: usize,
-    source: Option<M>,
-    handler: Option<H>,
-    thread: Option<JoinHandle<()>>,
-    shutdown: Arc<Notify>,
-}
-
-impl<M, H> ConsumerWorker<M, H>
-where
-    M: MessageSource + Send + 'static,
-    H: MessageHandler,
-{
-    pub fn new(topic: String, slot: usize, source: M, handler: H) -> Self {
-        Self {
-            topic,
-            slot,
-            source: Some(source),
-            handler: Some(handler),
-            thread: None,
-            shutdown: Arc::new(Notify::new()),
-        }
-    }
-
-    pub fn run(&mut self) {
-        let mut source = self.source.take().expect("worker started twice");
-        let handler = self.handler.take().expect("worker started twice");
-        let shutdown = self.shutdown.clone();
-        let topic = self.topic.clone();
-        let slot = self.slot;
-        self.thread = Some(std::thread::spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("worker runtime");
-            loop {
-                let message = runtime.block_on(async { tokio::select! { _ = shutdown.notified() => None, message = source.recv() => Some(message) } });
-                let Some(message) = message else {
-                    return;
-                };
-                match message {
-                    Ok(message) => match runtime.block_on(handler.handle(&message)) {
-                        Ok(()) => {
-                            if let Err(error) =
-                                runtime.block_on(source.commit(message.partition, message.offset))
-                            {
-                                log::error!(
-                                    "offset commit failed: topic={topic} slot={slot}: {error}"
-                                );
-                            }
-                        }
-                        Err(error) => log::error!(
-                            "message handling failed: topic={topic} slot={slot}: {error}"
-                        ),
-                    },
-                    Err(error) => log::error!("consumer error: topic={topic} slot={slot}: {error}"),
-                }
-            }
-        }));
-    }
-
-    pub fn shutdown(self) {
-        self.shutdown.notify_one();
-        if let Some(thread) = self.thread {
-            thread.join().expect("worker thread panicked");
-        }
     }
 }

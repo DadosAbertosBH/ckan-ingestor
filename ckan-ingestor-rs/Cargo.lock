@@ -1292,6 +1292,7 @@ dependencies = [
  "anyhow",
  "arrow",
  "arrow-ipc",
+ "async-stream",
  "base64 0.22.1",
  "ckan_ingestor_lib",
  "ckan_ingestor_worker_lib",
@@ -1347,12 +1348,9 @@ dependencies = [
 name = "ckan_ingestor_worker_lib"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "log",
  "message_processor",
  "serde",
  "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -1379,6 +1377,7 @@ dependencies = [
  "anyhow",
  "arrow",
  "arrow-ipc",
+ "async-stream",
  "base64 0.22.1",
  "ckan_ingestor_lib",
  "ckan_ingestor_worker_lib",
@@ -3515,6 +3514,8 @@ dependencies = [
  "futures",
  "iggy",
  "message_processor",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -4067,7 +4068,11 @@ name = "message_processor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-stream",
+ "futures",
+ "log",
  "serde",
+ "serde_json",
  "tokio",
 ]
 
