@@ -19,8 +19,7 @@ from datetime import datetime, timezone
 
 import pytest
 import pytest_asyncio
-from ingestor_orchestrator.dto import JobCreate
-from ingestor_orchestrator.models import CkanInstance, JobStatus
+from ingestor_orchestrator.models import CkanDataJob, CkanInstance, JobStatus
 from ingestor_orchestrator.services.job_service import JobService
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -57,42 +56,22 @@ async def autocommit_session(engine, _create_tables):
         await session.rollback()
 
 
-class TestMessageMetadataOnCreate:
-    async def test_create_job_stores_iggy_metadata(self, autocommit_session, instance):
-        """create_job stores broker, stream, topic and partition metadata."""
-        service = JobService(autocommit_session)
-
-        job = await service.create_job(
-            JobCreate(
-                resource_id="res-1",
-                dataset_name="test-dataset",
-                instance_id=instance.id,
-                ckan_url="https://example.com",
-            )
-        )
-
-        assert job.broker_type == "iggy"
-        assert job.message_stream == "ckan-ingestor"
-        assert job.message_topic == "jobs"
-        assert job.message_partition == 0
-        assert job.message_offset is None
-
+class TestRetryBrokerMetadata:
     async def test_retry_job_stores_generic_metadata(
         self, autocommit_session, instance
     ):
         """retry_job republishes to retry topic and updates metadata."""
         service = JobService(autocommit_session)
 
-        # Create and fail a job
-        job = await service.create_job(
-            JobCreate(
-                resource_id="res-retry",
-                dataset_name="test-retry",
-                instance_id=instance.id,
-            )
+        job = CkanDataJob(
+            resource_id="res-retry",
+            dataset_name="test-retry",
+            idempotency_key="res-retry",
+            instance_id=instance.id,
+            status=JobStatus.FAILED,
         )
-        job.status = JobStatus.FAILED
-        await autocommit_session.flush()
+        autocommit_session.add(job)
+        await autocommit_session.commit()
 
         retried = await service.retry_job(job.id)
 
@@ -100,25 +79,3 @@ class TestMessageMetadataOnCreate:
         assert retried.message_stream == "ckan-ingestor"
         assert retried.message_topic == "jobs-retry"
         assert retried.message_partition is not None
-
-    async def test_new_jobs_have_metadata_for_debug(self, autocommit_session, instance):
-        """All newly created jobs have generic broker metadata for debugging."""
-        service = JobService(autocommit_session)
-
-        job = await service.create_job(
-            JobCreate(
-                resource_id="res-debug",
-                dataset_name="debug-dataset",
-                instance_id=instance.id,
-                resource_name="Test Resource",
-                resource_url="https://data.example.com/test.csv",
-                resource_format="CSV",
-            )
-        )
-
-        await autocommit_session.refresh(job)
-
-        assert job.broker_type == "iggy"
-        assert job.message_stream is not None
-        assert job.message_topic is not None
-        assert job.message_partition is not None

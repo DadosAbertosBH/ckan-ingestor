@@ -4,7 +4,6 @@ import type {
   Dataset,
   InstanceStats,
   Job,
-  JobCreateRequest,
   JobStatus,
   MetadataSync,
   Resource,
@@ -57,8 +56,6 @@ export function useApi() {
     return request<Job[]>(`/jobs/${qs ? "?" + qs : ""}`);
   };
   const fetchJob = (id: string) => request<Job>(`/jobs/${id}`);
-  const createJob = (data: JobCreateRequest) =>
-    request<Job>("/jobs/", { method: "POST", body: JSON.stringify(data) });
   const retryJob = (id: string) =>
     request<Job>(`/jobs/${id}/retry`, { method: "POST" });
   const deleteJob = (id: string) =>
@@ -120,7 +117,6 @@ export function useApi() {
     fetchInstances,
     fetchJobs,
     fetchJob,
-    createJob,
     retryJob,
     deleteJob,
     syncMetadata,

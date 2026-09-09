@@ -17,6 +17,7 @@
 
 import pytest
 import pytest_asyncio
+from uuid import uuid4
 from ingestor_orchestrator.dto import JobCreate
 from ingestor_orchestrator.models import (
     CkanDataJob,
@@ -28,6 +29,12 @@ from ingestor_orchestrator.services.job_service import JobService
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 pytestmark = pytest.mark.asyncio
+
+
+async def create_coordinated_job(service: JobService, data: JobCreate) -> CkanDataJob:
+    job = await service.create_coordinated_job(str(uuid4()), data)
+    assert job is not None
+    return job
 
 
 @pytest_asyncio.fixture
@@ -194,7 +201,7 @@ class TestJobServiceUpsertsLatestResource:
             resource_format="CSV",
             instance_id=instance.id,
         )
-        job = await service.create_job(jc)
+        job = await create_coordinated_job(service, jc)
 
         lrj = await sess.get(LatestResourceJob, "r-new")
         assert lrj is not None
@@ -213,13 +220,13 @@ class TestJobServiceUpsertsLatestResource:
             dataset_name="ds-update",
             instance_id=instance.id,
         )
-        job1 = await service.create_job(jc)
+        job1 = await create_coordinated_job(service, jc)
 
         # Complete first job
         job1.status = JobStatus.COMPLETED
         await sess.commit()
 
-        job2 = await service.create_job(jc)
+        job2 = await create_coordinated_job(service, jc)
 
         lrj = await sess.get(LatestResourceJob, "r-update")
         assert lrj is not None
@@ -236,7 +243,7 @@ class TestJobServiceUpsertsLatestResource:
             resource_format="CSV",
             instance_id=instance.id,
         )
-        await service.create_job(jc1)
+        await create_coordinated_job(service, jc1)
 
         jc2 = JobCreate(
             resource_id="r-rename",
@@ -245,7 +252,7 @@ class TestJobServiceUpsertsLatestResource:
             resource_format="JSON",
             instance_id=instance.id,
         )
-        await service.create_job(jc2)
+        await create_coordinated_job(service, jc2)
 
         lrj = await sess.get(LatestResourceJob, "r-rename")
         assert lrj.resource_name == "New Name"
@@ -259,7 +266,7 @@ class TestJobServiceUpsertsLatestResource:
             dataset_name="ds-proc",
             instance_id=instance.id,
         )
-        await service.create_job(jc)
+        await create_coordinated_job(service, jc)
 
         lrj = await sess.get(LatestResourceJob, "r-proc")
         assert lrj.status == JobStatus.PENDING
@@ -286,7 +293,8 @@ class TestJobServiceUpsertsLatestResource:
     ):
         """A processing result keeps the latest-resource status in sync."""
         service = JobService(sess)
-        job = await service.create_job(
+        job = await create_coordinated_job(
+            service,
             JobCreate(
                 resource_id="r-processing-result",
                 dataset_name="ds-processing-result",
@@ -305,14 +313,16 @@ class TestJobServiceUpsertsLatestResource:
     ):
         """An older job result does not replace the newer latest-job status."""
         service = JobService(sess)
-        first_job = await service.create_job(
+        first_job = await create_coordinated_job(
+            service,
             JobCreate(
                 resource_id="r-newer-job",
                 dataset_name="ds-newer-job",
                 instance_id=instance.id,
             )
         )
-        second_job = await service.create_job(
+        second_job = await create_coordinated_job(
+            service,
             JobCreate(
                 resource_id="r-newer-job",
                 dataset_name="ds-newer-job",
@@ -335,7 +345,7 @@ class TestJobServiceUpsertsLatestResource:
             dataset_name="ds-fail",
             instance_id=instance.id,
         )
-        await service.create_job(jc)
+        await create_coordinated_job(service, jc)
 
         job = await sess.get(
             CkanDataJob, (await sess.get(LatestResourceJob, "r-fail")).latest_job_id

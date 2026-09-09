@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ingestor_orchestrator.db import get_db
-from ingestor_orchestrator.dto import JobCreate, JobListResponse, JobResponse
+from ingestor_orchestrator.dto import JobListResponse, JobResponse
 from ingestor_orchestrator.duration_sort import duration_sort_key
 from ingestor_orchestrator.models import (
     CkanDataJob,
@@ -204,41 +204,6 @@ async def get_job(job_id: str, db: AsyncSession = Depends(get_db)):
         completed_at=job.completed_at,
         labels=labels,
         results=job.results,
-        broker_type=job.broker_type,
-        message_stream=job.message_stream,
-        message_topic=job.message_topic,
-        message_partition=job.message_partition,
-        message_offset=job.message_offset,
-    )
-
-
-@router.post("/", response_model=JobResponse, status_code=201)
-async def create_job(data: JobCreate, db: AsyncSession = Depends(get_db)):
-    service = JobService(db)
-    job = await service.create_job(data)
-    # Reload with instance relationship
-    await db.refresh(job, attribute_names=["instance"])
-    return JobResponse(
-        id=job.id,
-        resource_id=job.resource_id,
-        resource_name=job.resource_name,
-        resource_url=job.resource_url,
-        resource_format=job.resource_format,
-        dataset_name=job.dataset_name,
-        status=job.status,
-        idempotency_key=job.idempotency_key,
-        instance_id=job.instance_id,
-        ckan_resource_url=_build_ckan_resource_url(
-            job.instance.url, job.dataset_name, job.resource_id
-        )
-        if job.instance
-        else "",
-        created_at=job.created_at,
-        updated_at=job.updated_at,
-        started_at=job.started_at,
-        completed_at=job.completed_at,
-        labels=[],
-        results=[],
         broker_type=job.broker_type,
         message_stream=job.message_stream,
         message_topic=job.message_topic,

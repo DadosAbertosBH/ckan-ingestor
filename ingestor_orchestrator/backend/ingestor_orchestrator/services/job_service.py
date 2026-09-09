@@ -43,54 +43,9 @@ class JobService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create_job(self, data: JobCreate, *, retry: bool = False) -> CkanDataJob:
-        idempotency_key = data.resource_id
-
-        job = CkanDataJob(
-            resource_id=data.resource_id,
-            resource_name=data.resource_name,
-            resource_url=data.resource_url,
-            resource_format=data.resource_format,
-            dataset_name=data.dataset_name,
-            idempotency_key=idempotency_key,
-            status=JobStatus.PENDING,
-            instance_id=data.instance_id or "",
-            ckan_url=data.ckan_url or "",
-            datastore_active=data.datastore_active,
-        )
-        self.db.add(job)
-        await self.db.flush()  # get job.id from DB-generated UUID
-
-        # Publish to the message broker
-        csv_delimiter = await self._get_csv_delimiter(job.resource_id)
-        record_meta = await self._publish_job(
-            job.id,
-            job.resource_id,
-            data.ckan_url,
-            resource_url=job.resource_url or "",
-            resource_format=job.resource_format or "",
-            csv_delimiter=csv_delimiter,
-            datastore_active=job.datastore_active,
-            retry=retry,
-        )
-
-        # Store broker routing metadata for debugging
-        job.broker_type = record_meta.broker_type
-        job.message_stream = record_meta.stream
-        job.message_topic = record_meta.topic
-        job.message_partition = record_meta.partition
-        job.message_offset = record_meta.offset
-
-        await self._upsert_latest_resource(job)
-        await self.db.commit()
-        await self.db.refresh(job)
-
-        logger.debug(f"Created job {job.id} for resource {data.resource_id}")
-        return job
-
     async def create_coordinated_job(
         self, job_id: str, data: JobCreate
-    ) -> CkanDataJob:
+    ) -> CkanDataJob | None:
         """Persist a job already published by the Rust coordinator.
 
         The coordinator publishes the PENDING result before the JobMessage, so
@@ -99,6 +54,21 @@ class JobService:
         existing = await self.db.get(CkanDataJob, job_id)
         if existing is not None:
             return existing
+
+        processing_job = await self.db.scalar(
+            select(CkanDataJob.id).where(
+                CkanDataJob.resource_id == data.resource_id,
+                CkanDataJob.status == JobStatus.PROCESSING,
+            )
+        )
+        if processing_job is not None:
+            logger.info(
+                "Skipping coordinator PENDING job %s for resource %s: already processing",
+                job_id,
+                data.resource_id,
+            )
+            return None
+
         job = CkanDataJob(
             id=job_id,
             resource_id=data.resource_id,

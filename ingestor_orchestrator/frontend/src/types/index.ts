@@ -60,14 +60,6 @@ export interface JobResult {
   created_at: string;
 }
 
-export interface JobCreateRequest {
-  resource_id: string;
-  dataset_name: string;
-  resource_name?: string;
-  resource_url?: string;
-  resource_format?: string;
-}
-
 export interface Resource {
   resource_id: string;
   resource_name: string | null;

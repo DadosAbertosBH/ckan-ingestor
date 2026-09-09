@@ -4,14 +4,12 @@ import { createRouter, createMemoryHistory } from "vue-router";
 import JobsView from "@/views/JobsView.vue";
 
 const mockFetchJobs = vi.fn().mockResolvedValue([]);
-const mockCreateJob = vi.fn();
 const mockFetchInstances = vi.fn().mockResolvedValue([]);
 
 // Mock useApi so we don't need real HTTP
 vi.mock("@/composables/useApi", () => ({
   useApi: () => ({
     fetchJobs: mockFetchJobs,
-    createJob: mockCreateJob,
     fetchInstances: mockFetchInstances,
   }),
 }));

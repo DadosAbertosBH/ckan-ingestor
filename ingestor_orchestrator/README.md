@@ -90,7 +90,6 @@ npm run dev
 | `GET` | `/api/dashboard/stats` | Estatísticas do dashboard |
 | `GET` | `/api/jobs` | Lista jobs (filtros: `status`, `resource_id`, `limit`, `offset`) |
 | `GET` | `/api/jobs/{id}` | Detalhe do job com resultados |
-| `POST` | `/api/jobs` | Cria e enfileira um novo job |
 | `POST` | `/api/jobs/{id}/retry` | Retry de um job com falha |
 | `DELETE` | `/api/jobs/{id}` | Remove um job pending ou failed |
 
@@ -126,12 +125,13 @@ npm run dev
 
 ## Idempotência
 
-Cada job usa `resource_id` como chave de idempotência:
+O coordinator Rust publica os jobs e o backend Python os persiste a partir de
+eventos `PENDING`:
 
-1. Antes de criar um job, verifica se já existe um job `pending` ou `processing` para o mesmo recurso.
-2. Se existir, retorna o job existente sem criar duplicata.
-3. A ingestão em si já é idempotente: usa `CREATE OR REPLACE TABLE` e merge/upsert no DuckLake.
-4. Jobs `failed` podem ser retentados (botão Retry), o que reseta o status para `pending`.
+1. O mesmo `job_id` é idempotente e mantém o registro existente.
+2. Um evento para uma resource que já está `processing` não cria um novo registro `pending`.
+3. A ingestão em si usa `CREATE OR REPLACE TABLE` e merge/upsert no DuckLake.
+4. Jobs `failed` podem ser retentados pelo endpoint de retry.
 
 ## Configuração
 

@@ -112,9 +112,6 @@ class ResultConsumer:
         # by MySQL; SUCCESS without an id merely confirms an in-flight job.
         if status == "PENDING" and payload.get("resource_id"):
             from ingestor_orchestrator.dto import JobCreate
-
-            if not payload.get("job_id"):
-                raise ValueError("coordinator PENDING result missing job_id")
             async with async_session() as db:
                 await JobService(db).create_coordinated_job(
                     payload["job_id"],

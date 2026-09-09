@@ -2,9 +2,6 @@
     <div class="jobs-view">
         <div class="header-row">
             <h1 class="page-title">Jobs</h1>
-            <button class="btn-primary" @click="showModal = true">
-                + Enqueue Job
-            </button>
         </div>
 
         <div class="filters">
@@ -167,76 +164,6 @@
             </button>
         </div>
 
-        <!-- Enqueue Modal -->
-        <div
-            v-if="showModal"
-            class="modal-overlay"
-            @click.self="showModal = false"
-        >
-            <div class="modal">
-                <h2 class="modal-title">Enqueue New Job</h2>
-                <form @submit.prevent="submitJob">
-                    <div class="form-group">
-                        <label>Resource ID *</label>
-                        <input
-                            v-model="form.resource_id"
-                            type="text"
-                            required
-                            placeholder="CKAN resource UUID"
-                        />
-                    </div>
-                    <div class="form-group">
-                        <label>Dataset Name *</label>
-                        <input
-                            v-model="form.dataset_name"
-                            type="text"
-                            required
-                            placeholder="CKAN dataset slug"
-                        />
-                    </div>
-                    <div class="form-group">
-                        <label>Resource Name</label>
-                        <input
-                            v-model="form.resource_name"
-                            type="text"
-                            placeholder="Optional"
-                        />
-                    </div>
-                    <div class="form-group">
-                        <label>Resource URL</label>
-                        <input
-                            v-model="form.resource_url"
-                            type="text"
-                            placeholder="Optional"
-                        />
-                    </div>
-                    <div class="form-group">
-                        <label>Format</label>
-                        <input
-                            v-model="form.resource_format"
-                            type="text"
-                            placeholder="CSV, JSON, PDF, etc."
-                        />
-                    </div>
-                    <div class="modal-actions">
-                        <button
-                            type="button"
-                            class="btn-secondary"
-                            @click="showModal = false"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            class="btn-primary"
-                            :disabled="submitting"
-                        >
-                            {{ submitting ? "Creating..." : "Enqueue" }}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
     </div>
 </template>
 
@@ -251,7 +178,7 @@ import type { CkanInstance, Job, JobStatus } from "@/types";
 
 const router = useRouter();
 const route = useRoute();
-const { fetchJobs, createJob, fetchInstances } = useApi();
+const { fetchJobs, fetchInstances } = useApi();
 
 const jobs = ref<Job[]>([]);
 const instances = ref<CkanInstance[]>([]);
@@ -267,15 +194,6 @@ const sortBy = ref<string>((route.query.sort_by as string) || "");
 const sortDir = ref<string>((route.query.sort_dir as string) || "");
 const limit = 50;
 const offset = ref(Number(route.query.offset) || 0);
-const showModal = ref(false);
-const submitting = ref(false);
-const form = ref({
-    resource_id: "",
-    dataset_name: "",
-    resource_name: "",
-    resource_url: "",
-    resource_format: "",
-});
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 function syncQueryParams() {
@@ -359,32 +277,6 @@ function nextPage() {
     loadJobs();
 }
 
-async function submitJob() {
-    submitting.value = true;
-    try {
-        await createJob({
-            resource_id: form.value.resource_id,
-            dataset_name: form.value.dataset_name,
-            resource_name: form.value.resource_name || undefined,
-            resource_url: form.value.resource_url || undefined,
-            resource_format: form.value.resource_format || undefined,
-        });
-        showModal.value = false;
-        form.value = {
-            resource_id: "",
-            dataset_name: "",
-            resource_name: "",
-            resource_url: "",
-            resource_format: "",
-        };
-        await loadJobs();
-    } catch (e: any) {
-        alert(e.message || "Failed to create job");
-    } finally {
-        submitting.value = false;
-    }
-}
-
 function formatTime(iso: string): string {
     return new Date(iso).toLocaleString();
 }
@@ -457,26 +349,6 @@ onMounted(async () => {
 .filter-input:focus {
     outline: none;
     border-color: #3b82f6;
-}
-
-.btn-primary {
-    background: #3b82f6;
-    color: #fff;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s;
-}
-
-.btn-primary:hover {
-    background: #2563eb;
-}
-.btn-primary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
 }
 
 .btn-secondary {
@@ -651,63 +523,4 @@ onMounted(async () => {
     color: #9ca3af;
 }
 
-.modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-}
-
-.modal {
-    background: #1a1d27;
-    border-radius: 12px;
-    padding: 24px;
-    width: 100%;
-    max-width: 480px;
-    border: 1px solid #2a2d37;
-}
-
-.modal-title {
-    font-size: 18px;
-    font-weight: 600;
-    margin-bottom: 20px;
-}
-
-.form-group {
-    margin-bottom: 14px;
-}
-
-.form-group label {
-    display: block;
-    font-size: 13px;
-    font-weight: 500;
-    color: #9ca3af;
-    margin-bottom: 4px;
-}
-
-.form-group input {
-    width: 100%;
-    background: #0f1117;
-    border: 1px solid #2a2d37;
-    border-radius: 6px;
-    padding: 8px 12px;
-    color: #e4e4e7;
-    font-size: 14px;
-    box-sizing: border-box;
-}
-
-.form-group input:focus {
-    outline: none;
-    border-color: #3b82f6;
-}
-
-.modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-top: 20px;
-}
 </style>

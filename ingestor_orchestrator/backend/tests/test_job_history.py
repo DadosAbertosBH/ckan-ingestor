@@ -17,6 +17,7 @@
 
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 import pytest_asyncio
@@ -27,6 +28,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 pytestmark = pytest.mark.asyncio
+
+
+async def create_coordinated_job(service: JobService, data: JobCreate) -> CkanDataJob:
+    job = await service.create_coordinated_job(str(uuid4()), data)
+    assert job is not None
+    return job
 
 
 @pytest_asyncio.fixture
@@ -62,12 +69,12 @@ class TestJobHistory:
         """Can create multiple jobs for the same resource (history)."""
         service = JobService(sess)
         jc = JobCreate(resource_id="r1", dataset_name="d1", instance_id=instance.id)
-        job1 = await service.create_job(jc)
+        job1 = await create_coordinated_job(service, jc)
 
         job1.status = JobStatus.COMPLETED
         await sess.commit()
 
-        job2 = await service.create_job(jc)
+        job2 = await create_coordinated_job(service, jc)
         assert job1.id != job2.id
         assert job2.status == JobStatus.PENDING
 
@@ -76,14 +83,16 @@ class TestJobHistory:
         service = JobService(sess)
         jc = JobCreate(resource_id="r2", dataset_name="d2", instance_id=instance.id)
 
-        job1 = await service.create_job(jc)
-        job2 = await service.create_job(jc)
+        job1 = await create_coordinated_job(service, jc)
+        job2 = await create_coordinated_job(service, jc)
 
         assert job1.id != job2.id
         assert job1.status == JobStatus.PENDING
 
-    async def test_creates_when_processing_exists(self, sess, instance):
-        """Creates new job even when PROCESSING exists."""
+    async def test_coordinated_job_is_not_created_when_processing_exists(
+        self, sess, instance
+    ):
+        """A coordinator PENDING event preserves an in-flight resource job."""
         job = CkanDataJob(
             resource_id="r3",
             dataset_name="d3",
@@ -96,9 +105,16 @@ class TestJobHistory:
 
         service = JobService(sess)
         jc = JobCreate(resource_id="r3", dataset_name="d3", instance_id=instance.id)
-        new_job = await service.create_job(jc)
-        assert new_job.id != job.id
-        assert new_job.status == JobStatus.PENDING
+        new_job = await service.create_coordinated_job("coordinated-r3", jc)
+
+        assert new_job is None
+        assert (
+            await sess.scalar(
+                select(func.count()).where(CkanDataJob.resource_id == "r3")
+            )
+        ) == 1
+        await sess.refresh(job)
+        assert job.status == JobStatus.PROCESSING
 
     async def test_creates_new_job_after_completed(self, sess, instance):
         """Creates new job after previous one completed (preserves history)."""
@@ -114,7 +130,7 @@ class TestJobHistory:
 
         service = JobService(sess)
         jc = JobCreate(resource_id="r4", dataset_name="d4", instance_id=instance.id)
-        new_job = await service.create_job(jc)
+        new_job = await create_coordinated_job(service, jc)
         assert new_job.id != job.id
         assert new_job.status == JobStatus.PENDING
 
@@ -139,7 +155,7 @@ class TestJobHistory:
 
         service = JobService(sess)
         jc = JobCreate(resource_id="r5", dataset_name="d5", instance_id=instance.id)
-        new_job = await service.create_job(jc)
+        new_job = await create_coordinated_job(service, jc)
         assert new_job.id != job.id
         assert new_job.status == JobStatus.PENDING
 

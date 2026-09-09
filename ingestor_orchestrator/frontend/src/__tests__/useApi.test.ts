@@ -104,47 +104,6 @@ describe("useApi — success cases", () => {
     expect(result).toEqual(instanceStats);
   });
 
-  it("createJob posts and returns the created job", async () => {
-    const job = {
-      id: "1",
-      instance_id: null,
-      resource_id: "abc",
-      resource_name: "test",
-      resource_url: null,
-      resource_format: "CSV",
-      dataset_name: "my-dataset",
-      ckan_resource_url:
-        "https://dados.pbh.gov.br/dataset/my-dataset/resource/abc",
-      status: "pending",
-      idempotency_key: "abc",
-      created_at: "2025-01-01T00:00:00Z",
-      updated_at: "2025-01-01T00:00:00Z",
-      started_at: null,
-      completed_at: null,
-      labels: ["empty"],
-      results: [],
-    };
-    const fetchFn = mockFetch({ ok: true, status: 201, body: job });
-
-    const { createJob } = useApi();
-    const result = await createJob({
-      resource_id: "abc",
-      dataset_name: "my-dataset",
-      resource_name: "test",
-    });
-
-    expect(result).toEqual(job);
-    expect(fetchFn).toHaveBeenCalledWith("/api/jobs/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        resource_id: "abc",
-        dataset_name: "my-dataset",
-        resource_name: "test",
-      }),
-    });
-  });
-
   it("syncMetadata calls POST with instance_id", async () => {
     const result = {
       instance_id: "inst-1",
