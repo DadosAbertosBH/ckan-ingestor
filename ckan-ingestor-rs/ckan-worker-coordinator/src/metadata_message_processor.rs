@@ -14,23 +14,17 @@ use message_processor::{MessageProcessor, OutgoingMessage};
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::job_planner::{JobPlan, JobPlanner};
 use crate::job_publisher::JobPublisher;
-use crate::metadata_processor::RealMetadataProcessor;
+use crate::metadata_processor::{RealMetadataProcessor, ResourceCandidate};
 
 pub struct MetadataProcessor {
     jobs: JobPublisher,
-    planner: JobPlanner,
     processor: RealMetadataProcessor,
 }
 
 impl MetadataProcessor {
-    pub fn new(jobs: JobPublisher, planner: JobPlanner, processor: RealMetadataProcessor) -> Self {
-        Self {
-            jobs,
-            planner,
-            processor,
-        }
+    pub fn new(jobs: JobPublisher, processor: RealMetadataProcessor) -> Self {
+        Self { jobs, processor }
     }
 }
 
@@ -44,8 +38,16 @@ impl OutgoingMessage for MetadataResult {
     }
 }
 
-fn jobs_to_publish(plans: Vec<JobPlan>) -> impl Iterator<Item = JobPlan> {
-    plans.into_iter().filter(|plan| plan.enqueue)
+fn job_id(instance_id: &str, candidate: &ResourceCandidate) -> String {
+    Uuid::new_v5(
+        &Uuid::NAMESPACE_URL,
+        format!(
+            "{instance_id}:{}:{}",
+            candidate.resource_id, candidate.source_version
+        )
+        .as_bytes(),
+    )
+    .to_string()
 }
 
 impl MessageProcessor for MetadataProcessor {
@@ -54,7 +56,7 @@ impl MessageProcessor for MetadataProcessor {
 
     fn process(&self, command: MetadataSyncCommand) -> impl futures::Stream<Item = MetadataResult> {
         stream! {
-        let result = self.processor.process(command.clone()).await;
+        let mut result = self.processor.process(command.clone()).await;
         if result.status == "success" {
             let candidates = match self.processor.outdated_resources(&command.instance_url).await {
                 Ok(candidates) => candidates,
@@ -64,20 +66,8 @@ impl MessageProcessor for MetadataProcessor {
                     return;
                 }
             };
-            let plans = match self.planner.classify(candidates) {
-                Ok(plans) => plans,
-                Err(error) => {
-                    log::error!("could not plan metadata jobs: {error:#}");
-                    yield MetadataResult(result);
-                    return;
-                }
-            };
-            for JobPlan {
-                candidate,
-                retry,
-                ..
-            } in jobs_to_publish(plans) {
-                let id = Uuid::new_v4().to_string();
+            let messages = candidates.into_iter().map(|candidate| {
+                let id = job_id(&command.instance_id, &candidate);
                 let mut pending = JobResultMessage::pending(
                     id.clone(),
                     candidate.resource_id.clone(),
@@ -92,6 +82,7 @@ impl MessageProcessor for MetadataProcessor {
                 let job = JobMessage {
                     job_id: id,
                     resource_id: candidate.resource_id,
+                    source_version: candidate.source_version,
                     package_id: candidate.package_id,
                     ckan_url: command.instance_url.clone(),
                     resource_url: candidate.resource_url.unwrap_or_default(),
@@ -99,9 +90,12 @@ impl MessageProcessor for MetadataProcessor {
                     csv_delimiter: None,
                     datastore_active: candidate.datastore_active,
                 };
-                if let Err(error) = self.jobs.pending(&pending, &job, retry).await {
-                    log::error!("could not publish planned job: {error:#}");
-                }
+                (pending, job)
+            }).collect::<Vec<_>>();
+            if let Err(error) = self.jobs.pending_batch(&messages).await {
+                log::error!("could not publish metadata jobs: {error:#}");
+                result.status = "failure".into();
+                result.error_message = Some(format!("could not publish metadata jobs: {error:#}"));
             }
         }
         yield MetadataResult(result);
@@ -114,28 +108,28 @@ mod tests {
     use super::*;
     use crate::metadata_processor::ResourceCandidate;
 
-    fn plan(resource_id: &str, enqueue: bool) -> JobPlan {
-        JobPlan {
-            candidate: ResourceCandidate {
-                resource_id: resource_id.into(),
-                package_id: "package".into(),
-                resource_name: None,
-                resource_url: None,
-                resource_format: None,
-                dataset_name: "dataset".into(),
-                datastore_active: false,
-            },
-            enqueue,
-            retry: false,
+    fn candidate(resource_id: &str, version: &str) -> ResourceCandidate {
+        ResourceCandidate {
+            resource_id: resource_id.into(),
+            package_id: "package".into(),
+            resource_name: None,
+            resource_url: None,
+            resource_format: None,
+            dataset_name: "dataset".into(),
+            datastore_active: false,
+            source_version: version.into(),
         }
     }
 
     #[test]
-    fn only_returns_plans_that_require_job_publication() {
-        let plans = jobs_to_publish(vec![plan("queued", true), plan("known", false)])
-            .map(|plan| plan.candidate.resource_id)
-            .collect::<Vec<_>>();
-
-        assert_eq!(plans, vec!["queued"]);
+    fn job_id_is_stable_for_the_same_resource_version() {
+        assert_eq!(
+            job_id("instance", &candidate("resource", "v1")),
+            job_id("instance", &candidate("resource", "v1"))
+        );
+        assert_ne!(
+            job_id("instance", &candidate("resource", "v1")),
+            job_id("instance", &candidate("resource", "v2"))
+        );
     }
 }

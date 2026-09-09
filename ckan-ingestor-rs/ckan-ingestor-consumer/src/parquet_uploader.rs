@@ -14,7 +14,9 @@ use arrow_ipc::convert::IpcSchemaEncoder;
 use base64::Engine;
 use ckan_ingestor_lib::{config::S3Settings, parquet_output::ParquetOutput};
 use ckan_ingestor_worker_lib::{ParquetArtifact, ParquetColumnStatistics};
-use object_store::{ObjectStoreExt, WriteMultipart, parse_url_opts};
+use object_store::{
+    Error as ObjectStoreError, ObjectStore, ObjectStoreExt, WriteMultipart, parse_url_opts,
+};
 use tokio::io::AsyncReadExt;
 use url::Url;
 
@@ -31,10 +33,10 @@ impl ParquetUploader {
     pub async fn upload(
         &self,
         resource_id: &str,
-        job_id: &str,
+        version: &str,
         parquet: &ParquetOutput,
     ) -> Result<ParquetArtifact> {
-        let uri = self.destination_uri(resource_id, job_id);
+        let uri = self.destination_uri(resource_id, version);
         let url = Url::parse(&uri)?;
         let (store, path) = parse_url_opts(&url, self.s3.object_store_options())?;
         let upload = store.put_multipart(&path).await?;
@@ -53,11 +55,29 @@ impl ParquetUploader {
         artifact_from_parquet(&uri, parquet)
     }
 
-    fn destination_uri(&self, resource_id: &str, job_id: &str) -> String {
+    pub async fn exists(&self, resource_id: &str, version: &str) -> Result<bool> {
+        let uri = self.destination_uri(resource_id, version);
+        let url = Url::parse(&uri)?;
+        let (store, path) = parse_url_opts(&url, self.s3.object_store_options())?;
+        Self::exists_in(store.as_ref(), &path).await
+    }
+
+    async fn exists_in(store: &dyn ObjectStore, path: &object_store::path::Path) -> Result<bool> {
+        match store.head(path).await {
+            Ok(_) => Ok(true),
+            Err(ObjectStoreError::NotFound { .. }) => Ok(false),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    pub fn destination_uri(&self, resource_id: &str, version: &str) -> String {
         let resource =
             url::form_urlencoded::byte_serialize(resource_id.as_bytes()).collect::<String>();
-        let job = url::form_urlencoded::byte_serialize(job_id.as_bytes()).collect::<String>();
-        format!("s3://{}/{resource}/ducklake-{job}.parquet", self.s3.bucket)
+        let version = url::form_urlencoded::byte_serialize(version.as_bytes()).collect::<String>();
+        format!(
+            "s3://{}/{resource}/ducklake_{version}.parquet",
+            self.s3.bucket
+        )
     }
 }
 
@@ -119,7 +139,8 @@ mod tests {
         record_batch::RecordBatch,
     };
 
-    use super::artifact_from_parquet;
+    use super::{ParquetUploader, artifact_from_parquet};
+    use ckan_ingestor_lib::config::S3Settings;
     use ckan_ingestor_lib::parquet_output::ParquetOutput;
 
     #[test]
@@ -141,5 +162,37 @@ mod tests {
         assert!(!artifact.schema_ipc_base64.is_empty());
         assert_eq!(artifact.column_statistics[0].field_id, 1);
         assert_eq!(artifact.column_statistics[0].null_count, Some(1));
+    }
+
+    #[test]
+    fn destination_is_deterministic_for_a_resource_version() {
+        let uploader = ParquetUploader::new(S3Settings {
+            bucket: "warehouse".into(),
+            ..Default::default()
+        });
+
+        assert_eq!(
+            uploader.destination_uri("resource/id", "2026-09-02T12:00:00Z"),
+            "s3://warehouse/resource%2Fid/ducklake_2026-09-02T12%3A00%3A00Z.parquet"
+        );
+    }
+
+    #[tokio::test]
+    async fn head_distinguishes_present_and_missing_artifacts() {
+        use object_store::{ObjectStoreExt, PutPayload, memory::InMemory, path::Path};
+
+        let store = InMemory::new();
+        let present = Path::from("resource/ducklake_v1.parquet");
+        store
+            .put(&present, PutPayload::from_static(b"parquet"))
+            .await
+            .unwrap();
+
+        assert!(ParquetUploader::exists_in(&store, &present).await.unwrap());
+        assert!(
+            !ParquetUploader::exists_in(&store, &Path::from("missing.parquet"))
+                .await
+                .unwrap()
+        );
     }
 }

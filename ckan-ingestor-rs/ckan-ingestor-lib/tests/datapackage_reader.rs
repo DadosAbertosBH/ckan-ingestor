@@ -35,6 +35,7 @@ fn datapackage_resources_are_represented_as_individual_rows() -> Result<()> {
         url: path.to_string_lossy().to_string(),
         format: "JSON".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let reader = DatapackageReader::new();
@@ -114,6 +115,7 @@ fn deserializes_a_remote_datapackage_with_mock() -> Result<()> {
         ),
         format: "JSON".to_string(),
         datastore_active: false,
+    last_modified: String::new(),
     };
 
     let result = DatapackageReader::new().read(&resource)?;

@@ -70,6 +70,7 @@ fn read_datastore() -> Result<()> {
             .to_string(),
         format: "CSV".to_string(),
         datastore_active: true,
+        last_modified: String::new(),
     };
 
     let result = reader.read_batches(&resource)?;
@@ -106,6 +107,7 @@ fn read_invalid_json() -> Result<()> {
             .to_string(),
         format: "CSV".to_string(),
         datastore_active: true,
+        last_modified: String::new(),
     };
 
     let result = reader.read_batches(&resource);
@@ -149,6 +151,7 @@ fn empty_datastore_returns_empty_vec() -> Result<()> {
         url: "http://example.com/data.csv".to_string(),
         format: "CSV".to_string(),
         datastore_active: true,
+        last_modified: String::new(),
     };
 
     let result = reader.read_batches(&resource)?;
@@ -216,6 +219,7 @@ fn returns_http_error_for_failed_datastore_dump() -> Result<()> {
         url: String::new(),
         format: "CSV".to_string(),
         datastore_active: true,
+        last_modified: String::new(),
     };
 
     let error = match reader.read_batches(&resource) {
@@ -264,6 +268,7 @@ fn reproduce_datastore_response_decoding_error() -> Result<()> {
         url: String::new(),
         format: "CSV".to_string(),
         datastore_active: true,
+        last_modified: String::new(),
     };
 
     let error = match reader.read_batches(&resource) {

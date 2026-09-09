@@ -108,6 +108,23 @@ impl DataWriter for DucklakeDataWriter {
 
 pub async fn initialize_last_update_table(client: &Ducklake) -> Result<()> {
     if client.table_exists(LAST_UPDATE_TABLE).await? {
+        let table = client.table(LAST_UPDATE_TABLE).await?;
+        if !table
+            .columns()
+            .await?
+            .any(|column| column.name == "source_version")
+        {
+            let mut transaction = client.transaction().await?;
+            transaction
+                .table(LAST_UPDATE_TABLE)?
+                .add_column(Column::try_from(&Field::new(
+                    "source_version",
+                    DataType::Utf8View,
+                    true,
+                ))?)
+                .await?;
+            transaction.commit().await?;
+        }
         return Ok(());
     }
     let schema = last_update_schema();
@@ -132,6 +149,7 @@ pub async fn initialize_last_update_table(client: &Ducklake) -> Result<()> {
 pub fn append_last_update(
     transaction: &mut ducklake::Transaction<'_>,
     resource_id: &str,
+    source_version: &str,
 ) -> Result<()> {
     let mut table = transaction.table(LAST_UPDATE_TABLE)?;
     let timestamp = std::time::SystemTime::now()
@@ -142,6 +160,7 @@ pub fn append_last_update(
         vec![
             Arc::new(StringViewArray::from(vec![resource_id])),
             Arc::new(TimestampMicrosecondArray::from(vec![timestamp])),
+            Arc::new(StringViewArray::from(vec![Some(source_version)])),
         ],
     )?])?;
     Ok(())
@@ -155,6 +174,7 @@ fn last_update_schema() -> Arc<Schema> {
             DataType::Timestamp(TimeUnit::Microsecond, None),
             false,
         ),
+        Field::new("source_version", DataType::Utf8View, true),
     ]))
 }
 

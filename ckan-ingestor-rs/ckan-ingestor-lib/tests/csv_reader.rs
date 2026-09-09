@@ -52,6 +52,7 @@ fn parse_latin_encoded_csv() -> Result<()> {
             .to_string(),
         format: "CSV".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     // Python equivalent: test_parse_latin_encoded_csv_file
@@ -76,6 +77,7 @@ fn parse_non_latin_and_non_utf8() -> Result<()> {
             .to_string(),
         format: "CSV".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let result = reader.read(&resource)?;
@@ -103,6 +105,7 @@ fn returns_http_error_for_failed_remote_csv_download() -> Result<()> {
         url: format!("{}/failed.csv", server.url("")),
         format: "CSV".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let error = match reader.read(&resource) {
@@ -135,6 +138,7 @@ fn parses_dm_subitem_rec_utf8_csv_fixture() -> Result<()> {
             .to_string(),
         format: "CSV".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let result = reader.read(&resource)?;
@@ -183,6 +187,7 @@ fn parses_csv_with_mixed_line_endings_in_quoted_header() -> Result<()> {
         url: temporary_csv.0.to_str().unwrap().to_string(),
         format: "CSV".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let result = reader.read(&resource)?;
@@ -206,6 +211,7 @@ fn csv_with_bom() -> Result<()> {
             .to_string(),
         format: "CSV".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
     let result = reader.read(&resource)?;
     assert_eq!(result.rows_processed, 804);
@@ -229,6 +235,7 @@ fn reads_csv_data_with_rows() -> Result<()> {
             .to_string(),
         format: "CSV".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let result = reader.read(&resource)?;
@@ -250,6 +257,7 @@ fn parses_numeric_columns_with_whitespace_padded_dash_as_null() -> Result<()> {
             .to_string(),
         format: "CSV".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let result = reader.read(&resource)?;
@@ -284,6 +292,7 @@ fn represents_an_entirely_empty_csv_column_as_nullable_text() -> Result<()> {
         url: csv.path().to_str().unwrap().to_string(),
         format: "CSV".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let result = reader.read(&resource)?;
@@ -319,6 +328,7 @@ fn parse_remote_gzip_csv() -> Result<()> {
         url: format!("{}/ft_diarias_2014.csv.gz", server.url("")),
         format: "CSV".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let result = reader.read(&resource)?;
@@ -351,6 +361,7 @@ fn fails_to_parse_quoted_semicolon_after_long_csv_sample() -> Result<()> {
         url: format!("{}/dm_favorecido.csv", server.url("")),
         format: "CSV".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let result = reader.read(&resource);
@@ -378,6 +389,7 @@ fn uses_csv_nose_metadata_types_beyond_arrows_inference_window() -> Result<()> {
         url: path.to_string_lossy().to_string(),
         format: "CSV".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let result = CsvReader::new(test_client()).read(&resource)?;
@@ -401,6 +413,7 @@ fn represents_unsigned_csv_values_as_signed_integers() -> Result<()> {
         url: csv.path().to_string_lossy().to_string(),
         format: "CSV".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let result = CsvReader::new(test_client()).read(&resource)?;

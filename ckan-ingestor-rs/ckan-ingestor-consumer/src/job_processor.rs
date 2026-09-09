@@ -73,6 +73,12 @@ impl MessageProcessor for JobProcessor {
 
     fn process(&self, job: JobMessage) -> impl Stream<Item = JobResultMessage> {
         stream! {
+            log::info!(
+                "Starting job {} for resource {} (version {})",
+                job.job_id,
+                job.resource_id,
+                if job.source_version.is_empty() { "legacy" } else { &job.source_version },
+            );
             let processing = processing_job(&job);
             yield processing;
 
@@ -98,6 +104,7 @@ impl MessageProcessor for JobProcessor {
 fn job_result_from_success(
     job_id: String,
     resource_id: String,
+    source_version: String,
     outcome: ckan_ingestor_lib::readers::ckan_reader::SuccessResult,
     artifact: ckan_ingestor_worker_lib::ParquetArtifact,
 ) -> JobResultMessage {
@@ -118,6 +125,7 @@ fn job_result_from_success(
             .and_then(|value| i64::try_from(value).ok()),
         datastore_active: None,
         resource_id,
+        source_version: Some(source_version),
         dataset_name: None,
         resource_name: None,
         resource_url: None,
@@ -136,12 +144,44 @@ fn run_conversion(
     job: &JobMessage,
     s3: &S3DocumentIngestor,
 ) -> Result<JobResultMessage, anyhow::Error> {
+    let version = if job.source_version.is_empty() {
+        job.job_id.as_str()
+    } else {
+        job.source_version.as_str()
+    };
+    if runtime.block_on(uploader.exists(&job.resource_id, version))? {
+        return Ok(JobResultMessage {
+            job_id: job.job_id.clone(),
+            status: JobStatus::Success,
+            resource_id: job.resource_id.clone(),
+            source_version: Some(version.into()),
+            dataset_name: None,
+            resource_name: None,
+            resource_url: None,
+            resource_format: None,
+            instance_id: None,
+            ckan_url: None,
+            datastore_active: Some(job.datastore_active),
+            reader: Some("cached-parquet".into()),
+            rows_processed: None,
+            expected_rows: None,
+            encoding: None,
+            csv_strict_mode: None,
+            csv_delimiter: None,
+            csv_samples: None,
+            expected_columns: None,
+            error_message: None,
+            preview: None,
+            artifact: None,
+        });
+    }
     let resource = CkanResource {
         id: job.resource_id.clone(),
         package_id: job.package_id.clone(),
         url: job.resource_url.clone(),
         format: job.resource_format.clone(),
         datastore_active: job.datastore_active,
+        last_modified: job.source_version.clone(),
     };
     let http_client = Client::builder()
         .timeout(Duration::from_secs(1200))
@@ -164,14 +204,12 @@ fn run_conversion(
     ]);
     match reader.read(&resource) {
         Ok(result) => {
-            let artifact = runtime.block_on(uploader.upload(
-                &job.resource_id,
-                &job.job_id,
-                &result.parquet,
-            ))?;
+            let artifact =
+                runtime.block_on(uploader.upload(&job.resource_id, version, &result.parquet))?;
             Ok(job_result_from_success(
                 job.job_id.clone(),
                 job.resource_id.clone(),
+                job.source_version.clone(),
                 result,
                 artifact,
             ))
@@ -202,6 +240,7 @@ fn failed_job(job: &JobMessage, error: impl std::fmt::Display) -> JobResultMessa
         expected_columns: None,
         datastore_active: Some(false),
         resource_id: job.resource_id.clone(),
+        source_version: Some(job.source_version.clone()),
         dataset_name: None,
         resource_name: None,
         resource_url: None,
@@ -228,6 +267,7 @@ fn processing_job(job: &JobMessage) -> JobResultMessage {
         expected_columns: None,
         datastore_active: Some(false),
         resource_id: job.resource_id.clone(),
+        source_version: Some(job.source_version.clone()),
         dataset_name: None,
         resource_name: None,
         resource_url: None,
@@ -250,6 +290,7 @@ fn job_result_from_failure(
         job_id: job_id.into(),
         status: JobStatus::Failed,
         resource_id: resource_id.into(),
+        source_version: None,
         dataset_name: None,
         resource_name: None,
         resource_url: None,
@@ -317,6 +358,7 @@ mod tests {
         let result = job_result_from_success(
             "job-1".into(),
             "resource-1".into(),
+            "2026-09-02T12:00:00Z".into(),
             successful_result(),
             ParquetArtifact {
                 uri: "s3://warehouse/resource-1/job-1.parquet".into(),

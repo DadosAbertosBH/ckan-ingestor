@@ -40,6 +40,7 @@ fn reads_multiple_json_objects() -> Result<()> {
         url: path.to_string_lossy().to_string(),
         format: "JSON".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let result = reader.read(&resource)?;
@@ -69,6 +70,7 @@ fn reads_regular_json_array() -> Result<()> {
         url: path.to_string_lossy().to_string(),
         format: "JSON".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let result = reader.read(&resource);
@@ -94,6 +96,7 @@ fn represents_all_null_json_columns_as_utf8() -> Result<()> {
         url: path.to_string_lossy().to_string(),
         format: "JSON".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let result = JsonReader::new().read(&resource);
@@ -120,6 +123,7 @@ fn represents_nested_null_json_fields_as_utf8() -> Result<()> {
         url: path.to_string_lossy().to_string(),
         format: "JSON".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let result = JsonReader::new().read(&resource);
@@ -166,6 +170,7 @@ fn reads_remote_datapackage_json() -> Result<()> {
         url: format!("{}/download/datapackage.json", server.base_url()),
         format: "JSON".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let result = reader.read(&resource)?;
@@ -192,6 +197,7 @@ fn reads_json_object_larger_than_default_maximum_object_size() -> Result<()> {
         url: path.to_string_lossy().to_string(),
         format: "JSON".to_string(),
         datastore_active: false,
+        last_modified: String::new(),
     };
 
     let result = reader.read(&resource);

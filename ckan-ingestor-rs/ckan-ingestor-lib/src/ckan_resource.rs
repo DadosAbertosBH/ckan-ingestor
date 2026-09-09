@@ -20,4 +20,7 @@ pub struct CkanResource {
     pub url: String,
     pub format: String,
     pub datastore_active: bool,
+    /// CKAN resource content version. Metadata ingestion resolves this from
+    /// `last_modified`, falling back to `metadata_modified` when needed.
+    pub last_modified: String,
 }

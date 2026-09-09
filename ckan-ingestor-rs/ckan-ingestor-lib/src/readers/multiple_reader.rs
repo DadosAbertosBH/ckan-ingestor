@@ -190,6 +190,7 @@ mod tests {
             url: "https://example.test/resource".to_string(),
             format: format.to_string(),
             datastore_active: false,
+            last_modified: String::new(),
         }
     }
 

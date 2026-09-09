@@ -106,6 +106,22 @@ impl<T: JobTransport> JobPublisher<T> {
         )
         .await
     }
+    /// Publishes every PENDING result before its corresponding JOB.  The
+    /// producer is configured with a 100-message direct batch, so these sends
+    /// are flushed as transport batches while preserving the causal order.
+    pub async fn pending_batch(
+        &self,
+        messages: &[(JobResultMessage, JobMessage)],
+    ) -> anyhow::Result<()> {
+        for (result, _) in messages {
+            self.send(Destination::Results, &result.job_id, result)
+                .await?;
+        }
+        for (_, job) in messages {
+            self.send(Destination::Jobs, &job.job_id, job).await?;
+        }
+        Ok(())
+    }
     pub async fn skipped(&self, result: &JobResultMessage, key: &str) -> anyhow::Result<()> {
         self.send(Destination::Results, key, result).await
     }
@@ -146,6 +162,7 @@ mod tests {
         let job = JobMessage {
             job_id: "job".into(),
             resource_id: "resource".into(),
+            source_version: "v1".into(),
             package_id: "package".into(),
             ckan_url: String::new(),
             resource_url: String::new(),

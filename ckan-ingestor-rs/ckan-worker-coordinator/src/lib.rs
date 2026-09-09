@@ -9,13 +9,10 @@
 
 pub mod data_writer;
 pub mod ducklake_data_writer;
-pub mod job_planner;
 pub mod job_publisher;
-pub mod job_repository;
 pub mod metadata_message_processor;
 pub mod metadata_processor;
 pub mod metadata_publisher;
-pub mod mysql_job_repository;
 pub mod parquet_message_processor;
 pub mod parquet_registrar;
 
@@ -31,12 +28,10 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 use crate::ducklake_data_writer::DucklakeDataWriter;
-use crate::job_planner::JobPlanner;
 use crate::job_publisher::JobPublisher;
 use crate::metadata_message_processor::MetadataProcessor;
 use crate::metadata_processor::RealMetadataProcessor;
 use crate::metadata_publisher::MetadataPublisher;
-use crate::mysql_job_repository::MySqlJobRepository;
 use crate::parquet_message_processor::ParquetProcessor;
 use crate::parquet_registrar::ParquetRegistrar;
 use ckan_ingestor_lib::ducklake_factory::DucklakeFactory;
@@ -127,22 +122,22 @@ pub async fn run() -> Result<()> {
     ensure_topology(&admin, &settings).await?;
     let producer = admin
         .producer(&settings.stream, &settings.metadata_sync_result_topic)?
-        .direct(DirectConfig::builder().batch_length(1).build())
+        .direct(DirectConfig::builder().batch_length(100).build())
         .build();
     producer.init().await?;
     let result_producer = admin
         .producer(&settings.stream, &settings.result_topic)?
-        .direct(DirectConfig::builder().batch_length(1).build())
+        .direct(DirectConfig::builder().batch_length(100).build())
         .build();
     result_producer.init().await?;
     let job_producer = admin
         .producer(&settings.stream, &settings.job_topic)?
-        .direct(DirectConfig::builder().batch_length(1).build())
+        .direct(DirectConfig::builder().batch_length(100).build())
         .build();
     job_producer.init().await?;
     let retry_producer = admin
         .producer(&settings.stream, &settings.retry_topic)?
-        .direct(DirectConfig::builder().batch_length(1).build())
+        .direct(DirectConfig::builder().batch_length(100).build())
         .build();
     retry_producer.init().await?;
     let client = connected_client(&connection_string).await?;
@@ -188,11 +183,7 @@ pub async fn run() -> Result<()> {
         0,
         IggySource::new(consumer),
         MetadataPublisher::new(producer),
-        MetadataProcessor::new(
-            jobs.clone(),
-            JobPlanner::new(Box::new(MySqlJobRepository::from_env()?)),
-            processor,
-        ),
+        MetadataProcessor::new(jobs.clone(), processor),
     );
     metadata_consumer.run();
     let mut parquet_consumer = ConsumerWorker::new(

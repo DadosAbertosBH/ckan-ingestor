@@ -36,16 +36,24 @@ impl MessageProcessor for ParquetProcessor {
         stream! {
             if result.status == JobStatus::Success {
                 let registration = async {
-                    let artifact = result.artifact.as_ref().ok_or_else(|| {
-                        anyhow::anyhow!("successful conversion result requires artifact")
-                    })?;
+                    // A deterministic S3 object found by the worker is an
+                    // already-materialized success. The metadata ledger is
+                    // the queue-side authority that suppresses future jobs.
+                    let Some(artifact) = result.artifact.as_ref() else {
+                        return Ok(());
+                    };
                     anyhow::ensure!(
                         !result.job_id.is_empty(),
                         "successful conversion result requires job_id"
                     );
                     let mut failure = None;
                     for attempt in 0..3 {
-                        match self.registrar.register(&result.resource_id, &result.job_id, artifact).await {
+                        match self.registrar.register(
+                            &result.resource_id,
+                            &result.job_id,
+                            result.source_version.as_deref().unwrap_or(&result.job_id),
+                            artifact,
+                        ).await {
                             Ok(()) => return Ok(()),
                             Err(error) => {
                                 failure = Some(error);

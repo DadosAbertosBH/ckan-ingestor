@@ -224,6 +224,7 @@ mod tests {
             url: url.to_string(),
             format: "CSV".to_string(),
             datastore_active,
+            last_modified: String::new(),
         }
     }
 

@@ -29,8 +29,7 @@ parquet = { version = "=59.2.0", features = ["arrow"] }
 url = "2.5"
 base64 = "0.22"
 rustls = { version = "0.23", features = ["ring"] }
-mysql = "26"
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v5"] }
 
 [dev-dependencies]
 testcontainers = "0.28"

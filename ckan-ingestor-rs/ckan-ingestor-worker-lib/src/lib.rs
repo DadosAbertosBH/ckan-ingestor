@@ -35,6 +35,8 @@ pub struct JobMessage {
     pub job_id: String,
     pub resource_id: String,
     #[serde(default)]
+    pub source_version: String,
+    #[serde(default)]
     pub package_id: String,
     pub ckan_url: String,
     #[serde(default)]
@@ -52,6 +54,8 @@ pub struct JobResultMessage {
     pub job_id: String,
     pub status: JobStatus,
     pub resource_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dataset_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -122,6 +126,7 @@ impl JobResultMessage {
             job_id: job_id.into(),
             status: JobStatus::Pending,
             resource_id: resource_id.into(),
+            source_version: None,
             dataset_name: Some(dataset_name.into()),
             resource_name: None,
             resource_url: None,
@@ -160,6 +165,7 @@ mod artifact_tests {
             job_id: "job-1".into(),
             status: JobStatus::Success,
             resource_id: "resource-1".into(),
+            source_version: Some("2026-09-02T12:00:00Z".into()),
             dataset_name: None,
             resource_name: None,
             resource_url: None,

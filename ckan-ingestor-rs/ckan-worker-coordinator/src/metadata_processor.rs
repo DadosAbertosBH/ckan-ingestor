@@ -35,6 +35,8 @@ pub struct ResourceCandidate {
     pub resource_format: Option<String>,
     pub dataset_name: String,
     pub datastore_active: bool,
+    /// Stable source version used for idempotent queueing and artifact names.
+    pub source_version: String,
 }
 
 #[derive(Clone)]
@@ -254,12 +256,16 @@ async fn query_outdated_resources(
     let datasets = load_table(client, factory, "ckan_dataset").await?;
     let updates = load_table(client, factory, "ckan_resource_last_update").await?;
     let dataset_names = latest_values(&datasets, "id", "name", "metadata_modified")?;
-    let update_times = latest_values(
-        &updates,
-        "ckan_resource_id",
-        "last_modified",
-        "last_modified",
-    )?;
+    let processed_versions = updates
+        .iter()
+        .flat_map(|batch| (0..batch.num_rows()).map(move |row| (batch, row)))
+        .filter_map(|(batch, row)| {
+            Some((
+                value(batch, "ckan_resource_id", row).ok().flatten()?,
+                value(batch, "source_version", row).ok().flatten()?,
+            ))
+        })
+        .collect::<HashSet<_>>();
     let resources = latest_batches(&resources, "last_modified")?;
     let mut result = Vec::new();
     for row in 0..resources.num_rows() {
@@ -267,11 +273,13 @@ async fn query_outdated_resources(
             continue;
         }
         let resource_id = value(&resources, "id", row)?.context("resource id cannot be null")?;
-        let modified = value(&resources, "last_modified", row)?.unwrap_or_default();
-        if update_times
-            .get(&resource_id)
-            .is_some_and(|last_update| modified < *last_update)
-        {
+        let source_version = value(&resources, "last_modified", row)?
+            .or(value(&resources, "metadata_modified", row)?)
+            .unwrap_or_default();
+        if source_version.is_empty() {
+            continue;
+        }
+        if processed_versions.contains(&(resource_id.clone(), source_version.clone())) {
             continue;
         }
         let package_id = value(&resources, "package_id", row)?.unwrap_or_default();
@@ -286,6 +294,7 @@ async fn query_outdated_resources(
                 .cloned()
                 .unwrap_or(package_id),
             datastore_active: boolean_value(&resources, "datastore_active", row)?.unwrap_or(false),
+            source_version,
         });
     }
     Ok(result)
@@ -435,7 +444,9 @@ fn boolean_value(batch: &RecordBatch, column: &str, row: usize) -> Result<Option
 mod tests {
     use super::{RealMetadataProcessor, query_outdated_resources};
     use crate::data_writer::DataWriter;
-    use crate::ducklake_data_writer::DucklakeDataWriter;
+    use crate::ducklake_data_writer::{
+        DucklakeDataWriter, append_last_update, initialize_last_update_table,
+    };
     use anyhow::Result;
     use arrow::array::RecordBatch;
     use ckan_ingestor_lib::ducklake_factory::DucklakeFactory;
@@ -586,6 +597,37 @@ mod tests {
         assert_eq!(resources[0].resource_id, "resource-1");
         assert!(
             query_outdated_resources(&client, &factory, "https://other.example")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn excludes_a_resource_when_its_exact_source_version_is_in_the_ledger() {
+        let temp = tempdir().unwrap();
+        let factory = DucklakeFactory::for_sqlite(
+            &temp.path().join("catalog.sqlite"),
+            &temp.path().join("data"),
+        );
+        factory.initialize().await.unwrap();
+        let processor =
+            RealMetadataProcessor::new(factory.clone(), ducklake_writer(&factory).await);
+        processor
+            .ingest_ipc(
+                &command(),
+                &StructuredIpc::from_packages([package("2025-01-01", "2025-01-02")]).unwrap(),
+            )
+            .await
+            .unwrap();
+        let client = factory.client().await.unwrap();
+        initialize_last_update_table(&client).await.unwrap();
+        let mut transaction = client.transaction().await.unwrap();
+        append_last_update(&mut transaction, "resource-1", "2025-01-02").unwrap();
+        transaction.commit().await.unwrap();
+
+        assert!(
+            query_outdated_resources(&client, &factory, "")
                 .await
                 .unwrap()
                 .is_empty()

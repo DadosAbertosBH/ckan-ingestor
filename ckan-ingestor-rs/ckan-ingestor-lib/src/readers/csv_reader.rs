@@ -507,6 +507,7 @@ mod tests {
             url: path.to_string_lossy().into_owned(),
             format: "CSV".to_string(),
             datastore_active: false,
+            last_modified: String::new(),
         };
 
         let baseline = crate::test_alloc::reset_peak();
@@ -539,6 +540,7 @@ mod tests {
             url: path,
             format: "CSV".to_string(),
             datastore_active: false,
+            last_modified: String::new(),
         };
 
         let baseline = crate::test_alloc::reset_peak();
@@ -583,6 +585,7 @@ mod tests {
             url: csv_path.to_str().unwrap().to_string(),
             format: "CSV".to_string(),
             datastore_active: false,
+            last_modified: String::new(),
         };
 
         let result = reader.do_read(&resource)?;

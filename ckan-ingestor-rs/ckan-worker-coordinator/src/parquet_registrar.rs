@@ -43,6 +43,7 @@ impl ParquetRegistrar {
         &self,
         resource_id: &str,
         job_id: &str,
+        source_version: &str,
         artifact: &ParquetArtifact,
     ) -> Result<()> {
         let schema = decode_schema(&artifact.schema_ipc_base64)?;
@@ -58,11 +59,15 @@ impl ParquetRegistrar {
         };
         if client.table_exists(table_name.clone()).await? {
             let current = client.table(table_name.clone()).await?;
-            if current
-                .tags()
-                .await?
+            let tags = current.tags().await?;
+            let current_version = tags
                 .iter()
-                .any(|tag| tag.key == "source_job_id" && tag.value == job_id)
+                .find(|tag| tag.key == "source_version")
+                .map(|tag| tag.value.as_str());
+            if current_version.is_some_and(|version| version >= source_version)
+                || tags
+                    .iter()
+                    .any(|tag| tag.key == "source_job_id" && tag.value == job_id)
             {
                 return Ok(());
             }
@@ -76,10 +81,16 @@ impl ParquetRegistrar {
             columns,
             None,
             None,
-            Some(vec![Tag {
-                key: "source_job_id".into(),
-                value: job_id.into(),
-            }]),
+            Some(vec![
+                Tag {
+                    key: "source_job_id".into(),
+                    value: job_id.into(),
+                },
+                Tag {
+                    key: "source_version".into(),
+                    value: source_version.into(),
+                },
+            ]),
             IfExistsStrategy::Fail,
         )?;
         table
@@ -91,7 +102,7 @@ impl ParquetRegistrar {
             .await
             .context("registering pre-uploaded parquet file")?;
         drop(table);
-        append_last_update(&mut transaction, resource_id)?;
+        append_last_update(&mut transaction, resource_id, source_version)?;
         transaction
             .commit()
             .await
@@ -208,7 +219,7 @@ mod tests {
             }],
         };
         registrar
-            .register("resource", "job", &artifact)
+            .register("resource", "job", "v1", &artifact)
             .await
             .unwrap();
     }
