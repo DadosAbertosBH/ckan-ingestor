@@ -74,26 +74,49 @@ impl CsvReader {
             cleanup.commit();
         }
 
-        let metadata = sniff_metadata(&csv_path, self.csv_delimiter.as_deref())?;
-        let encoding = metadata.encoding.name.to_string();
-        let csv_delimiter = char::from(metadata.dialect.delimiter).to_string();
-        let has_mixed_line_endings = has_mixed_line_endings(
-            &csv_path,
-            metadata.encoding.name,
-            metadata.dialect.header.num_preamble_rows,
-        )?;
-        let (parquet, strict_mode) = match try_read_csv(&csv_path, &metadata, true) {
-            Ok(batches) => (batches, !has_mixed_line_endings),
-            Err(_) => (try_read_csv(&csv_path, &metadata, false)?, false),
-        };
+        for sample_size in csv_sample_sizes() {
+            let metadata = sniff_metadata(&csv_path, self.csv_delimiter.as_deref(), sample_size)?;
+            let encoding = metadata.encoding.name.to_string();
+            let csv_delimiter = char::from(metadata.dialect.delimiter).to_string();
+            let has_mixed_line_endings = has_mixed_line_endings(
+                &csv_path,
+                metadata.encoding.name,
+                metadata.dialect.header.num_preamble_rows,
+            )?;
 
-        Ok(SuccessResult::from_csv(
-            parquet,
-            encoding,
-            strict_mode,
-            csv_delimiter,
-            self.reader_name().to_string(),
-        ))
+            match try_read_csv(&csv_path, &metadata, true) {
+                Ok(parquet) => {
+                    return Ok(SuccessResult::from_csv(
+                        parquet,
+                        encoding,
+                        !has_mixed_line_endings,
+                        csv_delimiter,
+                        self.reader_name().to_string(),
+                    ));
+                }
+                Err(error) if !is_retryable_csv_parse_error(&error) => return Err(error.into()),
+                Err(_) => match try_read_csv(&csv_path, &metadata, false) {
+                    Ok(parquet) => {
+                        return Ok(SuccessResult::from_csv(
+                            parquet,
+                            encoding,
+                            false,
+                            csv_delimiter,
+                            self.reader_name().to_string(),
+                        ));
+                    }
+                    Err(error)
+                        if is_retryable_csv_parse_error(&error)
+                            && sample_size != SampleSize::All =>
+                    {
+                        continue;
+                    }
+                    Err(error) => return Err(error.into()),
+                },
+            }
+        }
+
+        unreachable!("the final CSV sample-size attempt returns or fails")
     }
 }
 
@@ -164,9 +187,33 @@ fn arrow_data_type(field_type: Type) -> arrow::datatypes::DataType {
     }
 }
 
-fn sniff_metadata(path: &str, delimiter_hint: Option<&str>) -> Result<Metadata> {
+fn csv_sample_sizes() -> [SampleSize; 6] {
+    [
+        SampleSize::Records(50_000),
+        SampleSize::Records(100_000),
+        SampleSize::Records(200_000),
+        SampleSize::Records(400_000),
+        SampleSize::Records(800_000),
+        SampleSize::All,
+    ]
+}
+
+fn is_retryable_csv_parse_error(error: &anyhow::Error) -> bool {
+    error.chain().any(|source| {
+        matches!(
+            source.downcast_ref::<arrow::error::ArrowError>(),
+            Some(arrow::error::ArrowError::ParseError(_) | arrow::error::ArrowError::CsvError(_))
+        )
+    })
+}
+
+fn sniff_metadata(
+    path: &str,
+    delimiter_hint: Option<&str>,
+    sample_size: SampleSize,
+) -> Result<Metadata> {
     let mut sniffer = Sniffer::new();
-    sniffer.sample_size(SampleSize::Records(900_000));
+    sniffer.sample_size(sample_size);
     if let Some(delimiter_hint) = delimiter_hint {
         let &[delimiter] = delimiter_hint.as_bytes() else {
             anyhow::bail!("CSV delimiter hint must contain exactly one byte");
@@ -353,10 +400,44 @@ mod tests {
         let _cleanup = TempFileCleanup::from_path(path.clone());
         std::fs::write(&path, "name;description\nAna;value, with comma\n")?;
 
-        let metadata = sniff_metadata(path.to_str().expect("valid temporary path"), Some(";"))?;
+        let metadata = sniff_metadata(
+            path.to_str().expect("valid temporary path"),
+            Some(";"),
+            SampleSize::Records(50_000),
+        )?;
 
         assert_eq!(metadata.dialect.delimiter, b';');
         Ok(())
+    }
+
+    #[test]
+    fn retries_arrow_parse_and_csv_errors_only() {
+        let parse_error = anyhow::Error::new(arrow::error::ArrowError::ParseError(
+            "invalid value".to_string(),
+        ));
+        let csv_error = anyhow::Error::new(arrow::error::ArrowError::CsvError(
+            "incorrect number of fields".to_string(),
+        ));
+        let io_error = anyhow::Error::new(std::io::Error::other("disk error"));
+
+        assert!(is_retryable_csv_parse_error(&parse_error));
+        assert!(is_retryable_csv_parse_error(&csv_error));
+        assert!(!is_retryable_csv_parse_error(&io_error));
+    }
+
+    #[test]
+    fn grows_csv_sample_sizes_before_reading_the_full_file() {
+        assert_eq!(
+            csv_sample_sizes(),
+            [
+                SampleSize::Records(50_000),
+                SampleSize::Records(100_000),
+                SampleSize::Records(200_000),
+                SampleSize::Records(400_000),
+                SampleSize::Records(800_000),
+                SampleSize::All,
+            ]
+        );
     }
 
     #[test]

@@ -331,7 +331,7 @@ fn fails_to_parse_quoted_semicolon_after_long_csv_sample() -> Result<()> {
     let mut csv =
         String::from("id_favorecido;tp_documento;nr_documento_anonimizado;nome_anonimizado\n");
 
-    for id in 1..800_000 {
+    for id in 1..50_001 {
         csv.push_str(&format!("{id};1;0;NOME\n"));
     }
     csv.push_str(
@@ -356,7 +356,7 @@ fn fails_to_parse_quoted_semicolon_after_long_csv_sample() -> Result<()> {
     mock.assert();
     let result = result?;
 
-    assert_eq!(result.rows_processed, 800_000);
+    assert_eq!(result.rows_processed, 50_001);
     assert_eq!(result.encoding.as_deref(), Some("UTF-8"));
     Ok(())
 }
