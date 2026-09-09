@@ -14,31 +14,20 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
-pub use ducklake_settings::DucklakeSettings;
-pub use rest_catalog_settings::RestCatalogSettings;
 pub use s3_settings::S3Settings;
 
-mod ducklake_settings;
-mod rest_catalog_settings;
 mod s3_settings;
 
 #[cfg(test)]
 mod tests {
-    use super::{DucklakeSettings, RestCatalogSettings, S3Settings};
+    use super::S3Settings;
 
     #[test]
     fn defaults_describe_the_local_development_environment() {
         let s3 = S3Settings::default();
-        let ducklake = DucklakeSettings::default();
-        let catalog = RestCatalogSettings::default();
 
         assert_eq!(s3.endpoint_url(), "https://s3.amazonaws.com");
         assert_eq!(s3.bucket, "warehouse");
-        assert_eq!(ducklake.database, "public");
-        assert_eq!(ducklake.catalog_uri, ":memory:");
-        assert_eq!(ducklake.data_path.bucket, "warehouse");
-        assert_eq!(catalog.uri, "http://localhost:8080/catalog");
-        assert_eq!(catalog.warehouse, "demo");
     }
 
     #[test]
