@@ -146,6 +146,7 @@ mod tests {
         let job = JobMessage {
             job_id: "job".into(),
             resource_id: "resource".into(),
+            package_id: "package".into(),
             ckan_url: String::new(),
             resource_url: String::new(),
             resource_format: String::new(),

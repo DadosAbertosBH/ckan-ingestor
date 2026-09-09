@@ -44,6 +44,7 @@ fn parse_latin_encoded_csv() -> Result<()> {
 
     let resource = CkanResource {
         id: "00000000-0000-0000-0000-ffff00000000".to_string(),
+        package_id: String::new(),
         url: fixture_path("csv_with_latin_encode.csv")
             .to_str()
             .unwrap()
@@ -67,6 +68,7 @@ fn parse_non_latin_and_non_utf8() -> Result<()> {
 
     let resource = CkanResource {
         id: "00000000-0000-0000-0000-ffff00000000".to_string(),
+        package_id: String::new(),
         url: fixture_path("non_latin1_and_non_utf8.csv")
             .to_str()
             .unwrap()
@@ -96,6 +98,7 @@ fn returns_http_error_for_failed_remote_csv_download() -> Result<()> {
     let reader = CsvReader::new(test_client());
     let resource = CkanResource {
         id: "failed-remote-csv".to_string(),
+        package_id: String::new(),
         url: format!("{}/failed.csv", server.url("")),
         format: "CSV".to_string(),
         datastore_active: false,
@@ -124,6 +127,7 @@ fn parses_dm_subitem_rec_utf8_csv_fixture() -> Result<()> {
 
     let resource = CkanResource {
         id: "00000000-0000-0000-0000-ffff00000000".to_string(),
+        package_id: String::new(),
         url: fixture_path("dm_subitem_rec.csv")
             .to_str()
             .unwrap()
@@ -174,6 +178,7 @@ fn parses_csv_with_mixed_line_endings_in_quoted_header() -> Result<()> {
 
     let resource = CkanResource {
         id: "fa4f8391-33d1-46ed-9e9e-22ca2ae51103".to_string(),
+        package_id: String::new(),
         url: temporary_csv.0.to_str().unwrap().to_string(),
         format: "CSV".to_string(),
         datastore_active: false,
@@ -193,6 +198,7 @@ fn csv_with_bom() -> Result<()> {
 
     let resource = CkanResource {
         id: "00000000-0000-0000-0000-ffff00000000".to_string(),
+        package_id: String::new(),
         url: fixture_path("csv_with_bom.csv")
             .to_str()
             .unwrap()
@@ -214,6 +220,7 @@ fn reads_csv_data_with_rows() -> Result<()> {
 
     let resource = CkanResource {
         id: "00000000-0000-0000-0000-ffff00000000".to_string(),
+        package_id: String::new(),
         url: fixture_path("csv_with_bom.csv")
             .to_str()
             .unwrap()
@@ -234,6 +241,7 @@ fn parses_numeric_columns_with_whitespace_padded_dash_as_null() -> Result<()> {
 
     let resource = CkanResource {
         id: "cb05125e-e879-420f-9bf6-0fcbc75bbc8e".to_string(),
+        package_id: String::new(),
         url: fixture_path("despesa_pessoal_mensal(1).csv")
             .to_str()
             .unwrap()
@@ -270,6 +278,7 @@ fn represents_an_entirely_empty_csv_column_as_nullable_text() -> Result<()> {
     let reader = CsvReader::new(test_client());
     let resource = CkanResource {
         id: "all-null-column".to_string(),
+        package_id: String::new(),
         url: csv.path().to_str().unwrap().to_string(),
         format: "CSV".to_string(),
         datastore_active: false,
@@ -304,6 +313,7 @@ fn parse_remote_gzip_csv() -> Result<()> {
     let reader = CsvReader::new(test_client());
     let resource = CkanResource {
         id: "cfba57bb-358b-4b43-96e6-477920e39f19".to_string(),
+        package_id: String::new(),
         url: format!("{}/ft_diarias_2014.csv.gz", server.url("")),
         format: "CSV".to_string(),
         datastore_active: false,
@@ -335,6 +345,7 @@ fn fails_to_parse_quoted_semicolon_after_long_csv_sample() -> Result<()> {
     let reader = CsvReader::with_delimiter(test_client(), Some(";".to_string()));
     let resource = CkanResource {
         id: "0331ad41-85e6-41da-bbf2-19c0505beef5".to_string(),
+        package_id: String::new(),
         url: format!("{}/dm_favorecido.csv", server.url("")),
         format: "CSV".to_string(),
         datastore_active: false,

@@ -63,6 +63,7 @@ fn read_datastore() -> Result<()> {
 
     let resource = CkanResource {
         id: id.to_string(),
+        package_id: String::new(),
         url: fixture_path("non_latin1_and_non_utf8.csv")
             .to_str()
             .unwrap()
@@ -98,6 +99,7 @@ fn read_invalid_json() -> Result<()> {
 
     let resource = CkanResource {
         id: id.to_string(),
+        package_id: String::new(),
         url: fixture_path("non_latin1_and_non_utf8.csv")
             .to_str()
             .unwrap()
@@ -143,6 +145,7 @@ fn empty_datastore_returns_empty_vec() -> Result<()> {
 
     let resource = CkanResource {
         id: id.to_string(),
+        package_id: String::new(),
         url: "http://example.com/data.csv".to_string(),
         format: "CSV".to_string(),
         datastore_active: true,
@@ -209,6 +212,7 @@ fn returns_http_error_for_failed_datastore_dump() -> Result<()> {
     let reader = DatastoreReader::new(base_url, reqwest::blocking::Client::new());
     let resource = CkanResource {
         id: resource_id.to_string(),
+        package_id: String::new(),
         url: String::new(),
         format: "CSV".to_string(),
         datastore_active: true,
@@ -256,6 +260,7 @@ fn reproduce_datastore_response_decoding_error() -> Result<()> {
     let reader = DatastoreReader::new(base_url, reqwest::blocking::Client::new());
     let resource = CkanResource {
         id: resource_id.to_string(),
+        package_id: String::new(),
         url: String::new(),
         format: "CSV".to_string(),
         datastore_active: true,

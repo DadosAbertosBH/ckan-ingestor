@@ -29,6 +29,7 @@ use crate::ducklake_data_writer::DucklakeDataWriter;
 #[derive(Debug, Clone)]
 pub struct ResourceCandidate {
     pub resource_id: String,
+    pub package_id: String,
     pub resource_name: Option<String>,
     pub resource_url: Option<String>,
     pub resource_format: Option<String>,
@@ -276,6 +277,7 @@ async fn query_outdated_resources(
         let package_id = value(&resources, "package_id", row)?.unwrap_or_default();
         result.push(ResourceCandidate {
             resource_id,
+            package_id: package_id.clone(),
             resource_name: value(&resources, "name", row)?,
             resource_url: value(&resources, "url", row)?,
             resource_format: value(&resources, "format", row)?,

@@ -391,6 +391,7 @@ mod tests {
         let reader = CsvReader::new(test_client());
         let resource = CkanResource {
             id: "csv-reader-memory-test".to_string(),
+            package_id: String::new(),
             url: path.to_string_lossy().into_owned(),
             format: "CSV".to_string(),
             datastore_active: false,
@@ -422,6 +423,7 @@ mod tests {
         let reader = CsvReader::new(test_client());
         let resource = CkanResource {
             id: "csv-memory-profile".to_string(),
+            package_id: String::new(),
             url: path,
             format: "CSV".to_string(),
             datastore_active: false,
@@ -465,6 +467,7 @@ mod tests {
         let csv_path = fixture_path("renuncia-fiscal-informacoes-conceituais-2024.csv");
         let resource = CkanResource {
             id: "5d16743c-0f6b-411d-aa7c-734a24b02812".to_string(),
+            package_id: String::new(),
             url: csv_path.to_str().unwrap().to_string(),
             format: "CSV".to_string(),
             datastore_active: false,

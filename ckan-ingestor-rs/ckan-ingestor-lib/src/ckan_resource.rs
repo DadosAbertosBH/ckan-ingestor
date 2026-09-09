@@ -16,6 +16,7 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 pub struct CkanResource {
     pub id: String,
+    pub package_id: String,
     pub url: String,
     pub format: String,
     pub datastore_active: bool,

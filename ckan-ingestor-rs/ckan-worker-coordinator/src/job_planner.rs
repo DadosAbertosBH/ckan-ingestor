@@ -78,6 +78,7 @@ mod tests {
     fn candidate(id: &str) -> ResourceCandidate {
         ResourceCandidate {
             resource_id: id.into(),
+            package_id: "package".into(),
             resource_name: None,
             resource_url: None,
             resource_format: None,

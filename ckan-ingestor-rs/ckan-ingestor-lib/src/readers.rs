@@ -16,6 +16,7 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 pub mod ckan_reader;
 pub mod csv_reader;
+pub mod datapackage_reader;
 pub mod datastore_reader;
 pub mod document_reader;
 pub mod json_reader;

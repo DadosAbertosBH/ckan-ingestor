@@ -186,6 +186,7 @@ mod tests {
     fn resource(format: &str) -> CkanResource {
         CkanResource {
             id: "resource-id".to_string(),
+            package_id: String::new(),
             url: "https://example.test/resource".to_string(),
             format: format.to_string(),
             datastore_active: false,

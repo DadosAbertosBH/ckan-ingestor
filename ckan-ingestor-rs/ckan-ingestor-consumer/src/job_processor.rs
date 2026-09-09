@@ -19,6 +19,7 @@ use async_stream::stream;
 use ckan_ingestor_lib::ckan_resource::CkanResource;
 use ckan_ingestor_lib::readers::ckan_reader::CkanReader;
 use ckan_ingestor_lib::readers::csv_reader::CsvReader;
+use ckan_ingestor_lib::readers::datapackage_reader::DatapackageReader;
 use ckan_ingestor_lib::readers::datastore_reader::DatastoreReader;
 use ckan_ingestor_lib::readers::document_reader::DocumentReader;
 use ckan_ingestor_lib::readers::json_reader::JsonReader;
@@ -136,6 +137,7 @@ fn run_conversion(
 ) -> Result<JobResultMessage, anyhow::Error> {
     let resource = CkanResource {
         id: job.resource_id.clone(),
+        package_id: job.package_id.clone(),
         url: job.resource_url.clone(),
         format: job.resource_format.clone(),
         datastore_active: job.datastore_active,
@@ -155,6 +157,7 @@ fn run_conversion(
             http_client.clone(),
             job.csv_delimiter.clone(),
         )),
+        Box::new(DatapackageReader::with_client(http_client.clone())),
         Box::new(JsonReader::with_client(http_client)),
         Box::new(DocumentReader::new(s3)),
     ]);

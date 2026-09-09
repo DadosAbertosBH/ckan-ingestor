@@ -220,6 +220,7 @@ mod tests {
     fn resource(url: &str, datastore_active: bool) -> CkanResource {
         CkanResource {
             id: "resource-id".to_string(),
+            package_id: String::new(),
             url: url.to_string(),
             format: "CSV".to_string(),
             datastore_active,

@@ -89,6 +89,7 @@ impl MessageProcessor for MetadataProcessor {
                     let job = JobMessage {
                         job_id: id,
                         resource_id: candidate.resource_id,
+                        package_id: candidate.package_id,
                         ckan_url: command.instance_url.clone(),
                         resource_url: candidate.resource_url.unwrap_or_default(),
                         resource_format: candidate.resource_format.unwrap_or_default(),

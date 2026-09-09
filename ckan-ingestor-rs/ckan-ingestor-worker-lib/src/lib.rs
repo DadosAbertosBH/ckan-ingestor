@@ -34,6 +34,8 @@ impl std::fmt::Display for JobStatus {
 pub struct JobMessage {
     pub job_id: String,
     pub resource_id: String,
+    #[serde(default)]
+    pub package_id: String,
     pub ckan_url: String,
     #[serde(default)]
     pub resource_url: String,

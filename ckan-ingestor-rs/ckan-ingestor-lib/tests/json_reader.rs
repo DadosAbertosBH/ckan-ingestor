@@ -36,6 +36,7 @@ fn reads_multiple_json_objects() -> Result<()> {
     let reader = JsonReader::new();
     let resource = CkanResource {
         id: "json-resource".to_string(),
+        package_id: String::new(),
         url: path.to_string_lossy().to_string(),
         format: "JSON".to_string(),
         datastore_active: false,
@@ -64,6 +65,7 @@ fn reads_regular_json_array() -> Result<()> {
     let reader = JsonReader::new();
     let resource = CkanResource {
         id: "json-array-resource".to_string(),
+        package_id: String::new(),
         url: path.to_string_lossy().to_string(),
         format: "JSON".to_string(),
         datastore_active: false,
@@ -88,6 +90,7 @@ fn represents_all_null_json_columns_as_utf8() -> Result<()> {
     std::fs::write(&path, r#"[{"name":null}]"#)?;
     let resource = CkanResource {
         id: "null-json-resource".to_string(),
+        package_id: String::new(),
         url: path.to_string_lossy().to_string(),
         format: "JSON".to_string(),
         datastore_active: false,
@@ -113,6 +116,7 @@ fn represents_nested_null_json_fields_as_utf8() -> Result<()> {
     std::fs::write(&path, r#"[{"metadata":{"source":null}}]"#)?;
     let resource = CkanResource {
         id: "nested-null-json-resource".to_string(),
+        package_id: String::new(),
         url: path.to_string_lossy().to_string(),
         format: "JSON".to_string(),
         datastore_active: false,
@@ -158,6 +162,7 @@ fn reads_remote_datapackage_json() -> Result<()> {
     let reader = JsonReader::new();
     let resource = CkanResource {
         id: "7b77f87c-f850-44e8-96d2-5bdcdbd88dd8".to_string(),
+        package_id: String::new(),
         url: format!("{}/download/datapackage.json", server.base_url()),
         format: "JSON".to_string(),
         datastore_active: false,
@@ -183,6 +188,7 @@ fn reads_json_object_larger_than_default_maximum_object_size() -> Result<()> {
     let reader = JsonReader::new();
     let resource = CkanResource {
         id: "large-json-resource".to_string(),
+        package_id: String::new(),
         url: path.to_string_lossy().to_string(),
         format: "JSON".to_string(),
         datastore_active: false,
