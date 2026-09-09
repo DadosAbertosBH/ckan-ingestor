@@ -27,6 +27,7 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
+use tempfile::tempdir;
 
 fn test_client() -> reqwest::blocking::Client {
     reqwest::blocking::Client::builder()
@@ -357,5 +358,33 @@ fn fails_to_parse_quoted_semicolon_after_long_csv_sample() -> Result<()> {
 
     assert_eq!(result.rows_processed, 800_000);
     assert_eq!(result.encoding.as_deref(), Some("UTF-8"));
+    Ok(())
+}
+
+#[test]
+fn uses_csv_nose_metadata_types_beyond_arrows_inference_window() -> Result<()> {
+    let tempdir = tempdir()?;
+    let path = tempdir.path().join("metadata-types.csv");
+    let mut csv = String::from("value\n");
+    for value in 0..50_000 {
+        csv.push_str(&format!("{value}\n"));
+    }
+    csv.push_str("not-a-number\n");
+    fs::write(&path, csv)?;
+    let resource = CkanResource {
+        id: "metadata-types".to_string(),
+        package_id: String::new(),
+        url: path.to_string_lossy().to_string(),
+        format: "CSV".to_string(),
+        datastore_active: false,
+    };
+
+    let result = CsvReader::new(test_client()).read(&resource)?;
+
+    assert_eq!(result.rows_processed, 50_001);
+    assert_eq!(
+        result.parquet.schema.field_with_name("value")?.data_type(),
+        &arrow::datatypes::DataType::Utf8
+    );
     Ok(())
 }

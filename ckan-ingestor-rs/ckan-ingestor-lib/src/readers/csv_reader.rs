@@ -20,7 +20,7 @@ use crate::readers::ckan_reader::{download_to_temp, CkanReader, ReadResult, Succ
 use crate::readers::temp_file_cleanup::TempFileCleanup;
 use anyhow::Result;
 use arrow_csv::reader::{Format, ReaderBuilder};
-use csv_nose::{Metadata, Quote, SampleSize, Sniffer};
+use csv_nose::{Metadata, Quote, SampleSize, Sniffer, Type};
 use encoding_rs::Encoding;
 use encoding_rs_io::DecodeReaderBytesBuilder;
 use flate2::read::GzDecoder;
@@ -103,18 +103,13 @@ fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<Pa
         .with_header(dialect.header.has_header_row)
         .with_delimiter(dialect.delimiter)
         .with_truncated_rows(!strict_mode)
-        .with_null_regex(Regex::new(r"^(| - | -   | -)$")?);
+        .with_null_regex(Regex::new(r"^(|\s*-\s*)$")?);
     let format = match dialect.quote {
         Quote::None => format.with_quote(0),
         Quote::Some(quote) => format.with_quote(quote),
     };
 
-    let mut schema_reader = decoded_reader(
-        path,
-        metadata.encoding.name,
-        dialect.header.num_preamble_rows,
-    )?;
-    let (schema, _) = format.infer_schema(&mut schema_reader, Some(50_000))?;
+    let schema = schema_from_metadata(metadata);
     let reader = decoded_reader(
         path,
         metadata.encoding.name,
@@ -140,6 +135,33 @@ fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<Pa
     let mut parquet = parquet.ok_or_else(|| anyhow::anyhow!("No data"))?;
     parquet.finish()?;
     Ok(parquet)
+}
+
+fn schema_from_metadata(metadata: &Metadata) -> arrow::datatypes::Schema {
+    arrow::datatypes::Schema::new(
+        metadata
+            .fields
+            .iter()
+            .zip(&metadata.types)
+            .map(|(name, field_type)| {
+                arrow::datatypes::Field::new(name, arrow_data_type(*field_type), true)
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn arrow_data_type(field_type: Type) -> arrow::datatypes::DataType {
+    match field_type {
+        Type::Unsigned => arrow::datatypes::DataType::UInt64,
+        Type::Signed => arrow::datatypes::DataType::Int64,
+        Type::Float => arrow::datatypes::DataType::Float64,
+        Type::Boolean => arrow::datatypes::DataType::Boolean,
+        // csv-nose recognizes several date representations, while Arrow's
+        // default CSV parser only accepts ISO-formatted temporal values.
+        // Preserve the original value when no parser format is available.
+        Type::Date | Type::DateTime => arrow::datatypes::DataType::Utf8,
+        Type::NULL | Type::Text => arrow::datatypes::DataType::Utf8,
+    }
 }
 
 fn sniff_metadata(path: &str, delimiter_hint: Option<&str>) -> Result<Metadata> {
