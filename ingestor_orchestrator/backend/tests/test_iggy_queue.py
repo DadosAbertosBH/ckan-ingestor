@@ -77,7 +77,11 @@ async def test_connect_creates_stream_and_topics_idempotently(iggy_settings):
     }
     for topic, call in calls_by_topic.items():
         assert call.kwargs["stream"] == "ckan-ingestor"
-        expected = 1 if topic.startswith("ckan_metadata_sync") else 10
+        expected = (
+            1
+            if topic in {"job-results", "ckan_metadata_sync", "ckan_metadata_sync_result"}
+            else 10
+        )
         assert call.kwargs["partitions_count"] == expected
 
 

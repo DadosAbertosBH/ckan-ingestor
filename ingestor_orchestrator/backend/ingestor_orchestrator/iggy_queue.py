@@ -90,7 +90,7 @@ class IggyMessageBus:
         for topic, partitions in (
             (self._settings.iggy_topic, self._settings.iggy_partitions),
             (self._settings.iggy_topic_retry, self._settings.iggy_partitions),
-            (self._settings.iggy_topic_results, self._settings.iggy_partitions),
+            (self._settings.iggy_topic_results, 1),
             (self._settings.iggy_metadata_sync_topic, 1),
             (self._settings.iggy_metadata_sync_result_topic, 1),
         ):

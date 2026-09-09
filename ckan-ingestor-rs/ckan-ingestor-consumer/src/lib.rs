@@ -169,7 +169,7 @@ pub async fn ensure_topology(client: &IggyClient, settings: &IggySettings) -> Re
     for (topic_name, partitions) in [
         (&settings.source_topic, settings.partitions),
         (&settings.retry_topic, settings.partitions),
-        (&settings.result_topic, settings.partitions),
+        (&settings.result_topic, 1),
     ] {
         let topic = topic_name.as_str().try_into()?;
         if client.get_topic(&stream, &topic).await?.is_none()

@@ -223,8 +223,8 @@ pub async fn ensure_topology(client: &IggyClient, settings: &IggySettings) -> Re
     for (topic_name, partitions) in [
         (&settings.job_topic, settings.partitions),
         (&settings.retry_topic, settings.partitions),
-        (&settings.result_topic, settings.partitions),
-        (&settings.parquet_result_topic, settings.partitions),
+        (&settings.result_topic, 1),
+        (&settings.parquet_result_topic, 1),
         (&settings.metadata_sync_topic, 1),
         (&settings.metadata_sync_result_topic, 1),
     ] {
