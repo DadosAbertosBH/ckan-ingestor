@@ -112,6 +112,7 @@ fn job_result_from_success(
         encoding: outcome.encoding,
         csv_strict_mode: outcome.csv_strict_mode,
         csv_delimiter: outcome.csv_delimiter,
+        csv_samples: outcome.csv_samples,
         expected_columns: outcome
             .expected_columns
             .and_then(|value| i64::try_from(value).ok()),
@@ -197,6 +198,7 @@ fn failed_job(job: &JobMessage, error: impl std::fmt::Display) -> JobResultMessa
         encoding: None,
         csv_strict_mode: None,
         csv_delimiter: None,
+        csv_samples: None,
         expected_columns: None,
         datastore_active: Some(false),
         resource_id: job.resource_id.clone(),
@@ -222,6 +224,7 @@ fn processing_job(job: &JobMessage) -> JobResultMessage {
         encoding: None,
         csv_strict_mode: None,
         csv_delimiter: None,
+        csv_samples: None,
         expected_columns: None,
         datastore_active: Some(false),
         resource_id: job.resource_id.clone(),
@@ -262,6 +265,7 @@ fn job_result_from_failure(
         encoding: None,
         csv_strict_mode: None,
         csv_delimiter: None,
+        csv_samples: None,
         expected_columns: failed
             .expected_columns
             .and_then(|value| i64::try_from(value).ok()),
@@ -303,6 +307,7 @@ mod tests {
             "latin-1".into(),
             false,
             ";".into(),
+            "50000".into(),
             "test-reader".into(),
         )
     }
@@ -327,6 +332,7 @@ mod tests {
         assert_eq!(result.resource_id, "resource-1");
         assert_eq!(result.rows_processed, Some(2));
         assert_eq!(result.csv_delimiter.as_deref(), Some(";"));
+        assert_eq!(result.csv_samples.as_deref(), Some("50000"));
         assert_eq!(
             result.artifact.unwrap().uri,
             "s3://warehouse/resource-1/job-1.parquet"

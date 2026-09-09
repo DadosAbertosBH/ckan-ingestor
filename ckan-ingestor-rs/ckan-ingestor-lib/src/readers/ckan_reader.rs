@@ -67,6 +67,7 @@ pub struct SuccessResult {
     pub encoding: Option<String>,
     pub csv_strict_mode: Option<bool>,
     pub csv_delimiter: Option<String>,
+    pub csv_samples: Option<String>,
     pub expected_rows: Option<usize>,
     pub expected_columns: Option<usize>,
 }
@@ -90,6 +91,7 @@ impl SuccessResult {
             encoding: None,
             csv_strict_mode: None,
             csv_delimiter: None,
+            csv_samples: None,
             expected_rows: None,
             expected_columns: None,
         }
@@ -100,12 +102,14 @@ impl SuccessResult {
         encoding: String,
         csv_strict_mode: bool,
         csv_delimiter: String,
+        csv_samples: String,
         reader: String,
     ) -> Self {
         Self {
             encoding: Some(encoding),
             csv_strict_mode: Some(csv_strict_mode),
             csv_delimiter: Some(csv_delimiter),
+            csv_samples: Some(csv_samples),
             ..Self::new(parquet, reader)
         }
     }
@@ -244,12 +248,14 @@ mod tests {
             "UTF-8".to_string(),
             true,
             ";".to_string(),
+            "50000".to_string(),
             "test".to_string(),
         );
 
         assert_eq!(result.encoding.as_deref(), Some("UTF-8"));
         assert_eq!(result.csv_strict_mode, Some(true));
         assert_eq!(result.csv_delimiter.as_deref(), Some(";"));
+        assert_eq!(result.csv_samples.as_deref(), Some("50000"));
     }
 
     #[test]

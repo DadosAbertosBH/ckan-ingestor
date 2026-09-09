@@ -211,6 +211,37 @@ class TestApplyResultLabels:
         assert "csv-strict-mode:false" in labels
         assert "csv-delimiter:;" in labels
 
+    async def test_csv_samples_becomes_a_resource_label(
+        self, db_session, default_instance
+    ):
+        job = CkanDataJob(
+            resource_id="r-csv-samples",
+            dataset_name="ds-csv-samples",
+            idempotency_key="r-csv-samples",
+            instance_id=default_instance.id,
+            status=JobStatus.PENDING,
+        )
+        db_session.add(job)
+        await db_session.flush()
+
+        data = _make_success_result_data(preview=[{"id": "1"}])
+        data.update({"job_id": job.id, "csv_samples": "800000"})
+
+        await JobService(db_session).apply_result(data)
+
+        labels = (
+            (
+                await db_session.execute(
+                    select(ResourceMetadataLabel.label).where(
+                        ResourceMetadataLabel.resource_id == job.resource_id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert "csv-samples:800000" in labels
+
 
 @pytest.mark.asyncio
 class TestApplyResultRetry:

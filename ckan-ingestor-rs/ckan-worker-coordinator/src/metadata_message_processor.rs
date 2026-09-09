@@ -118,6 +118,7 @@ impl MessageProcessor for MetadataProcessor {
                         encoding: None,
                         csv_strict_mode: None,
                         csv_delimiter: None,
+                        csv_samples: None,
                         expected_columns: None,
                         error_message: None,
                         preview: None,

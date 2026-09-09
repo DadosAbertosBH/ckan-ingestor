@@ -91,6 +91,7 @@ impl CsvReader {
                         encoding,
                         !has_mixed_line_endings,
                         csv_delimiter,
+                        csv_sample_size_label(sample_size),
                         self.reader_name().to_string(),
                     ));
                 }
@@ -102,6 +103,7 @@ impl CsvReader {
                             encoding,
                             false,
                             csv_delimiter,
+                            csv_sample_size_label(sample_size),
                             self.reader_name().to_string(),
                         ));
                     }
@@ -196,6 +198,14 @@ fn csv_sample_sizes() -> [SampleSize; 6] {
         SampleSize::Records(800_000),
         SampleSize::All,
     ]
+}
+
+fn csv_sample_size_label(sample_size: SampleSize) -> String {
+    match sample_size {
+        SampleSize::Records(records) => records.to_string(),
+        SampleSize::All => "all".to_string(),
+        SampleSize::Bytes(bytes) => format!("bytes:{bytes}"),
+    }
 }
 
 fn is_retryable_csv_parse_error(error: &anyhow::Error) -> bool {

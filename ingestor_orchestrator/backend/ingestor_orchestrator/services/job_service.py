@@ -247,6 +247,7 @@ class JobService:
         encoding = result_data.get("encoding")
         csv_strict_mode = result_data.get("csv_strict_mode")
         csv_delimiter = result_data.get("csv_delimiter")
+        csv_samples = result_data.get("csv_samples")
         reader = result_data.get("reader")
         datastore_active = result_data.get("datastore_active", False)
         expected_columns = result_data.get("expected_columns")
@@ -282,6 +283,7 @@ class JobService:
                 encoding=encoding,
                 csv_strict_mode=csv_strict_mode,
                 csv_delimiter=csv_delimiter,
+                csv_samples=csv_samples,
                 reader=reader,
                 datastore_active=datastore_active,
                 column_count=column_count,
@@ -422,6 +424,7 @@ class JobService:
         encoding: str | None = None,
         csv_strict_mode: bool | None = None,
         csv_delimiter: str | None = None,
+        csv_samples: str | None = None,
         reader: str | None = None,
         datastore_active: bool = False,
         column_count: int = 0,
@@ -477,6 +480,9 @@ class JobService:
 
         if csv_delimiter:
             await self._label_resource(resource_id, f"csv-delimiter:{csv_delimiter}")
+
+        if csv_samples:
+            await self._label_resource(resource_id, f"csv-samples:{csv_samples}")
 
         if reader:
             await self._label_resource(resource_id, f"reader:{reader}")

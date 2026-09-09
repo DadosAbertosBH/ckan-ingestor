@@ -79,6 +79,8 @@ pub struct JobResultMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub csv_delimiter: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub csv_samples: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub expected_columns: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
@@ -133,6 +135,7 @@ impl JobResultMessage {
             encoding: None,
             csv_strict_mode: None,
             csv_delimiter: None,
+            csv_samples: None,
             expected_columns: None,
             error_message: None,
             preview: None,
@@ -170,6 +173,7 @@ mod artifact_tests {
             encoding: None,
             csv_strict_mode: None,
             csv_delimiter: None,
+            csv_samples: None,
             expected_columns: None,
             error_message: None,
             preview: None,
