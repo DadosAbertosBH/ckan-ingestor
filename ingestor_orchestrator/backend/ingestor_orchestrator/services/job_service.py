@@ -58,12 +58,12 @@ class JobService:
         processing_job = await self.db.scalar(
             select(CkanDataJob.id).where(
                 CkanDataJob.resource_id == data.resource_id,
-                CkanDataJob.status == JobStatus.PROCESSING,
+                CkanDataJob.status.in_([JobStatus.PENDING, JobStatus.PROCESSING]),
             )
         )
         if processing_job is not None:
             logger.info(
-                "Skipping coordinator PENDING job %s for resource %s: already processing",
+                "Skipping coordinator PENDING job %s for resource %s: already active",
                 job_id,
                 data.resource_id,
             )

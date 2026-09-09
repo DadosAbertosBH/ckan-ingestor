@@ -78,15 +78,17 @@ class TestJobHistory:
         assert job1.id != job2.id
         assert job2.status == JobStatus.PENDING
 
-    async def test_creates_new_job_when_pending_exists(self, sess, instance):
-        """Always creates new job — caller handles deduplication."""
+    async def test_coordinated_job_is_not_created_when_pending_exists(
+        self, sess, instance
+    ):
+        """A coordinator PENDING event preserves a pending resource job."""
         service = JobService(sess)
         jc = JobCreate(resource_id="r2", dataset_name="d2", instance_id=instance.id)
 
         job1 = await create_coordinated_job(service, jc)
-        job2 = await create_coordinated_job(service, jc)
+        job2 = await service.create_coordinated_job("coordinated-r2", jc)
 
-        assert job1.id != job2.id
+        assert job2 is None
         assert job1.status == JobStatus.PENDING
 
     async def test_coordinated_job_is_not_created_when_processing_exists(

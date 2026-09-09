@@ -11,7 +11,10 @@
                 <router-link to="/" class="nav-link" exact-active-class="active"
                     >Dashboard</router-link
                 >
-                <router-link to="/jobs" class="nav-link" active-class="active"
+                <router-link
+                    :to="{ name: 'jobs', query: { status: 'processing' } }"
+                    class="nav-link"
+                    active-class="active"
                     >Jobs</router-link
                 >
                 <router-link

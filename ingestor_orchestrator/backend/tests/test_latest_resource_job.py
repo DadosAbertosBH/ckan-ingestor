@@ -243,7 +243,9 @@ class TestJobServiceUpsertsLatestResource:
             resource_format="CSV",
             instance_id=instance.id,
         )
-        await create_coordinated_job(service, jc1)
+        first_job = await create_coordinated_job(service, jc1)
+        first_job.status = JobStatus.COMPLETED
+        await sess.commit()
 
         jc2 = JobCreate(
             resource_id="r-rename",
@@ -321,6 +323,8 @@ class TestJobServiceUpsertsLatestResource:
                 instance_id=instance.id,
             )
         )
+        first_job.status = JobStatus.COMPLETED
+        await sess.commit()
         second_job = await create_coordinated_job(
             service,
             JobCreate(
