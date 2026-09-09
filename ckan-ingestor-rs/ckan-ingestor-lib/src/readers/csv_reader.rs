@@ -177,8 +177,7 @@ fn schema_from_metadata(metadata: &Metadata) -> arrow::datatypes::Schema {
 
 fn arrow_data_type(field_type: Type) -> arrow::datatypes::DataType {
     match field_type {
-        Type::Unsigned => arrow::datatypes::DataType::UInt64,
-        Type::Signed => arrow::datatypes::DataType::Int64,
+        Type::Unsigned | Type::Signed => arrow::datatypes::DataType::Int64,
         Type::Float => arrow::datatypes::DataType::Float64,
         Type::Boolean => arrow::datatypes::DataType::Boolean,
         // csv-nose recognizes several date representations, while Arrow's
