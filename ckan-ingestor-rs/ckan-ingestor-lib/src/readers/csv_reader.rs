@@ -28,6 +28,14 @@ use regex::Regex;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read};
 use std::path::PathBuf;
+use std::sync::LazyLock;
+
+static INTEGER_PARSE_ERROR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"Error while parsing value '([^']+)' as type 'Int64' for column (\d+)")
+        .expect("valid integer parse error regex")
+});
+static DECIMAL_USING_COMMA: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[+-]?\d+,\d+$").expect("valid decimal using comma regex"));
 
 pub struct CsvReader {
     client: reqwest::blocking::Client,
@@ -84,7 +92,7 @@ impl CsvReader {
                 metadata.dialect.header.num_preamble_rows,
             )?;
 
-            match try_read_csv(&csv_path, &metadata, true) {
+            match try_read_csv_with_promotions(&csv_path, metadata.clone(), true) {
                 Ok(parquet) => {
                     return Ok(SuccessResult::from_csv(
                         parquet,
@@ -95,26 +103,32 @@ impl CsvReader {
                         self.reader_name().to_string(),
                     ));
                 }
-                Err(error) if !is_retryable_csv_parse_error(&error) => return Err(error.into()),
-                Err(_) => match try_read_csv(&csv_path, &metadata, false) {
-                    Ok(parquet) => {
-                        return Ok(SuccessResult::from_csv(
-                            parquet,
-                            encoding,
-                            false,
-                            csv_delimiter,
-                            csv_sample_size_label(sample_size),
-                            self.reader_name().to_string(),
-                        ));
+                Err(error) => {
+                    if !is_retryable_csv_parse_error(&error) {
+                        return Err(error.into());
                     }
-                    Err(error)
-                        if is_retryable_csv_parse_error(&error)
-                            && sample_size != SampleSize::All =>
-                    {
-                        continue;
+
+                    match try_read_csv_with_promotions(&csv_path, metadata, false) {
+                        Ok(parquet) => {
+                            return Ok(SuccessResult::from_csv(
+                                parquet,
+                                encoding,
+                                false,
+                                csv_delimiter,
+                                csv_sample_size_label(sample_size),
+                                self.reader_name().to_string(),
+                            ));
+                        }
+                        Err(error)
+                            if is_retryable_csv_parse_error(&error)
+                                && sample_size != SampleSize::All =>
+                        {
+                            log_csv_retry(sample_size, &error);
+                            continue;
+                        }
+                        Err(error) => return Err(error.into()),
                     }
-                    Err(error) => return Err(error.into()),
-                },
+                }
             }
         }
 
@@ -162,6 +176,28 @@ fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<Pa
     Ok(parquet)
 }
 
+fn try_read_csv_with_promotions(
+    path: &str,
+    mut metadata: Metadata,
+    strict_mode: bool,
+) -> Result<ParquetOutput> {
+    match try_read_csv(path, &metadata, strict_mode) {
+        Ok(parquet) => Ok(parquet),
+        Err(error) => {
+            let Some(column) =
+                promote_integer_column_with_decimal_using_comma(&mut metadata, &error)
+            else {
+                return Err(error);
+            };
+            log::info!(
+                "CSV parse failed for column {column}; treating decimal values using comma as text: {error}"
+            );
+            drop(error);
+            try_read_csv_with_promotions(path, metadata, strict_mode)
+        }
+    }
+}
+
 fn schema_from_metadata(metadata: &Metadata) -> arrow::datatypes::Schema {
     arrow::datatypes::Schema::new(
         metadata
@@ -188,8 +224,9 @@ fn arrow_data_type(field_type: Type) -> arrow::datatypes::DataType {
     }
 }
 
-fn csv_sample_sizes() -> [SampleSize; 6] {
+fn csv_sample_sizes() -> [SampleSize; 7] {
     [
+        SampleSize::Records(25_000),
         SampleSize::Records(50_000),
         SampleSize::Records(100_000),
         SampleSize::Records(200_000),
@@ -205,6 +242,35 @@ fn csv_sample_size_label(sample_size: SampleSize) -> String {
         SampleSize::All => "all".to_string(),
         SampleSize::Bytes(bytes) => format!("bytes:{bytes}"),
     }
+}
+
+fn log_csv_retry(sample_size: SampleSize, error: &anyhow::Error) -> String {
+    let message = csv_retry_log_message(sample_size, error);
+    log::info!("{message}");
+    message
+}
+
+fn csv_retry_log_message(sample_size: SampleSize, error: &anyhow::Error) -> String {
+    format!(
+        "CSV parse failed with sample size {}; retrying with a larger sample: {error}",
+        csv_sample_size_label(sample_size)
+    )
+}
+
+fn promote_integer_column_with_decimal_using_comma(
+    metadata: &mut Metadata,
+    error: &anyhow::Error,
+) -> Option<usize> {
+    let column = error.chain().find_map(|source| {
+        let message = source.to_string();
+        let captures = INTEGER_PARSE_ERROR.captures(&message)?;
+        DECIMAL_USING_COMMA
+            .is_match(captures.get(1)?.as_str())
+            .then(|| captures.get(2)?.as_str().parse::<usize>().ok())
+            .flatten()
+    })?;
+    *metadata.types.get_mut(column)? = Type::Text;
+    Some(column)
 }
 
 fn is_retryable_csv_parse_error(error: &anyhow::Error) -> bool {
@@ -317,6 +383,7 @@ impl CkanReader for CsvReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arrow::datatypes::DataType;
     use std::cell::Cell;
     use std::io::{BufWriter, Read, Write};
     use std::path::PathBuf;
@@ -439,6 +506,7 @@ mod tests {
         assert_eq!(
             csv_sample_sizes(),
             [
+                SampleSize::Records(25_000),
                 SampleSize::Records(50_000),
                 SampleSize::Records(100_000),
                 SampleSize::Records(200_000),
@@ -447,6 +515,104 @@ mod tests {
                 SampleSize::All,
             ]
         );
+    }
+
+    #[test]
+    fn promotes_an_integer_column_with_decimal_using_comma_to_text() -> Result<()> {
+        let path = std::env::temp_dir().join(format!(
+            "csv-decimal-using-comma-{}.csv",
+            uuid::Uuid::new_v4()
+        ));
+        let _cleanup = TempFileCleanup::from_path(path.clone());
+        let header = (0..26)
+            .map(|column| format!("column_{column}"))
+            .collect::<Vec<_>>()
+            .join(";");
+        let integer_row = vec!["0"; 26].join(";");
+        let decimal_row = (0..26)
+            .map(|column| if column == 25 { "7405,87" } else { "0" })
+            .collect::<Vec<_>>()
+            .join(";");
+        let mut file = BufWriter::new(File::create(&path)?);
+        writeln!(file, "{header}")?;
+        for _ in 0..25_001 {
+            writeln!(file, "{integer_row}")?;
+        }
+        writeln!(file, "{decimal_row}")?;
+        file.flush()?;
+
+        let reader = CsvReader::new(test_client());
+        let resource = CkanResource {
+            id: "decimal-using-comma".to_string(),
+            package_id: String::new(),
+            url: path.to_string_lossy().into_owned(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = reader.read(&resource)?;
+
+        assert_eq!(result.rows_processed, 25_002);
+        assert_eq!(result.parquet.schema.field(25).data_type(), &DataType::Utf8);
+        Ok(())
+    }
+
+    #[test]
+    fn promotes_multiple_integer_columns_with_decimal_using_comma_to_text() -> Result<()> {
+        let path = std::env::temp_dir().join(format!(
+            "csv-multiple-decimals-using-comma-{}.csv",
+            uuid::Uuid::new_v4()
+        ));
+        let _cleanup = TempFileCleanup::from_path(path.clone());
+        let header = (0..26)
+            .map(|column| format!("column_{column}"))
+            .collect::<Vec<_>>()
+            .join(";");
+        let integer_row = vec!["0"; 26].join(";");
+        let decimal_row = (0..26)
+            .map(|column| match column {
+                24 => "123,45",
+                25 => "7405,87",
+                _ => "0",
+            })
+            .collect::<Vec<_>>()
+            .join(";");
+        let mut file = BufWriter::new(File::create(&path)?);
+        writeln!(file, "{header}")?;
+        for _ in 0..25_001 {
+            writeln!(file, "{integer_row}")?;
+        }
+        writeln!(file, "{decimal_row}")?;
+        file.flush()?;
+
+        let reader = CsvReader::new(test_client());
+        let resource = CkanResource {
+            id: "multiple-decimals-using-comma".to_string(),
+            package_id: String::new(),
+            url: path.to_string_lossy().into_owned(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = reader.read(&resource)?;
+
+        assert_eq!(result.rows_processed, 25_002);
+        assert_eq!(result.csv_samples.as_deref(), Some("25000"));
+        assert_eq!(result.parquet.schema.field(24).data_type(), &DataType::Utf8);
+        assert_eq!(result.parquet.schema.field(25).data_type(), &DataType::Utf8);
+        Ok(())
+    }
+
+    #[test]
+    fn retry_log_includes_the_sample_size_and_parse_error() {
+        let error = anyhow::anyhow!("incorrect number of fields");
+
+        let message = csv_retry_log_message(SampleSize::Records(100_000), &error);
+
+        assert!(message.contains("100000"));
+        assert!(message.contains("incorrect number of fields"));
     }
 
     #[test]
@@ -522,37 +688,6 @@ mod tests {
             sample_bytes,
             peak_growth as f64 / sample_bytes as f64,
         );
-        Ok(())
-    }
-
-    #[test]
-    #[ignore = "requires a large CSV path in CSV_MEMORY_TEST_FILE"]
-    fn measures_memory_for_large_semicolon_csv() -> Result<()> {
-        let Ok(path) = std::env::var("CSV_MEMORY_TEST_FILE") else {
-            eprintln!("set CSV_MEMORY_TEST_FILE to run the large CSV memory profile");
-            return Ok(());
-        };
-        let sample_bytes = std::fs::metadata(&path)?.len();
-        let reader = CsvReader::new(test_client());
-        let resource = CkanResource {
-            id: "csv-memory-profile".to_string(),
-            package_id: String::new(),
-            url: path,
-            format: "CSV".to_string(),
-            datastore_active: false,
-            last_modified: String::new(),
-        };
-
-        let baseline = crate::test_alloc::reset_peak();
-        let result = reader.read(&resource)?;
-        let peak_growth = crate::test_alloc::peak_growth_since(baseline);
-
-        eprintln!(
-            "large CSV memory profile: input_bytes={sample_bytes} rows={} peak_allocated_bytes={peak_growth} peak_allocated_mb={:.2}",
-            result.rows_processed,
-            peak_growth as f64 / (1024.0 * 1024.0),
-        );
-        assert!(result.rows_processed > 0);
         Ok(())
     }
 
