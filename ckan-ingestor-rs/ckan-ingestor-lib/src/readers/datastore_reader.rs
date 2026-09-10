@@ -114,6 +114,13 @@ impl DatastoreReader {
                 "{}/{}?format=json&offset={}&limit={}",
                 self.datastore_url, resource_id, offset, MAX_RECORDS_FETCH
             );
+            log::info!(
+                "Fetching datastore page for resource {}: offset={}, limit={}, url={}",
+                resource_id,
+                offset,
+                MAX_RECORDS_FETCH,
+                url,
+            );
             let json = self.fetch_json(&url)?;
             let json = json.get("result").unwrap_or(&json);
             let records = json.get("records").ok_or_else(|| {

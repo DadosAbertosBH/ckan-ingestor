@@ -8,6 +8,7 @@
 // (at your option) any later version.
 
 pub mod job_processor;
+pub mod memory_profiler;
 pub mod messages;
 pub mod parquet_uploader;
 

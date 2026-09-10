@@ -51,6 +51,12 @@ impl CkanReader for MultipleReader<'_> {
             if !reader.can_read(resource) {
                 continue;
             }
+            log::info!(
+                "Reading resource {} (format {}) with {}",
+                resource.id,
+                resource.format,
+                self.reader_name()
+            );
             match reader.read(resource) {
                 Ok(result) => {
                     return Ok(result);

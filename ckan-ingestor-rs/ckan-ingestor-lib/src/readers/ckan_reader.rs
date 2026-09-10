@@ -180,12 +180,6 @@ pub trait CkanReader {
     }
 
     fn read(&self, resource: &CkanResource) -> ReadResult {
-        log::info!(
-            "Reading resource {} (format {}) with {}",
-            resource.id,
-            resource.format,
-            self.reader_name()
-        );
         match self.do_read(resource) {
             Ok(result) if result.rows_processed == 0 => {
                 Err(FailedResult::from_string("No data", result.reader))
