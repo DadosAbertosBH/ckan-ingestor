@@ -22,3 +22,4 @@ class ResourceStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     OUTDATED = "outdated"
+    DELETED = "deleted"

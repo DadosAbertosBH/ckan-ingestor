@@ -1,4 +1,4 @@
-export type JobStatus = "pending" | "processing" | "completed" | "failed";
+export type JobStatus = "pending" | "processing" | "completed" | "failed" | "deleted";
 export type ResourceStatus = JobStatus | "outdated";
 
 export interface CkanInstance {
@@ -18,6 +18,7 @@ export interface InstanceStats {
   processing: number;
   completed: number;
   failed: number;
+  deleted: number;
   outdated?: number;
 }
 
@@ -92,6 +93,7 @@ export interface Dataset {
   completed_resources: number;
   failed_resources: number;
   outdated_resources?: number;
+  deleted_resources?: number;
   updated_at: string | null;
   instance_last_synced_at: string | null;
 }
@@ -109,4 +111,6 @@ export interface MetadataSync {
   new_resources: number;
   updated_datasets: number;
   updated_resources: number;
+  deleted_datasets: number;
+  deleted_resources: number;
 }

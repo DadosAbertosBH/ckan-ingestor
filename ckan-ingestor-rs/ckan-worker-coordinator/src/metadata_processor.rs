@@ -39,6 +39,32 @@ pub struct ResourceCandidate {
     pub source_version: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct DeletedResource {
+    pub resource_id: String,
+    pub package_id: String,
+    pub dataset_name: String,
+    pub resource_name: Option<String>,
+    pub resource_url: Option<String>,
+    pub resource_format: Option<String>,
+    pub datastore_active: bool,
+    pub source_version: String,
+}
+
+#[derive(Debug)]
+pub struct ProcessedMetadataSync {
+    pub result: MetadataSyncResult,
+    pub deleted_resource_candidates: Vec<DeletedResource>,
+}
+
+impl std::ops::Deref for ProcessedMetadataSync {
+    type Target = MetadataSyncResult;
+
+    fn deref(&self) -> &Self::Target {
+        &self.result
+    }
+}
+
 #[derive(Clone)]
 pub struct RealMetadataProcessor<T: DataWriter = DucklakeDataWriter> {
     factory: DucklakeFactory,
@@ -50,7 +76,7 @@ impl<T: DataWriter> RealMetadataProcessor<T> {
         Self { factory, writer }
     }
 
-    pub async fn process(&self, command: MetadataSyncCommand) -> MetadataSyncResult {
+    pub async fn process(&self, command: MetadataSyncCommand) -> ProcessedMetadataSync {
         match self.sync(&command).await {
             Ok(result) => result,
             Err(error) => {
@@ -59,25 +85,30 @@ impl<T: DataWriter> RealMetadataProcessor<T> {
                     command.sync_id,
                     command.instance_name
                 );
-                MetadataSyncResult {
-                    sync_id: command.sync_id,
-                    instance_id: command.instance_id,
-                    instance_name: command.instance_name,
-                    status: "failure".into(),
-                    total_packages: 0,
-                    new_datasets: 0,
-                    new_resources: 0,
-                    updated_datasets: 0,
-                    updated_resources: 0,
-                    dataset_count: 0,
-                    resource_count: 0,
-                    error_message: Some(error.to_string().chars().take(16_000).collect()),
+                ProcessedMetadataSync {
+                    result: MetadataSyncResult {
+                        sync_id: command.sync_id,
+                        instance_id: command.instance_id,
+                        instance_name: command.instance_name,
+                        status: "failure".into(),
+                        total_packages: 0,
+                        new_datasets: 0,
+                        new_resources: 0,
+                        updated_datasets: 0,
+                        updated_resources: 0,
+                        dataset_count: 0,
+                        resource_count: 0,
+                        deleted_datasets: 0,
+                        deleted_resources: 0,
+                        error_message: Some(error.to_string().chars().take(16_000).collect()),
+                    },
+                    deleted_resource_candidates: Vec::new(),
                 }
             }
         }
     }
 
-    async fn sync(&self, command: &MetadataSyncCommand) -> Result<MetadataSyncResult> {
+    async fn sync(&self, command: &MetadataSyncCommand) -> Result<ProcessedMetadataSync> {
         let ipc = StructuredIpc::fetch(&command.instance_url)?;
         self.ingest_ipc(command, &ipc).await
     }
@@ -86,7 +117,7 @@ impl<T: DataWriter> RealMetadataProcessor<T> {
         &self,
         command: &MetadataSyncCommand,
         ipc: &StructuredIpc,
-    ) -> Result<MetadataSyncResult> {
+    ) -> Result<ProcessedMetadataSync> {
         let client = self.factory.client().await?;
         let package_batches = read_ipc(ipc.package_path())?;
         let resource_batches = ipc.resource_path().map(read_ipc).transpose()?;
@@ -110,7 +141,7 @@ impl<T: DataWriter> RealMetadataProcessor<T> {
                 )
                 .await?,
             ),
-            None => None,
+            None => empty_merge_result(&client, &self.factory, "ckan_resource").await?,
         };
 
         let mut updated_datasets = datasets.updated_ids.iter().cloned().collect::<HashSet<_>>();
@@ -148,21 +179,55 @@ impl<T: DataWriter> RealMetadataProcessor<T> {
                 .context("writing DuckLake table 'ckan_resource'")?;
         }
 
-        Ok(MetadataSyncResult {
-            sync_id: command.sync_id.clone(),
-            instance_id: command.instance_id.clone(),
-            instance_name: command.instance_name.clone(),
-            status: "success".into(),
-            total_packages: ipc.package_rows() as i64,
-            new_datasets: datasets.new,
-            new_resources: resources.as_ref().map_or(0, |result| result.new),
-            updated_datasets: updated_datasets.len() as i64,
-            updated_resources: resources
-                .as_ref()
-                .map_or(0, |result| result.updated_ids.len() as i64),
-            dataset_count: ipc.package_rows() as i64,
-            resource_count: ipc.resource_rows() as i64,
-            error_message: None,
+        let deleted_resource_candidates = resources
+            .as_ref()
+            .map(|result| {
+                deleted_resource_candidates(
+                    &result.existing,
+                    &result.incoming,
+                    &datasets.existing,
+                    &command.instance_url,
+                )
+            })
+            .transpose()?;
+        let deleted_datasets =
+            missing_ids(&datasets.existing, &datasets.incoming, "metadata_modified")?.len() as i64;
+        let deleted_resources = deleted_resource_candidates
+            .as_ref()
+            .map_or(0, |items| items.len() as i64);
+
+        Ok(ProcessedMetadataSync {
+            result: MetadataSyncResult {
+                sync_id: command.sync_id.clone(),
+                instance_id: command.instance_id.clone(),
+                instance_name: command.instance_name.clone(),
+                status: "success".into(),
+                total_packages: ipc.package_rows() as i64,
+                new_datasets: datasets.new,
+                new_resources: resources.as_ref().map_or(0, |result| result.new),
+                updated_datasets: updated_datasets.len() as i64,
+                updated_resources: resources
+                    .as_ref()
+                    .map_or(0, |result| result.updated_ids.len() as i64),
+                dataset_count: merged_latest_count(
+                    &datasets.existing,
+                    &datasets.incoming,
+                    "metadata_modified",
+                    None,
+                )? as i64,
+                resource_count: resources.as_ref().map_or(Ok(0), |result| {
+                    merged_latest_count(
+                        &result.existing,
+                        &result.incoming,
+                        "last_modified",
+                        Some(("ckan_url", command.instance_url.as_str())),
+                    )
+                })? as i64,
+                deleted_datasets,
+                deleted_resources,
+                error_message: None,
+            },
+            deleted_resource_candidates: deleted_resource_candidates.unwrap_or_default(),
         })
     }
 
@@ -172,10 +237,37 @@ impl<T: DataWriter> RealMetadataProcessor<T> {
     }
 }
 
+async fn empty_merge_result(
+    client: &Ducklake,
+    factory: &DucklakeFactory,
+    table_name: &str,
+) -> Result<Option<MergeResult>> {
+    let existing = load_table(client, factory, table_name).await?;
+    let Some(first) = existing.first() else {
+        return Ok(None);
+    };
+    let schema = first.schema();
+    let existing = existing
+        .iter()
+        .map(|batch| align_batch(batch, &schema))
+        .collect::<Result<Vec<_>>>()?;
+    let existing = concat_batches(&schema, &existing)?;
+    let incoming = RecordBatch::new_empty(schema);
+    Ok(Some(MergeResult {
+        new: 0,
+        updated_ids: HashSet::new(),
+        batch: incoming.clone(),
+        existing,
+        incoming,
+    }))
+}
+
 struct MergeResult {
     new: i64,
     updated_ids: HashSet<String>,
     batch: RecordBatch,
+    existing: RecordBatch,
+    incoming: RecordBatch,
 }
 
 async fn merge_table(
@@ -226,7 +318,87 @@ async fn merge_table(
         new,
         updated_ids,
         batch: filter_record_batch(&incoming, &predicate)?,
+        existing,
+        incoming,
     })
+}
+
+fn missing_ids(
+    existing: &RecordBatch,
+    incoming: &RecordBatch,
+    updated_at: &str,
+) -> Result<HashSet<String>> {
+    let incoming_ids = (0..incoming.num_rows())
+        .filter_map(|row| value(incoming, "id", row).ok().flatten())
+        .collect::<HashSet<_>>();
+    let latest = latest_batches(&[existing.clone()], updated_at)?;
+    let missing = (0..latest.num_rows())
+        .filter_map(|row| value(&latest, "id", row).ok().flatten())
+        .filter(|id| !incoming_ids.contains(id))
+        .collect::<HashSet<_>>();
+    Ok(missing)
+}
+
+fn merged_latest_count(
+    existing: &RecordBatch,
+    incoming: &RecordBatch,
+    updated_at: &str,
+    scope: Option<(&str, &str)>,
+) -> Result<usize> {
+    let latest = latest_batches(&[existing.clone(), incoming.clone()], updated_at)?;
+    let mut count = 0;
+    for row in 0..latest.num_rows() {
+        if scope.is_some_and(|(column, scope_value)| {
+            value(&latest, column, row).ok().flatten().as_deref() != Some(scope_value)
+        }) {
+            continue;
+        }
+        count += 1;
+    }
+    Ok(count)
+}
+
+fn deleted_resource_candidates(
+    existing: &RecordBatch,
+    incoming: &RecordBatch,
+    datasets: &RecordBatch,
+    ckan_url: &str,
+) -> Result<Vec<DeletedResource>> {
+    let incoming_ids = (0..incoming.num_rows())
+        .filter_map(|row| value(incoming, "id", row).ok().flatten())
+        .collect::<HashSet<_>>();
+    let latest = latest_batches(&[existing.clone()], "last_modified")?;
+    let dataset_names = latest_values(&[datasets.clone()], "id", "name", "metadata_modified")?;
+    let mut deleted = Vec::new();
+    for row in 0..latest.num_rows() {
+        if value(&latest, "ckan_url", row)?.as_deref() != Some(ckan_url) {
+            continue;
+        }
+        let Some(resource_id) = value(&latest, "id", row)? else {
+            continue;
+        };
+        if incoming_ids.contains(&resource_id) {
+            continue;
+        }
+        let source_version = value(&latest, "last_modified", row)?
+            .or(value(&latest, "metadata_modified", row)?)
+            .unwrap_or_default();
+        let package_id = value(&latest, "package_id", row)?.unwrap_or_default();
+        deleted.push(DeletedResource {
+            resource_id,
+            dataset_name: dataset_names
+                .get(&package_id)
+                .cloned()
+                .unwrap_or_else(|| package_id.clone()),
+            package_id,
+            resource_name: value(&latest, "name", row)?,
+            resource_url: value(&latest, "url", row)?,
+            resource_format: value(&latest, "format", row)?,
+            datastore_active: boolean_value(&latest, "datastore_active", row)?.unwrap_or(false),
+            source_version,
+        });
+    }
+    Ok(deleted)
 }
 
 fn newest_rows(batch: &RecordBatch, updated_at: &str) -> Result<HashMap<String, (usize, String)>> {
@@ -574,6 +746,43 @@ mod tests {
             );
             assert!(!scan.data_files.is_empty());
         }
+    }
+
+    #[tokio::test]
+    async fn reports_resources_missing_from_the_current_snapshot_as_deleted() {
+        let temp = tempdir().unwrap();
+        let factory = DucklakeFactory::for_sqlite(
+            &temp.path().join("catalog.sqlite"),
+            &temp.path().join("data"),
+        );
+        factory.initialize().await.unwrap();
+        let processor =
+            RealMetadataProcessor::new(factory.clone(), ducklake_writer(&factory).await);
+
+        let mut test_command = command();
+        test_command.instance_url.clear();
+        processor
+            .ingest_ipc(
+                &test_command,
+                &StructuredIpc::from_packages([package("2025-01-01", "2025-01-02")]).unwrap(),
+            )
+            .await
+            .unwrap();
+        let removed = StructuredIpc::from_packages([serde_json::json!({
+            "id": "dataset-1",
+            "name": "Dataset",
+            "metadata_modified": "2025-01-01",
+            "resources": []
+        })])
+        .unwrap();
+
+        let result = processor.ingest_ipc(&test_command, &removed).await.unwrap();
+        assert_eq!(result.deleted_resources, 1);
+        assert_eq!(result.resource_count, 1);
+        assert_eq!(
+            result.deleted_resource_candidates[0].resource_id,
+            "resource-1"
+        );
     }
 
     #[tokio::test]

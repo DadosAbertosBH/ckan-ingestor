@@ -33,7 +33,13 @@ class TestJobStatusEnum:
         """SAEnum must use .value (lowercase), not .name (UPPERCASE)."""
         sa_enum = CkanDataJob.__table__.c.status.type
         assert isinstance(sa_enum, SAEnum)
-        assert sa_enum.enums == ["pending", "processing", "completed", "failed"]
+        assert sa_enum.enums == [
+            "pending",
+            "processing",
+            "completed",
+            "failed",
+            "deleted",
+        ]
 
     @pytest.mark.asyncio
     async def test_job_persists_with_enum_value(self, db_session, default_instance):

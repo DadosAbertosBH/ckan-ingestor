@@ -19,3 +19,4 @@ from enum import Enum
 class TerminalStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
+    DELETED = "deleted"

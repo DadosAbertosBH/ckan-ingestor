@@ -197,6 +197,7 @@ class JobService:
             result = CkanDataJobResult(
                 job_id=job.id,
                 success=False,
+                status=JobStatus.FAILED,
                 error_message=error_message[:16_000],
                 error_trace="",
             )
@@ -204,10 +205,29 @@ class JobService:
             job.status = JobStatus.FAILED
             job.completed_at = datetime.now(timezone.utc)
             job.updated_at = datetime.now(timezone.utc)
-            await self._record_terminal_status(job, successful=False)
+            await self._record_terminal_status(job, TerminalStatus.FAILED)
             await self._update_latest_resource_status(job)
             await self.db.commit()
             logger.error(f"Job {job.id} failed: {error_message}")
+            return
+
+        if status == "DELETED":
+            if job.status == JobStatus.DELETED:
+                logger.info("Ignoring duplicate deleted result for job %s", job.id)
+                return
+            result = CkanDataJobResult(
+                job_id=job.id,
+                success=True,
+                status=JobStatus.DELETED,
+            )
+            self.db.add(result)
+            job.status = JobStatus.DELETED
+            job.completed_at = datetime.now(timezone.utc)
+            job.updated_at = datetime.now(timezone.utc)
+            await self._record_terminal_status(job, TerminalStatus.DELETED)
+            await self._update_latest_resource_status(job)
+            await self.db.commit()
+            logger.info("Job %s marked deleted", job.id)
             return
 
         # SUCCESS or "empty"
@@ -227,6 +247,7 @@ class JobService:
         result = CkanDataJobResult(
             job_id=job.id,
             success=True,
+            status=JobStatus.COMPLETED,
             dataset_preview=dataset_preview,
             rows_processed=rows_processed,
             expected_rows=expected_rows,
@@ -238,7 +259,7 @@ class JobService:
             await self._upsert_csv_hint(job.resource_id, csv_delimiter)
         job.status = JobStatus.COMPLETED
         job.completed_at = datetime.now(timezone.utc)
-        await self._record_terminal_status(job, successful=True)
+        await self._record_terminal_status(job, TerminalStatus.COMPLETED)
         logger.info(f"Job {job.id} completed ({rows_processed} rows)")
 
         if rows_processed == 0:
@@ -295,7 +316,7 @@ class JobService:
         await self.db.flush()
 
     async def _record_terminal_status(
-        self, job: CkanDataJob, *, successful: bool
+        self, job: CkanDataJob, status: TerminalStatus
     ) -> None:
         """Persist the latest terminal outcome without losing an older success."""
         now = job.completed_at or datetime.now(timezone.utc)
@@ -304,20 +325,18 @@ class JobService:
             terminal = LastTerminalStatus(
                 resource_id=job.resource_id,
                 last_terminal_job_id=job.id,
-                last_terminal_status=(
-                    TerminalStatus.COMPLETED if successful else TerminalStatus.FAILED
-                ),
+                last_terminal_status=status,
                 last_terminal_at=now,
-                last_successful_job_id=job.id if successful else None,
+                last_successful_job_id=(
+                    job.id if status == TerminalStatus.COMPLETED else None
+                ),
             )
             self.db.add(terminal)
         else:
             terminal.last_terminal_job_id = job.id
-            terminal.last_terminal_status = (
-                TerminalStatus.COMPLETED if successful else TerminalStatus.FAILED
-            )
+            terminal.last_terminal_status = status
             terminal.last_terminal_at = now
-            if successful:
+            if status == TerminalStatus.COMPLETED:
                 terminal.last_successful_job_id = job.id
         await self.db.flush()
 

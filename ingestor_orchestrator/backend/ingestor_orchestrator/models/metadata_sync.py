@@ -48,5 +48,7 @@ class MetadataSync(Base):
     new_resources: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     updated_datasets: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     updated_resources: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    deleted_datasets: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    deleted_resources: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     instance: Mapped["CkanInstance"] = relationship(back_populates="syncs")

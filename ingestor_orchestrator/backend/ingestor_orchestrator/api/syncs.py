@@ -49,6 +49,8 @@ def sync_response(sync) -> MetadataSyncResponse:
         new_resources=sync.new_resources,
         updated_datasets=sync.updated_datasets,
         updated_resources=sync.updated_resources,
+        deleted_datasets=sync.deleted_datasets,
+        deleted_resources=sync.deleted_resources,
     )
 
 

@@ -14,6 +14,7 @@ const colors: Record<ResourceStatus, string> = {
     processing: "#3b82f6",
     completed: "#10b981",
     failed: "#ef4444",
+    deleted: "#6b7280",
     outdated: "#a855f7",
 };
 </script>

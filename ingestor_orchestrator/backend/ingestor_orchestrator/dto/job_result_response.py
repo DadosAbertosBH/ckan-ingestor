@@ -17,11 +17,14 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from ingestor_orchestrator.models import JobStatus
+
 
 class JobResultResponse(BaseModel):
     id: str
     job_id: str
     success: bool
+    status: JobStatus = JobStatus.COMPLETED
     error_message: str | None
     error_trace: str | None
     dataset_preview: dict | list | None

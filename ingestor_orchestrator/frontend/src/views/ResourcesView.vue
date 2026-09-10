@@ -15,6 +15,7 @@
                 <option value="processing">Processing</option>
                 <option value="completed">Completed</option>
                 <option value="failed">Failed</option>
+                <option value="deleted">Deleted</option>
                 <option value="outdated">Outdated</option>
             </select>
             <select

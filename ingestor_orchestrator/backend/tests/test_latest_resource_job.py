@@ -593,3 +593,33 @@ class TestExtractPreview:
         await sess.refresh(job, attribute_names=["results"])
         preview = _extract_preview(job)
         assert len(preview) == 5
+
+    async def test_deleted_result_is_terminal_and_updates_latest_resource(
+        self, sess, instance
+    ):
+        """A metadata deletion becomes the resource's latest terminal job result."""
+        service = JobService(sess)
+        job = await create_coordinated_job(
+            service,
+            JobCreate(
+                resource_id="removed-resource",
+                dataset_name="removed-dataset",
+                instance_id=instance.id,
+            ),
+        )
+
+        await service.apply_result(
+            {
+                "job_id": job.id,
+                "status": "DELETED",
+                "resource_id": job.resource_id,
+            }
+        )
+
+        await sess.refresh(job, attribute_names=["results"])
+        latest = await sess.get(LatestResourceJob, job.resource_id)
+        assert job.status == JobStatus.DELETED
+        assert latest is not None
+        assert latest.status.value == "deleted"
+        assert len(job.results) == 1
+        assert job.results[0].status.value == "deleted"

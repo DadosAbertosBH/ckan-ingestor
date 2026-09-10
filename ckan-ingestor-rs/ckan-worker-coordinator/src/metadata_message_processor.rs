@@ -8,7 +8,7 @@
 // (at your option) any later version.
 
 use async_stream::stream;
-use ckan_ingestor_worker_lib::{JobMessage, JobResultMessage};
+use ckan_ingestor_worker_lib::{JobDiscoveryMetadata, JobMessage, JobResultMessage};
 use ckan_metadata_ingestor::MetadataSyncCommand;
 use message_processor::{MessageProcessor, OutgoingMessage};
 use serde::Serialize;
@@ -56,8 +56,56 @@ impl MessageProcessor for MetadataProcessor {
 
     fn process(&self, command: MetadataSyncCommand) -> impl futures::Stream<Item = MetadataResult> {
         stream! {
-        let mut result = self.processor.process(command.clone()).await;
+        let processed = self.processor.process(command.clone()).await;
+        let deleted_resource_candidates = processed.deleted_resource_candidates;
+        let mut result = processed.result;
         if result.status == "success" {
+            for candidate in &deleted_resource_candidates {
+                let id = Uuid::new_v5(
+                    &Uuid::NAMESPACE_URL,
+                    format!(
+                        "{}:{}:deleted:{}",
+                        command.instance_id, candidate.resource_id, candidate.source_version
+                    )
+                    .as_bytes(),
+                )
+                .to_string();
+                let metadata = JobDiscoveryMetadata {
+                    resource_name: candidate.resource_name.clone(),
+                    resource_url: candidate.resource_url.clone(),
+                    resource_format: candidate.resource_format.clone(),
+                    ckan_url: Some(command.instance_url.clone()),
+                    datastore_active: Some(candidate.datastore_active),
+                };
+                let pending = JobResultMessage::pending_with_metadata(
+                    id.clone(),
+                    candidate.resource_id.clone(),
+                    candidate.dataset_name.clone(),
+                    command.instance_id.clone(),
+                    metadata.clone(),
+                );
+                let deleted = JobResultMessage::deleted(
+                    id.clone(),
+                    candidate.resource_id.clone(),
+                    candidate.dataset_name.clone(),
+                    command.instance_id.clone(),
+                    metadata,
+                );
+                if let Err(error) = self.jobs.result(&pending, &id).await {
+                    log::error!("could not publish deleted resource discovery: {error:#}");
+                    result.status = "failure".into();
+                    result.error_message = Some(format!("could not publish deleted resource discovery: {error:#}"));
+                    yield MetadataResult(result);
+                    return;
+                }
+                if let Err(error) = self.jobs.result(&deleted, &id).await {
+                    log::error!("could not publish deleted resource result: {error:#}");
+                    result.status = "failure".into();
+                    result.error_message = Some(format!("could not publish deleted resource result: {error:#}"));
+                    yield MetadataResult(result);
+                    return;
+                }
+            }
             let candidates = match self.processor.outdated_resources(&command.instance_url).await {
                 Ok(candidates) => candidates,
                 Err(error) => {

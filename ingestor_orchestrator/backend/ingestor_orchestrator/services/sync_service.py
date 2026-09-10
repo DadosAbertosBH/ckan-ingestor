@@ -54,6 +54,8 @@ class SyncService:
         record.new_resources = result.get("new_resources", 0)
         record.updated_datasets = result.get("updated_datasets", 0)
         record.updated_resources = result.get("updated_resources", 0)
+        record.deleted_datasets = result.get("deleted_datasets", 0)
+        record.deleted_resources = result.get("deleted_resources", 0)
         await self.db.commit()
         await self.db.refresh(record)
         message = (
@@ -61,6 +63,7 @@ class SyncService:
             f"total={record.total_packages}, new_ds={record.new_datasets}, "
             f"new_rs={record.new_resources}, upd_ds={record.updated_datasets}, "
             f"upd_rs={record.updated_resources}"
+            f", del_ds={record.deleted_datasets}, del_rs={record.deleted_resources}"
         )
         if status == "failure":
             logger.error("%s, error=%s", message, result.get("error_message", "unknown"))

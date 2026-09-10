@@ -17,6 +17,7 @@ pub enum JobStatus {
     Processing,
     Success,
     Failed,
+    Deleted,
 }
 
 impl std::fmt::Display for JobStatus {
@@ -26,6 +27,7 @@ impl std::fmt::Display for JobStatus {
             Self::Processing => "PROCESSING",
             Self::Success => "SUCCESS",
             Self::Failed => "FAILED",
+            Self::Deleted => "DELETED",
         })
     }
 }
@@ -94,6 +96,15 @@ pub struct JobResultMessage {
     pub artifact: Option<ParquetArtifact>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct JobDiscoveryMetadata {
+    pub resource_name: Option<String>,
+    pub resource_url: Option<String>,
+    pub resource_format: Option<String>,
+    pub ckan_url: Option<String>,
+    pub datastore_active: Option<bool>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ParquetArtifact {
     pub uri: String,
@@ -122,18 +133,70 @@ impl JobResultMessage {
         dataset_name: impl Into<String>,
         instance_id: impl Into<String>,
     ) -> Self {
+        Self::discovery(
+            JobStatus::Pending,
+            job_id,
+            resource_id,
+            dataset_name,
+            instance_id,
+            JobDiscoveryMetadata::default(),
+        )
+    }
+
+    pub fn pending_with_metadata(
+        job_id: impl Into<String>,
+        resource_id: impl Into<String>,
+        dataset_name: impl Into<String>,
+        instance_id: impl Into<String>,
+        metadata: JobDiscoveryMetadata,
+    ) -> Self {
+        Self::discovery(
+            JobStatus::Pending,
+            job_id,
+            resource_id,
+            dataset_name,
+            instance_id,
+            metadata,
+        )
+    }
+
+    pub fn deleted(
+        job_id: impl Into<String>,
+        resource_id: impl Into<String>,
+        dataset_name: impl Into<String>,
+        instance_id: impl Into<String>,
+        metadata: JobDiscoveryMetadata,
+    ) -> Self {
+        Self::discovery(
+            JobStatus::Deleted,
+            job_id,
+            resource_id,
+            dataset_name,
+            instance_id,
+            metadata,
+        )
+    }
+
+    fn discovery(
+        status: JobStatus,
+        job_id: impl Into<String>,
+        resource_id: impl Into<String>,
+        dataset_name: impl Into<String>,
+        instance_id: impl Into<String>,
+        metadata: JobDiscoveryMetadata,
+    ) -> Self {
         Self {
             job_id: job_id.into(),
-            status: JobStatus::Pending,
+            status,
             resource_id: resource_id.into(),
             source_version: None,
             dataset_name: Some(dataset_name.into()),
-            resource_name: None,
-            resource_url: None,
-            resource_format: None,
+            resource_name: metadata.resource_name,
+            resource_url: metadata.resource_url,
+            resource_format: metadata.resource_format,
             instance_id: Some(instance_id.into()),
-            ckan_url: None,
-            datastore_active: None,
+            ckan_url: metadata.ckan_url,
+            datastore_active: metadata.datastore_active,
             reader: None,
             rows_processed: None,
             expected_rows: None,

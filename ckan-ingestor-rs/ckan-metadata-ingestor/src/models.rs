@@ -30,6 +30,10 @@ pub struct MetadataSyncResult {
     pub updated_resources: i64,
     pub dataset_count: i64,
     pub resource_count: i64,
+    #[serde(default)]
+    pub deleted_datasets: i64,
+    #[serde(default)]
+    pub deleted_resources: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
 }

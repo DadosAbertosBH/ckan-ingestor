@@ -27,10 +27,12 @@ from sqlalchemy import (
     String,
     Text,
 )
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ingestor_orchestrator.db import Base
 from ingestor_orchestrator.models.base import UTCDateTime, new_uuid, utcnow
+from ingestor_orchestrator.models.job_status import JobStatus
 
 if TYPE_CHECKING:
     from ingestor_orchestrator.models.ckan_data_job import CkanDataJob
@@ -47,6 +49,11 @@ class CkanDataJobResult(Base):
         index=True,
     )
     success: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    status: Mapped[JobStatus] = mapped_column(
+        SAEnum(JobStatus, values_callable=lambda obj: [e.value for e in obj]),
+        default=JobStatus.COMPLETED,
+        nullable=False,
+    )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_trace: Mapped[str | None] = mapped_column(Text, nullable=True)
     dataset_preview: Mapped[dict | None] = mapped_column(JSON, nullable=True)

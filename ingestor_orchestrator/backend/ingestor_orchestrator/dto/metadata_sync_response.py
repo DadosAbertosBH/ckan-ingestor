@@ -31,3 +31,5 @@ class MetadataSyncResponse(BaseModel):
     new_resources: int = 0
     updated_datasets: int = 0
     updated_resources: int = 0
+    deleted_datasets: int = 0
+    deleted_resources: int = 0

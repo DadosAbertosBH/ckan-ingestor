@@ -75,6 +75,7 @@ class SqlAlchemyResourceRepository(ResourceRepository):
                     CkanDataJob.status == "pending",
                     LastTerminalStatus.last_terminal_status == "completed",
                 ),
+                ResourceStatus.DELETED: CkanDataJob.status == "deleted",
             }
             query = query.where(status_filters[status])
         if instance_id:

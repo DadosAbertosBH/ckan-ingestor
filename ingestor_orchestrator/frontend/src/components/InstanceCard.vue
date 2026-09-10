@@ -64,6 +64,16 @@
                 <router-link
                     :to="{
                         name: 'resources',
+                        query: { instance_id: stats.instance.id, status: 'deleted' },
+                    }"
+                    class="stat-pill stat-link"
+                    style="background: rgba(107, 114, 128, 0.15); color: #9ca3af"
+                >
+                    Deleted {{ stats.deleted ?? 0 }}
+                </router-link>
+                <router-link
+                    :to="{
+                        name: 'resources',
                         query: {
                             instance_id: stats.instance.id,
                             status: 'outdated',

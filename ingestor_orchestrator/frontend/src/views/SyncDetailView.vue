@@ -10,6 +10,8 @@
                 <div><span>Started</span>{{ formatTime(sync.start_time) }}</div>
                 <div><span>Finished</span>{{ sync.end_time ? formatTime(sync.end_time) : "—" }}</div>
                 <div><span>Total packages</span>{{ sync.total_packages }}</div>
+                <div><span>Deleted datasets</span>{{ sync.deleted_datasets }}</div>
+                <div><span>Deleted resources</span>{{ sync.deleted_resources }}</div>
             </div>
             <section v-if="sync.error_message" class="failure">
                 <h2>Error</h2>

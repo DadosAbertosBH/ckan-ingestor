@@ -100,6 +100,7 @@ class SqlAlchemyDashboardRepository(DashboardRepository):
                     processing=counts.get(ResourceStatus.PROCESSING, 0),
                     completed=counts.get(ResourceStatus.COMPLETED, 0),
                     failed=counts.get(ResourceStatus.FAILED, 0),
+                    deleted=counts.get(ResourceStatus.DELETED, 0),
                     outdated=counts.get(ResourceStatus.OUTDATED, 0),
                     empty=empty_counts.get(inst.id, 0),
                 )

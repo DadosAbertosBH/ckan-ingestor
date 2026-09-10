@@ -63,6 +63,9 @@ async def list_datasets(
             func.sum(case((LatestResourceJob.status == "outdated", 1), else_=0)).label(
                 "outdated_resources"
             ),
+            func.sum(case((LatestResourceJob.status == "deleted", 1), else_=0)).label(
+                "deleted_resources"
+            ),
             func.sum(case((ResourceMetadataLabel.label == "empty", 1), else_=0)).label(
                 "empty_resources"
             ),
@@ -119,6 +122,7 @@ async def list_datasets(
             completed_resources=row.completed_resources,
             failed_resources=row.failed_resources,
             outdated_resources=row.outdated_resources,
+            deleted_resources=row.deleted_resources,
             empty_resources=row.empty_resources,
             updated_at=row.updated_at,
             instance_last_synced_at=instance_info_map.get(row.instance_id, {}).get(

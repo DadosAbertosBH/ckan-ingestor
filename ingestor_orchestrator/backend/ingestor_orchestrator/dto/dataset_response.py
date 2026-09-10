@@ -29,6 +29,7 @@ class DatasetResponse(BaseModel):
     completed_resources: int = 0
     failed_resources: int = 0
     outdated_resources: int = 0
+    deleted_resources: int = 0
     empty_resources: int = 0
     updated_at: datetime | None = None
     instance_last_synced_at: datetime | None = None
