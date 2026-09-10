@@ -331,7 +331,7 @@ fn missing_ids(
     let incoming_ids = (0..incoming.num_rows())
         .filter_map(|row| value(incoming, "id", row).ok().flatten())
         .collect::<HashSet<_>>();
-    let latest = latest_batches(&[existing.clone()], updated_at)?;
+    let latest = latest_batches(std::slice::from_ref(existing), updated_at)?;
     let missing = (0..latest.num_rows())
         .filter_map(|row| value(&latest, "id", row).ok().flatten())
         .filter(|id| !incoming_ids.contains(id))
@@ -367,8 +367,13 @@ fn deleted_resource_candidates(
     let incoming_ids = (0..incoming.num_rows())
         .filter_map(|row| value(incoming, "id", row).ok().flatten())
         .collect::<HashSet<_>>();
-    let latest = latest_batches(&[existing.clone()], "last_modified")?;
-    let dataset_names = latest_values(&[datasets.clone()], "id", "name", "metadata_modified")?;
+    let latest = latest_batches(std::slice::from_ref(existing), "last_modified")?;
+    let dataset_names = latest_values(
+        std::slice::from_ref(datasets),
+        "id",
+        "name",
+        "metadata_modified",
+    )?;
     let mut deleted = Vec::new();
     for row in 0..latest.num_rows() {
         if value(&latest, "ckan_url", row)?.as_deref() != Some(ckan_url) {
