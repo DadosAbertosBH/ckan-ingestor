@@ -76,6 +76,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=builder /usr/local/bin/worker /usr/local/bin/
 
-ENV RUST_LOG=info
+ENV RUST_LOG=info \
+    RAYON_NUM_THREADS=1
 
 ENTRYPOINT ["worker"]
