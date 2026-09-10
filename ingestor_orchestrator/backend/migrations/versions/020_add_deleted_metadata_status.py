@@ -32,6 +32,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    result_columns = {
+        column["name"]
+        for column in sa.inspect(op.get_bind()).get_columns("ckan_data_job_result")
+    }
+
     op.execute(
         "ALTER TABLE ckan_data_job MODIFY COLUMN status "
         "ENUM('pending', 'processing', 'completed', 'failed', 'deleted') NOT NULL"
@@ -44,19 +49,24 @@ def upgrade() -> None:
         "ALTER TABLE last_terminal_status MODIFY COLUMN last_terminal_status "
         "ENUM('completed', 'failed', 'deleted') NOT NULL"
     )
-    op.add_column(
-        "ckan_data_job_result",
-        sa.Column(
-            "status",
-            sa.Enum("pending", "processing", "completed", "failed", "deleted"),
-            nullable=True,
-        ),
-    )
+    if "status" not in result_columns:
+        op.add_column(
+            "ckan_data_job_result",
+            sa.Column(
+                "status",
+                sa.Enum("pending", "processing", "completed", "failed", "deleted"),
+                nullable=True,
+            ),
+        )
     op.execute(
         "UPDATE ckan_data_job_result SET status = "
-        "CASE WHEN success THEN 'completed' ELSE 'failed' END"
+        "CASE WHEN success THEN 'completed' ELSE 'failed' END "
+        "WHERE status IS NULL"
     )
-    op.alter_column("ckan_data_job_result", "status", nullable=False)
+    op.execute(
+        "ALTER TABLE ckan_data_job_result MODIFY COLUMN status "
+        "ENUM('pending', 'processing', 'completed', 'failed', 'deleted') NOT NULL"
+    )
     for column in (
         "deleted_datasets",
         "deleted_resources",
