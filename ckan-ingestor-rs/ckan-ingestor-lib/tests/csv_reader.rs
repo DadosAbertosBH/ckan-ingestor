@@ -218,7 +218,7 @@ fn csv_with_bom() -> Result<()> {
     assert_eq!(result.encoding.as_deref(), Some("UTF-8"));
     assert_eq!(result.csv_strict_mode, Some(true));
     assert_eq!(result.csv_delimiter.as_deref(), Some(","));
-    assert_eq!(result.csv_samples.as_deref(), Some("50000"));
+    assert_eq!(result.csv_samples.as_deref(), Some("25000"));
     Ok(())
 }
 
