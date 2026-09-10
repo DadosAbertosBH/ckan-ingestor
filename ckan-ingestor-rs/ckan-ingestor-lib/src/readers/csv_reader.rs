@@ -481,6 +481,11 @@ mod tests {
     #[test]
     fn csv_reader_api_stays_within_a_bounded_memory_amplification() -> Result<()> {
         let _memory_guard = crate::test_alloc::memory_intensive_test_guard();
+        assert_eq!(
+            std::env::var("RAYON_NUM_THREADS").as_deref(),
+            Ok("1"),
+            "run this memory-budget test with RAYON_NUM_THREADS=1"
+        );
         let path = std::env::temp_dir().join(format!(
             "csv-sniff-memory-test-{}.csv",
             uuid::Uuid::new_v4()

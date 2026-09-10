@@ -114,6 +114,7 @@ test-rust:
     DUCKDB_DOWNLOAD_LIB: "1"
     CARGO_HOME: "$CI_PROJECT_DIR/.cargo-home"
     TESTCONTAINERS_HOST_OVERRIDE: "docker"
+    RAYON_NUM_THREADS: "1"
   cache:
     - key:
         files:
