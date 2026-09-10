@@ -23,10 +23,15 @@ use arrow::{
     compute::cast,
     datatypes::{DataType, Field, Fields, Schema, SchemaRef},
 };
-use parquet::{arrow::ArrowWriter, errors::ParquetError, file::metadata::ParquetMetaData};
+use parquet::{
+    arrow::ArrowWriter,
+    errors::ParquetError,
+    file::{metadata::ParquetMetaData, properties::WriterProperties},
+};
 
 const PREVIEW_MAX_VALUE_LEN: usize = 1000;
 const PREVIEW_MAX_ROWS: usize = 5;
+const MAX_ROW_GROUP_BYTES: usize = 8 * 1024 * 1024;
 
 pub struct ParquetOutput {
     path: PathBuf,
@@ -43,7 +48,10 @@ impl ParquetOutput {
         let path = std::env::temp_dir().join(format!("{}.parquet", uuid::Uuid::new_v4()));
         let file = File::create(&path)?;
         let schema = schema_with_field_ids(&batch.schema());
-        let writer = ArrowWriter::try_new(file, schema.clone(), None)?;
+        let writer_properties = WriterProperties::builder()
+            .set_max_row_group_bytes(Some(MAX_ROW_GROUP_BYTES))
+            .build();
+        let writer = ArrowWriter::try_new(file, schema.clone(), Some(writer_properties))?;
         Ok(Self {
             path,
             schema,
@@ -182,10 +190,15 @@ impl Drop for ParquetOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::array::{Int32Array, RecordBatch};
+    use anyhow::Result;
+    use arrow::array::{ArrayRef, Int32Array, RecordBatch, StringArray};
     use arrow::datatypes::{DataType, Field, Schema};
     use parquet::file::reader::{FileReader as _, SerializedFileReader};
     use std::sync::Arc;
+
+    const LARGE_DATASET_BATCH_SIZE: usize = 8_192;
+    const LARGE_DATASET_COLUMN_COUNT: usize = 15;
+    const LARGE_DATASET_RECORD_COUNT: usize = 739_480;
 
     #[test]
     fn columns_count_is_stable_when_writing_multiple_batches() {
@@ -203,6 +216,29 @@ mod tests {
 
         assert_eq!(output.rows, 2);
         assert_eq!(output.columns, 1);
+    }
+
+    #[test]
+    fn flushes_a_row_group_when_its_encoded_size_reaches_eight_mebibytes() {
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "value",
+            DataType::Utf8,
+            false,
+        )]));
+        let values = (0..2_048)
+            .map(|index| format!("{index:08x}-{}", "x".repeat(4_096)))
+            .collect::<Vec<_>>();
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![Arc::new(StringArray::from(values)) as ArrayRef],
+        )
+        .expect("valid test batch");
+        let mut output = ParquetOutput::try_new(&batch).expect("valid Parquet output");
+
+        output.write(&batch).expect("write Parquet batch");
+
+        assert_eq!(output.writer.flushed_row_groups().len(), 1);
+        assert_eq!(output.writer.in_progress_rows(), 0);
     }
 
     #[test]
@@ -262,5 +298,65 @@ mod tests {
 
         assert_eq!(output.metadata().unwrap().file_metadata().num_rows(), 2);
         assert!(output.file_size().unwrap() > 0);
+    }
+
+    #[test]
+    fn keeps_memory_bounded_for_large_synthetic_dataset() -> Result<()> {
+        let _memory_guard = crate::test_alloc::memory_intensive_test_guard();
+        let field_names = (0..LARGE_DATASET_COLUMN_COUNT)
+            .map(|index| format!("column_{index}"))
+            .collect::<Vec<_>>();
+        let schema = Arc::new(Schema::new(
+            field_names
+                .iter()
+                .map(|name| Field::new(name, DataType::Utf8, true))
+                .collect::<Vec<_>>(),
+        ));
+        let empty_batch = RecordBatch::new_empty(schema.clone());
+        let mut output = ParquetOutput::try_new(&empty_batch)?;
+        let mut batches = 0;
+
+        let baseline = crate::test_alloc::reset_peak();
+        for batch_start in (0..LARGE_DATASET_RECORD_COUNT).step_by(LARGE_DATASET_BATCH_SIZE) {
+            let batch_rows =
+                (LARGE_DATASET_RECORD_COUNT - batch_start).min(LARGE_DATASET_BATCH_SIZE);
+            let arrays = (0..LARGE_DATASET_COLUMN_COUNT)
+                .map(|column| {
+                    let values = (0..batch_rows)
+                        .map(|row| {
+                            let record = batch_start + row;
+                            if column == LARGE_DATASET_COLUMN_COUNT - 1 {
+                                format!(
+                                    "POLYGON ((606761.10 7807302.88, 606765.39 7807304.35, 606764.72 7807306.43, 606770.80 7807308.43, 606768.91 7807314.23, {record}.00 7807314.85))"
+                                )
+                            } else {
+                                format!("value-{column}-{record}")
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    Arc::new(StringArray::from(values)) as ArrayRef
+                })
+                .collect();
+            let batch = RecordBatch::try_new(schema.clone(), arrays)?;
+            output.write(&batch)?;
+            batches += 1;
+        }
+
+        let writer_memory_before_finish = output.writer.memory_size();
+        output.finish()?;
+        let peak_growth = crate::test_alloc::peak_growth_since(baseline);
+
+        eprintln!(
+            "synthetic parquet memory profile: rows={} columns={LARGE_DATASET_COLUMN_COUNT} batches={batches} writer_memory_before_finish={writer_memory_before_finish} peak_allocated_bytes={peak_growth} peak_allocated_mb={:.2}",
+            output.rows,
+            peak_growth as f64 / (1024.0 * 1024.0),
+        );
+        assert_eq!(output.rows, LARGE_DATASET_RECORD_COUNT);
+        assert_eq!(
+            batches,
+            LARGE_DATASET_RECORD_COUNT.div_ceil(LARGE_DATASET_BATCH_SIZE)
+        );
+        assert!(writer_memory_before_finish <= MAX_ROW_GROUP_BYTES * 2);
+        Ok(())
     }
 }
