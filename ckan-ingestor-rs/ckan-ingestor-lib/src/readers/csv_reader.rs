@@ -144,7 +144,7 @@ fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<Pa
         .with_header(dialect.header.has_header_row)
         .with_delimiter(dialect.delimiter)
         .with_truncated_rows(!strict_mode)
-        .with_null_regex(Regex::new(r"^(|\s*-\s*)$")?);
+        .with_null_regex(Regex::new(r"^(|\s*|\s*-\s*)$")?);
     let format = match dialect.quote {
         Quote::None => format.with_quote(0),
         Quote::Some(quote) => format.with_quote(quote),

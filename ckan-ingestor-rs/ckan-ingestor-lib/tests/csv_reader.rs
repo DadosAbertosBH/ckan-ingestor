@@ -306,6 +306,41 @@ fn parses_numeric_columns_with_whitespace_padded_dash_as_null() -> Result<()> {
 }
 
 #[test]
+fn parses_whitespace_only_numeric_cells_as_null() -> Result<()> {
+    let mut csv = tempfile::NamedTempFile::new()?;
+    csv.write_all(b"id,value\n")?;
+    for id in 1..=CSV_READER_INITIAL_SAMPLE_RECORDS + 1 {
+        writeln!(csv, "{id},42")?;
+    }
+    writeln!(csv, "{}, ", CSV_READER_INITIAL_SAMPLE_RECORDS + 2)?;
+    let resource = CkanResource {
+        id: "whitespace-null".to_string(),
+        package_id: String::new(),
+        url: csv.path().to_string_lossy().to_string(),
+        format: "CSV".to_string(),
+        datastore_active: false,
+        last_modified: String::new(),
+    };
+
+    let result = CsvReader::new(test_client()).read(&resource)?;
+    let batches: Vec<_> =
+        ParquetRecordBatchReaderBuilder::try_new(std::fs::File::open(result.parquet.path())?)?
+            .build()?
+            .collect::<std::result::Result<_, _>>()?;
+
+    assert_eq!(
+        batches[0].schema().field(1).data_type(),
+        &arrow::datatypes::DataType::Int64
+    );
+    let null_count: usize = batches
+        .iter()
+        .map(|batch| batch.column(1).null_count())
+        .sum();
+    assert_eq!(null_count, 1);
+    Ok(())
+}
+
+#[test]
 fn represents_an_entirely_empty_csv_column_as_nullable_text() -> Result<()> {
     let mut csv = tempfile::NamedTempFile::new()?;
     csv.write_all(b"id,always_empty\n1,\n2,\n")?;
