@@ -48,6 +48,26 @@ impl DucklakeDataWriter {
             name: name.into(),
         };
         if self.client.table_exists(table_name.clone()).await? {
+            let table = self.client.table(table_name.clone()).await?;
+            let existing_columns = table
+                .columns()
+                .await?
+                .map(|column| column.name)
+                .collect::<std::collections::HashSet<_>>();
+            let missing_columns = schema
+                .fields()
+                .iter()
+                .filter(|field| !existing_columns.contains(field.name()))
+                .map(|field| Column::try_from(field.as_ref()))
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            if !missing_columns.is_empty() {
+                let mut transaction = self.client.transaction().await?;
+                let mut table = transaction.table(table_name)?;
+                for column in missing_columns {
+                    table.add_column(column).await?;
+                }
+                transaction.commit().await?;
+            }
             return Ok(());
         }
         let columns = schema
@@ -213,4 +233,52 @@ async fn copy_data_file(
     }
     tokio::fs::copy(source, destination_path).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use arrow::datatypes::{DataType, Field, Schema};
+    use ckan_ingestor_lib::ducklake_factory::DucklakeFactory;
+
+    use super::DucklakeDataWriter;
+    use crate::data_writer::DataWriter;
+
+    #[tokio::test]
+    async fn initialize_table_adds_columns_missing_from_an_existing_table() {
+        let temp = tempfile::tempdir().unwrap();
+        let factory = DucklakeFactory::for_sqlite(
+            &temp.path().join("catalog.sqlite"),
+            &temp.path().join("data"),
+        );
+        factory.initialize().await.unwrap();
+        let client = factory.client().await.unwrap();
+        let writer = DucklakeDataWriter::new(client.clone(), factory.storage_options().to_vec());
+        let legacy_schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Utf8, true)]));
+        writer
+            .initialize_table("ckan_dataset", &legacy_schema)
+            .await
+            .unwrap();
+
+        let expanded_schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Utf8, true),
+            Field::new("instance_id", DataType::Utf8, true),
+        ]));
+        writer
+            .initialize_table("ckan_dataset", &expanded_schema)
+            .await
+            .unwrap();
+
+        let columns = client
+            .table("ckan_dataset")
+            .await
+            .unwrap()
+            .columns()
+            .await
+            .unwrap()
+            .map(|column| column.name)
+            .collect::<Vec<_>>();
+        assert_eq!(columns, vec!["id", "instance_id"]);
+    }
 }

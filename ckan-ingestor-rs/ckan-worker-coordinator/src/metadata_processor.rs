@@ -12,9 +12,9 @@ use std::fs::File;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, ensure};
-use arrow::array::{Array, BooleanArray, RecordBatch, new_null_array};
+use arrow::array::{Array, BooleanArray, RecordBatch, StringArray, new_null_array};
 use arrow::compute::{cast, concat_batches, filter_record_batch};
-use arrow::datatypes::SchemaRef;
+use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use arrow_ipc::reader::FileReader;
 use ckan_ingestor_lib::ducklake_factory::DucklakeFactory;
 use ckan_metadata_ingestor::{MetadataSyncCommand, MetadataSyncResult, StructuredIpc};
@@ -119,7 +119,11 @@ impl<T: DataWriter> RealMetadataProcessor<T> {
         ipc: &StructuredIpc,
     ) -> Result<ProcessedMetadataSync> {
         let client = self.factory.client().await?;
-        let package_batches = read_ipc(ipc.package_path())?;
+        let package_batches = add_string_column(
+            read_ipc(ipc.package_path())?,
+            "instance_id",
+            &command.instance_id,
+        )?;
         let resource_batches = ipc.resource_path().map(read_ipc).transpose()?;
 
         let datasets = merge_table(
@@ -128,6 +132,7 @@ impl<T: DataWriter> RealMetadataProcessor<T> {
             "ckan_dataset",
             package_batches,
             "metadata_modified",
+            Some(("instance_id", command.instance_id.as_str())),
         )
         .await?;
         let resources = match resource_batches {
@@ -138,6 +143,7 @@ impl<T: DataWriter> RealMetadataProcessor<T> {
                     "ckan_resource",
                     batches,
                     "last_modified",
+                    None,
                 )
                 .await?,
             ),
@@ -276,6 +282,7 @@ async fn merge_table(
     table_name: &str,
     incoming: Vec<RecordBatch>,
     updated_at: &str,
+    scope: Option<(&str, &str)>,
 ) -> Result<MergeResult> {
     let schema = incoming
         .first()
@@ -291,6 +298,15 @@ async fn merge_table(
     let existing = concat_batches(&schema, &existing)?;
     let incoming = concat_batches(&schema, &incoming)?;
 
+    let legacy_ids = match scope {
+        Some((column, _)) => null_scoped_ids(&existing, column)?,
+        None => HashSet::new(),
+    };
+    let existing = match scope {
+        Some((column, scope_value)) => filter_by_value(&existing, column, scope_value)?,
+        None => existing,
+    };
+
     let mut existing_rows = newest_rows(&existing, updated_at)?;
     let mut new = 0_i64;
     let mut updated_ids = HashSet::new();
@@ -300,7 +316,9 @@ async fn merge_table(
         let incoming_value = value(&incoming, updated_at, row)?.unwrap_or_default();
         match existing_rows.get(&id) {
             None => {
-                new += 1;
+                if !legacy_ids.contains(&id) {
+                    new += 1;
+                }
                 existing_rows.insert(id, (row, incoming_value));
                 *is_selected = true;
             }
@@ -321,6 +339,30 @@ async fn merge_table(
         existing,
         incoming,
     })
+}
+
+fn filter_by_value(batch: &RecordBatch, column: &str, expected: &str) -> Result<RecordBatch> {
+    let selected = (0..batch.num_rows())
+        .map(|row| {
+            Ok(Some(
+                value(batch, column, row)?.as_deref() == Some(expected),
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let predicate = BooleanArray::from(selected);
+    Ok(filter_record_batch(batch, &predicate)?)
+}
+
+fn null_scoped_ids(batch: &RecordBatch, scope_column: &str) -> Result<HashSet<String>> {
+    let mut ids = HashSet::new();
+    for row in 0..batch.num_rows() {
+        if value(batch, scope_column, row)?.is_none()
+            && let Some(id) = value(batch, "id", row)?
+        {
+            ids.insert(id);
+        }
+    }
+    Ok(ids)
 }
 
 fn missing_ids(
@@ -578,6 +620,33 @@ fn read_ipc(path: &std::path::Path) -> Result<Vec<RecordBatch>> {
         .map_err(Into::into)
 }
 
+fn add_string_column(
+    batches: Vec<RecordBatch>,
+    column: &str,
+    column_value: &str,
+) -> Result<Vec<RecordBatch>> {
+    batches
+        .into_iter()
+        .map(|batch| {
+            ensure!(
+                batch.schema().index_of(column).is_err(),
+                "metadata column '{column}' already exists"
+            );
+            let mut fields = batch.schema().fields().to_vec();
+            fields.push(Arc::new(Field::new(column, DataType::Utf8, true)));
+            let schema = Arc::new(Schema::new_with_metadata(
+                fields,
+                batch.schema().metadata().clone(),
+            ));
+            let mut columns = batch.columns().to_vec();
+            columns.push(Arc::new(StringArray::from_iter_values(
+                std::iter::repeat_n(column_value, batch.num_rows()),
+            )));
+            Ok(RecordBatch::try_new(schema, columns)?)
+        })
+        .collect()
+}
+
 fn align_batch(batch: &RecordBatch, schema: &SchemaRef) -> Result<RecordBatch> {
     let columns = schema
         .fields()
@@ -681,20 +750,34 @@ mod tests {
         )
     }
 
-    fn package(dataset_modified: &str, resource_modified: &str) -> serde_json::Value {
+    fn package_with_ids(
+        dataset_id: &str,
+        resource_id: &str,
+        dataset_modified: &str,
+        resource_modified: &str,
+    ) -> serde_json::Value {
         serde_json::json!({
-            "id": "dataset-1",
+            "id": dataset_id,
             "name": "Dataset",
             "metadata_modified": dataset_modified,
             "resources": [{
-                "id": "resource-1",
+                "id": resource_id,
                 "name": "Resource",
-                "package_id": "dataset-1",
+                "package_id": dataset_id,
                 "last_modified": resource_modified,
                 "url": "https://example.test/resource.csv",
                 "format": "CSV"
             }]
         })
+    }
+
+    fn package(dataset_modified: &str, resource_modified: &str) -> serde_json::Value {
+        package_with_ids(
+            "dataset-1",
+            "resource-1",
+            dataset_modified,
+            resource_modified,
+        )
     }
 
     fn command() -> MetadataSyncCommand {
@@ -751,6 +834,72 @@ mod tests {
             );
             assert!(!scan.data_files.is_empty());
         }
+    }
+
+    #[tokio::test]
+    async fn dataset_deletions_and_counts_are_scoped_to_the_instance() {
+        let temp = tempdir().unwrap();
+        let factory = DucklakeFactory::for_sqlite(
+            &temp.path().join("catalog.sqlite"),
+            &temp.path().join("data"),
+        );
+        factory.initialize().await.unwrap();
+        let processor =
+            RealMetadataProcessor::new(factory.clone(), ducklake_writer(&factory).await);
+
+        let first_command = command();
+        let mut second_command = command();
+        second_command.sync_id = "sync-2".into();
+        second_command.instance_id = "instance-2".into();
+        second_command.instance_name = "Other".into();
+        second_command.instance_url = "https://other.example".into();
+
+        processor
+            .ingest_ipc(
+                &first_command,
+                &StructuredIpc::from_packages([package_with_ids(
+                    "dataset-1",
+                    "resource-1",
+                    "2025-01-01",
+                    "2025-01-01",
+                )])
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        let second = processor
+            .ingest_ipc(
+                &second_command,
+                &StructuredIpc::from_packages([package_with_ids(
+                    "dataset-2",
+                    "resource-2",
+                    "2025-01-01",
+                    "2025-01-01",
+                )])
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(second.deleted_datasets, 0);
+        assert_eq!(second.dataset_count, 1);
+
+        let first_again = processor
+            .ingest_ipc(
+                &first_command,
+                &StructuredIpc::from_packages([package_with_ids(
+                    "dataset-1",
+                    "resource-1",
+                    "2025-01-01",
+                    "2025-01-01",
+                )])
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(first_again.deleted_datasets, 0);
+        assert_eq!(first_again.dataset_count, 1);
     }
 
     #[tokio::test]
@@ -866,7 +1015,7 @@ mod tests {
         assert_eq!(
             *calls.lock().unwrap(),
             vec![
-                ("initialize:ckan_dataset".into(), 27),
+                ("initialize:ckan_dataset".into(), 28),
                 ("initialize:ckan_resource".into(), 30),
                 ("ingest:ckan_dataset".into(), 1),
                 ("ingest:ckan_resource".into(), 1),
