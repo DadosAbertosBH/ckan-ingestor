@@ -55,7 +55,7 @@ impl CkanReader for MultipleReader<'_> {
                 "Reading resource {} (format {}) with {}",
                 resource.id,
                 resource.format,
-                self.reader_name()
+                reader.reader_name()
             );
             match reader.read(resource) {
                 Ok(result) => {

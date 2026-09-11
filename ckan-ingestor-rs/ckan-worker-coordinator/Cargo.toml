@@ -21,7 +21,7 @@ serde = "1.0"
 anyhow = "1.0"
 log = "0.4"
 env_logger = "0.11"
-ducklake = { version = "=0.0.16", default-features = false, features = ["aws", "postgres", "sqlite"] }
+ducklake = { git = "https://github.com/guitcastro/ducklake-sdk.git", branch = "fix/bounded-snapshot-cache", default-features = false, features = ["aws", "postgres", "sqlite"] }
 arrow = "=59.2.0"
 arrow-ipc = "=59.2.0"
 object_store = { version = "0.13", features = ["aws"] }
