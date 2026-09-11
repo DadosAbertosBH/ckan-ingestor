@@ -73,7 +73,6 @@ impl MessageProcessor for JobProcessor {
 
     fn process(&self, job: JobMessage) -> impl Stream<Item = JobResultMessage> {
         stream! {
-            let active_job = crate::memory_profiler::track_job();
             log::info!(
                 "Starting job {} for resource {} (version {})",
                 job.job_id,
@@ -97,7 +96,6 @@ impl MessageProcessor for JobProcessor {
                 Err(error) => failed_job(&job, error),
             };
 
-            drop(active_job);
             yield message;
         }
     }

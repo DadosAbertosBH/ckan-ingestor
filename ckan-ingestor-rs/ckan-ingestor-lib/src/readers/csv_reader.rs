@@ -37,6 +37,9 @@ static INTEGER_PARSE_ERROR: LazyLock<Regex> = LazyLock::new(|| {
 static DECIMAL_USING_COMMA: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[+-]?\d+,\d+$").expect("valid decimal using comma regex"));
 
+const CSV_BATCH_SIZE: usize = 32_768;
+const MAX_CSV_BATCH_CELLS: usize = 4 * 1024 * 1024;
+
 pub struct CsvReader {
     client: reqwest::blocking::Client,
     supported_formats: Vec<String>,
@@ -156,7 +159,7 @@ fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<Pa
     )?;
     let csv_reader = ReaderBuilder::new(std::sync::Arc::new(schema))
         .with_format(format)
-        .with_batch_size(32_768)
+        .with_batch_size(csv_batch_size(metadata.fields.len()))
         .build(reader)?;
 
     let mut parquet = None;
@@ -174,6 +177,11 @@ fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<Pa
     let mut parquet = parquet.ok_or_else(|| anyhow::anyhow!("No data"))?;
     parquet.finish()?;
     Ok(parquet)
+}
+
+fn csv_batch_size(number_of_columns: usize) -> usize {
+    let rows_for_cell_limit = MAX_CSV_BATCH_CELLS / number_of_columns.max(1);
+    CSV_BATCH_SIZE.min(rows_for_cell_limit.max(1))
 }
 
 fn try_read_csv_with_promotions(
@@ -515,6 +523,13 @@ mod tests {
                 SampleSize::All,
             ]
         );
+    }
+
+    #[test]
+    fn limits_csv_batch_cells_while_preserving_the_default_for_normal_schemas() {
+        assert_eq!(csv_batch_size(128), 32_768);
+        assert_eq!(csv_batch_size(129), 32_513);
+        assert_eq!(csv_batch_size(44_032), 95);
     }
 
     #[test]

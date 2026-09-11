@@ -40,6 +40,27 @@ fn test_client() -> reqwest::blocking::Client {
 }
 
 #[test]
+fn processes_funcionalismo_csv_without_excessive_batch_memory() -> Result<()> {
+    let reader = CsvReader::new(test_client());
+    let resource = CkanResource {
+        id: "8f8f1a40-63dd-4900-aabe-f95195a87092".to_string(),
+        package_id: String::new(),
+        url: fixture_path("funcionalismo-publico-adm-indireta-05-2026.csv")
+            .to_str()
+            .unwrap()
+            .to_string(),
+        format: "CSV".to_string(),
+        datastore_active: false,
+        last_modified: String::new(),
+    };
+
+    let result = reader.read(&resource)?;
+
+    assert!(result.number_of_columns > 40_000);
+    Ok(())
+}
+
+#[test]
 fn parse_latin_encoded_csv() -> Result<()> {
     let reader = CsvReader::new(test_client());
 
