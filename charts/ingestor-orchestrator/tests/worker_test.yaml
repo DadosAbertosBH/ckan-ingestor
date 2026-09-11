@@ -58,3 +58,15 @@ tests:
     asserts:
       - notExists:
           path: spec.template.spec.containers[0].command
+
+  - it: injects additional worker environment variables
+    set:
+      worker.extraEnv:
+        - name: RAYON_NUM_THREADS
+          value: ""
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: RAYON_NUM_THREADS
+            value: ""

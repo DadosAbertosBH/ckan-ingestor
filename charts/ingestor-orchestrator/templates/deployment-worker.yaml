@@ -59,6 +59,9 @@ spec:
               value: {{ .Values.ducklake.dataPath.useSsl | quote }}
             - name: S3_URL_STYLE
               value: {{ .Values.ducklake.dataPath.urlStyle | quote }}
+            {{- with .Values.worker.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- include "ingestor-orchestrator.cnpgDucklakeEnv" . | nindent 12 }}
           envFrom:
             - configMapRef:

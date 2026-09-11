@@ -49,6 +49,7 @@ worker:
     repository: worker
     tag: ""
     pullPolicy: ""
+  extraEnv: []
   resources:
     requests:
       cpu: 500m
