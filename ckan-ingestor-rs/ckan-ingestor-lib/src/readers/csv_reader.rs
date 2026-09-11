@@ -31,11 +31,9 @@ use std::path::PathBuf;
 use std::sync::LazyLock;
 
 static INTEGER_PARSE_ERROR: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"Error while parsing value '([^']+)' as type 'Int64' for column (\d+)")
+    Regex::new(r"Error while parsing value '[^']+' as type 'Int64' for column (\d+)")
         .expect("valid integer parse error regex")
 });
-static DECIMAL_USING_COMMA: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[+-]?\d+,\d+$").expect("valid decimal using comma regex"));
 
 const CSV_BATCH_SIZE: usize = 32_768;
 const MAX_CSV_BATCH_CELLS: usize = 4 * 1024 * 1024;
@@ -192,13 +190,11 @@ fn try_read_csv_with_promotions(
     match try_read_csv(path, &metadata, strict_mode) {
         Ok(parquet) => Ok(parquet),
         Err(error) => {
-            let Some(column) =
-                promote_integer_column_with_decimal_using_comma(&mut metadata, &error)
-            else {
+            let Some(column) = promote_integer_column_to_text(&mut metadata, &error) else {
                 return Err(error);
             };
             log::info!(
-                "CSV parse failed for column {column}; treating decimal values using comma as text: {error}"
+                "CSV parse failed for integer column {column}; treating the column as text: {error}"
             );
             drop(error);
             try_read_csv_with_promotions(path, metadata, strict_mode)
@@ -265,17 +261,11 @@ fn csv_retry_log_message(sample_size: SampleSize, error: &anyhow::Error) -> Stri
     )
 }
 
-fn promote_integer_column_with_decimal_using_comma(
-    metadata: &mut Metadata,
-    error: &anyhow::Error,
-) -> Option<usize> {
+fn promote_integer_column_to_text(metadata: &mut Metadata, error: &anyhow::Error) -> Option<usize> {
     let column = error.chain().find_map(|source| {
         let message = source.to_string();
         let captures = INTEGER_PARSE_ERROR.captures(&message)?;
-        DECIMAL_USING_COMMA
-            .is_match(captures.get(1)?.as_str())
-            .then(|| captures.get(2)?.as_str().parse::<usize>().ok())
-            .flatten()
+        captures.get(1)?.as_str().parse::<usize>().ok()
     })?;
     *metadata.types.get_mut(column)? = Type::Text;
     Some(column)

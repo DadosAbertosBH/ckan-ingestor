@@ -424,6 +424,37 @@ fn uses_csv_nose_metadata_types_beyond_arrows_inference_window() -> Result<()> {
 }
 
 #[test]
+fn promotes_integer_column_with_na_to_text_without_resniffing() -> Result<()> {
+    // Arrange
+    let mut csv = tempfile::NamedTempFile::new()?;
+    csv.write_all(b"value\n")?;
+    for value in 0..25_001 {
+        writeln!(csv, "{value}")?;
+    }
+    csv.write_all(b"NA\n")?;
+    let resource = CkanResource {
+        id: "integer-na".to_string(),
+        package_id: String::new(),
+        url: csv.path().to_string_lossy().to_string(),
+        format: "CSV".to_string(),
+        datastore_active: false,
+        last_modified: String::new(),
+    };
+
+    // Act
+    let result = CsvReader::new(test_client()).read(&resource)?;
+
+    // Assert
+    assert_eq!(result.rows_processed, 25_002);
+    assert_eq!(result.csv_samples.as_deref(), Some("25000"));
+    assert_eq!(
+        result.parquet.schema.field_with_name("value")?.data_type(),
+        &arrow::datatypes::DataType::Utf8
+    );
+    Ok(())
+}
+
+#[test]
 fn represents_unsigned_csv_values_as_signed_integers() -> Result<()> {
     let mut csv = tempfile::NamedTempFile::new()?;
     csv.write_all(b"count\n0\n42\n")?;
