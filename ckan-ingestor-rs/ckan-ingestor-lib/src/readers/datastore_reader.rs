@@ -114,7 +114,7 @@ impl DatastoreReader {
                 "{}/{}?format=json&offset={}&limit={}",
                 self.datastore_url, resource_id, offset, MAX_RECORDS_FETCH
             );
-            log::info!(
+            log::debug!(
                 "Fetching datastore page for resource {}: offset={}, limit={}, url={}",
                 resource_id,
                 offset,
