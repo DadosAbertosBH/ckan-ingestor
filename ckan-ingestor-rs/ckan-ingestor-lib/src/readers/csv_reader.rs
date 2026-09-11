@@ -30,13 +30,14 @@ use std::io::{self, BufRead, BufReader, Read};
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
-static INTEGER_PARSE_ERROR: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"Error while parsing value '[^']+' as type 'Int64' for column (\d+)")
-        .expect("valid integer parse error regex")
+static COLUMN_PARSE_ERROR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"Error while parsing value '[^']+' as type '[^']+' for column (\d+)")
+        .expect("valid column parse error regex")
 });
 
 const CSV_BATCH_SIZE: usize = 32_768;
 const MAX_CSV_BATCH_CELLS: usize = 4 * 1024 * 1024;
+pub const CSV_READER_INITIAL_SAMPLE_RECORDS: usize = 25_000;
 
 pub struct CsvReader {
     client: reqwest::blocking::Client,
@@ -190,11 +191,11 @@ fn try_read_csv_with_promotions(
     match try_read_csv(path, &metadata, strict_mode) {
         Ok(parquet) => Ok(parquet),
         Err(error) => {
-            let Some(column) = promote_integer_column_to_text(&mut metadata, &error) else {
+            let Some(column) = promote_column_to_text(&mut metadata, &error) else {
                 return Err(error);
             };
             log::info!(
-                "CSV parse failed for integer column {column}; treating the column as text: {error}"
+                "CSV parse failed for column {column}; treating the column as text: {error}"
             );
             drop(error);
             try_read_csv_with_promotions(path, metadata, strict_mode)
@@ -230,7 +231,7 @@ fn arrow_data_type(field_type: Type) -> arrow::datatypes::DataType {
 
 fn csv_sample_sizes() -> [SampleSize; 7] {
     [
-        SampleSize::Records(25_000),
+        SampleSize::Records(CSV_READER_INITIAL_SAMPLE_RECORDS),
         SampleSize::Records(50_000),
         SampleSize::Records(100_000),
         SampleSize::Records(200_000),
@@ -261,10 +262,10 @@ fn csv_retry_log_message(sample_size: SampleSize, error: &anyhow::Error) -> Stri
     )
 }
 
-fn promote_integer_column_to_text(metadata: &mut Metadata, error: &anyhow::Error) -> Option<usize> {
+fn promote_column_to_text(metadata: &mut Metadata, error: &anyhow::Error) -> Option<usize> {
     let column = error.chain().find_map(|source| {
         let message = source.to_string();
-        let captures = INTEGER_PARSE_ERROR.captures(&message)?;
+        let captures = COLUMN_PARSE_ERROR.captures(&message)?;
         captures.get(1)?.as_str().parse::<usize>().ok()
     })?;
     *metadata.types.get_mut(column)? = Type::Text;
@@ -504,7 +505,7 @@ mod tests {
         assert_eq!(
             csv_sample_sizes(),
             [
-                SampleSize::Records(25_000),
+                SampleSize::Records(CSV_READER_INITIAL_SAMPLE_RECORDS),
                 SampleSize::Records(50_000),
                 SampleSize::Records(100_000),
                 SampleSize::Records(200_000),
@@ -540,7 +541,7 @@ mod tests {
             .join(";");
         let mut file = BufWriter::new(File::create(&path)?);
         writeln!(file, "{header}")?;
-        for _ in 0..25_001 {
+        for _ in 0..=CSV_READER_INITIAL_SAMPLE_RECORDS {
             writeln!(file, "{integer_row}")?;
         }
         writeln!(file, "{decimal_row}")?;
@@ -585,7 +586,7 @@ mod tests {
             .join(";");
         let mut file = BufWriter::new(File::create(&path)?);
         writeln!(file, "{header}")?;
-        for _ in 0..25_001 {
+        for _ in 0..=CSV_READER_INITIAL_SAMPLE_RECORDS {
             writeln!(file, "{integer_row}")?;
         }
         writeln!(file, "{decimal_row}")?;

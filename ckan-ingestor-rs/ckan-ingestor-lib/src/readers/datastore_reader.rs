@@ -19,7 +19,7 @@ use std::sync::Arc;
 use crate::{
     ckan_resource::CkanResource,
     parquet_output::ParquetOutput,
-    readers::ckan_reader::{CkanReader, FailedResult, ReadResult, SuccessResult},
+    readers::ckan_reader::{format_contains, CkanReader, FailedResult, ReadResult, SuccessResult},
 };
 use anyhow::{Context, Result};
 use arrow::{
@@ -215,7 +215,7 @@ impl CkanReader for DatastoreReader {
             && self
                 .supported_formats()
                 .iter()
-                .any(|format| resource.format.contains(format))
+                .any(|format| format_contains(&resource.format, format))
             && resource.datastore_active
     }
 }
@@ -249,5 +249,15 @@ mod tests {
             DatastoreReader::new("https://ckan.example.test/api".to_string(), Client::new());
 
         assert!(reader.can_read(&resource("https://example.test/data.csv", true)));
+    }
+
+    #[test]
+    fn can_read_lowercase_csv_formats_when_datastore_is_active() {
+        let reader =
+            DatastoreReader::new("https://ckan.example.test/api".to_string(), Client::new());
+        let mut resource = resource("https://example.test/data.csv", true);
+        resource.format = "csv".to_string();
+
+        assert!(reader.can_read(&resource));
     }
 }

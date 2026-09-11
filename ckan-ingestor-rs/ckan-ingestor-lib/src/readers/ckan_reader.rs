@@ -168,6 +168,12 @@ impl std::fmt::Display for FailedResult {
 
 pub type ReadResult = anyhow::Result<SuccessResult, FailedResult>;
 
+pub(crate) fn format_contains(resource_format: &str, supported_format: &str) -> bool {
+    resource_format
+        .to_ascii_uppercase()
+        .contains(&supported_format.to_ascii_uppercase())
+}
+
 pub trait CkanReader {
     fn supported_formats(&self) -> &[String];
     fn do_read(&self, resource: &CkanResource) -> ReadResult;
@@ -191,7 +197,7 @@ pub trait CkanReader {
     fn can_read(&self, resource: &CkanResource) -> bool {
         self.supported_formats()
             .iter()
-            .any(|format| resource.format.contains(format))
+            .any(|format| format_contains(&resource.format, format))
     }
 }
 

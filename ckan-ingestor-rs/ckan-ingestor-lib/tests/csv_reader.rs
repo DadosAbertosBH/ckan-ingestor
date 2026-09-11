@@ -18,7 +18,7 @@ mod common;
 use anyhow::Result;
 use ckan_ingestor_lib::ckan_resource::CkanResource;
 use ckan_ingestor_lib::readers::ckan_reader::CkanReader;
-use ckan_ingestor_lib::readers::csv_reader::CsvReader;
+use ckan_ingestor_lib::readers::csv_reader::{CsvReader, CSV_READER_INITIAL_SAMPLE_RECORDS};
 use common::fixture_path;
 use flate2::{write::GzEncoder, Compression};
 use httpmock::{Method::GET, MockServer};
@@ -428,12 +428,43 @@ fn promotes_integer_column_with_na_to_text_without_resniffing() -> Result<()> {
     // Arrange
     let mut csv = tempfile::NamedTempFile::new()?;
     csv.write_all(b"value\n")?;
-    for value in 0..25_001 {
+    for value in 0..=CSV_READER_INITIAL_SAMPLE_RECORDS {
         writeln!(csv, "{value}")?;
     }
     csv.write_all(b"NA\n")?;
     let resource = CkanResource {
         id: "integer-na".to_string(),
+        package_id: String::new(),
+        url: csv.path().to_string_lossy().to_string(),
+        format: "CSV".to_string(),
+        datastore_active: false,
+        last_modified: String::new(),
+    };
+
+    // Act
+    let result = CsvReader::new(test_client()).read(&resource)?;
+
+    // Assert
+    assert_eq!(result.rows_processed, 25_002);
+    assert_eq!(result.csv_samples.as_deref(), Some("25000"));
+    assert_eq!(
+        result.parquet.schema.field_with_name("value")?.data_type(),
+        &arrow::datatypes::DataType::Utf8
+    );
+    Ok(())
+}
+
+#[test]
+fn promotes_boolean_column_with_f_to_text_without_resniffing() -> Result<()> {
+    // Arrange
+    let mut csv = tempfile::NamedTempFile::new()?;
+    csv.write_all(b"value\n")?;
+    for _ in 0..=CSV_READER_INITIAL_SAMPLE_RECORDS {
+        csv.write_all(b"true\n")?;
+    }
+    csv.write_all(b"F\n")?;
+    let resource = CkanResource {
+        id: "boolean-f".to_string(),
         package_id: String::new(),
         url: csv.path().to_string_lossy().to_string(),
         format: "CSV".to_string(),

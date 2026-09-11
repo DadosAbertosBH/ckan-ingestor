@@ -21,7 +21,7 @@ use ckan_ingestor_lib::readers::ckan_reader::CkanReader;
 use ckan_ingestor_lib::readers::csv_reader::CsvReader;
 use ckan_ingestor_lib::readers::datapackage_reader::DatapackageReader;
 use ckan_ingestor_lib::readers::datastore_reader::DatastoreReader;
-use ckan_ingestor_lib::readers::document_reader::DocumentReader;
+use ckan_ingestor_lib::readers::file_reference_reader::FileReferenceReader;
 use ckan_ingestor_lib::readers::json_reader::JsonReader;
 use ckan_ingestor_lib::readers::multiple_reader::MultipleReader;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
@@ -73,7 +73,7 @@ impl MessageProcessor for JobProcessor {
 
     fn process(&self, job: JobMessage) -> impl Stream<Item = JobResultMessage> {
         stream! {
-            log::info!(
+            log::debug!(
                 "Starting job {} for resource {} (version {})",
                 job.job_id,
                 job.resource_id,
@@ -200,7 +200,7 @@ fn run_conversion(
         )),
         Box::new(DatapackageReader::with_client(http_client.clone())),
         Box::new(JsonReader::with_client(http_client)),
-        Box::new(DocumentReader::new(s3)),
+        Box::new(FileReferenceReader::new(s3)),
     ]);
     match reader.read(&resource) {
         Ok(result) => {
