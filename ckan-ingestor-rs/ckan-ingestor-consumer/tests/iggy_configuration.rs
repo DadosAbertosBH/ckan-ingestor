@@ -25,7 +25,8 @@ fn defaults_use_generic_source_and_result_topics() {
     assert_eq!(settings.retry_topic, "jobs-retry");
     assert_eq!(settings.result_topic, "parquet-results");
     assert_eq!(settings.consumer_group, "ckan-worker");
-    assert_eq!(settings.partitions, 10);
+    assert_eq!(settings.job_partitions, 10);
+    assert_eq!(settings.retry_partitions, 10);
 }
 
 #[test]

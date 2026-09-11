@@ -47,8 +47,12 @@ spec:
               value: {{ .Values.iggy.metadataSyncResultTopic | quote }}
             - name: IGGY_METADATA_SYNC_GROUP_ID
               value: {{ .Values.iggy.metadataSyncGroupId | quote }}
-            - name: IGGY_PARTITIONS
-              value: {{ .Values.iggy.partitions | quote }}
+            - name: IGGY_JOB_PARTITIONS
+              value: {{ .Values.iggy.jobPartitions | quote }}
+            - name: IGGY_RETRY_PARTITIONS
+              value: {{ .Values.iggy.retryPartitions | quote }}
+            - name: IGGY_RESULT_PARTITIONS
+              value: {{ .Values.iggy.resultPartitions | quote }}
             - name: S3_ENDPOINT
               value: {{ .Values.ducklake.dataPath.endpoint | quote }}
             - name: S3_BUCKET

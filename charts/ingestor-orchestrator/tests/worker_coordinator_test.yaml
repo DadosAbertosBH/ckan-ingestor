@@ -19,3 +19,21 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].resources.requests.memory
           value: 1Gi
+
+  - it: injects independent Iggy partition counts
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: IGGY_JOB_PARTITIONS
+            value: "10"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: IGGY_RETRY_PARTITIONS
+            value: "10"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: IGGY_RESULT_PARTITIONS
+            value: "1"

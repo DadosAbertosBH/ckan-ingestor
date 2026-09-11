@@ -26,5 +26,7 @@ fn defaults_cover_the_complete_iggy_topology() {
         settings.metadata_consumer_group,
         "ckan-metadata-sync-worker"
     );
-    assert_eq!(settings.partitions, 10);
+    assert_eq!(settings.job_partitions, 10);
+    assert_eq!(settings.retry_partitions, 10);
+    assert_eq!(settings.result_partitions, 1);
 }

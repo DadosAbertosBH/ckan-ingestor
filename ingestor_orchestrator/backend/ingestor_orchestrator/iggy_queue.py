@@ -88,9 +88,9 @@ class IggyMessageBus:
                     raise
 
         for topic, partitions in (
-            (self._settings.iggy_topic, self._settings.iggy_partitions),
-            (self._settings.iggy_topic_retry, self._settings.iggy_partitions),
-            (self._settings.iggy_topic_results, 1),
+            (self._settings.iggy_topic, self._settings.iggy_job_partitions),
+            (self._settings.iggy_topic_retry, self._settings.iggy_retry_partitions),
+            (self._settings.iggy_topic_results, self._settings.iggy_result_partitions),
             (self._settings.iggy_metadata_sync_topic, 1),
             (self._settings.iggy_metadata_sync_result_topic, 1),
         ):
@@ -112,8 +112,13 @@ class IggyMessageBus:
             self._settings.iggy_metadata_sync_result_topic,
         }:
             return 0
+        partitions = {
+            self._settings.iggy_topic: self._settings.iggy_job_partitions,
+            self._settings.iggy_topic_retry: self._settings.iggy_retry_partitions,
+            self._settings.iggy_topic_results: self._settings.iggy_result_partitions,
+        }[topic or self._settings.iggy_topic]
         digest = hashlib.sha256(key.encode()).digest()
-        return int.from_bytes(digest[:4], "big") % self._settings.iggy_partitions
+        return int.from_bytes(digest[:4], "big") % partitions
 
     async def publish(self, topic: str, payload: bytes, *, key: str) -> PublishMetadata:
         await self.connect()

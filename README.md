@@ -138,7 +138,9 @@ O `.gitlab-ci.yml` constrói e publica as imagens no registry do GitLab:
 | `INGEST_ORCH_IGGY_METADATA_SYNC_RESULT_TOPIC` | `ckan_metadata_sync_result` | Tópico de resultados de metadados |
 | `INGEST_ORCH_IGGY_RESULT_GROUP_ID` | `ckan-result-consumer` | Consumer group de resultados |
 | `INGEST_ORCH_IGGY_METADATA_SYNC_RESULT_GROUP_ID` | `ckan-metadata-sync-result-consumer` | Consumer group dos resultados de metadados |
-| `INGEST_ORCH_IGGY_PARTITIONS` | `10` | Partições por tópico |
+| `INGEST_ORCH_IGGY_JOB_PARTITIONS` | `10` | Partições do tópico principal |
+| `INGEST_ORCH_IGGY_RETRY_PARTITIONS` | `10` | Partições do tópico de retry |
+| `INGEST_ORCH_IGGY_RESULT_PARTITIONS` | `1` | Partições do tópico de resultados |
 | `INGEST_ORCH_SCHEDULER_INTERVAL_MINUTES` | `480` | Intervalo do scheduler (minutos) |
 | `INGEST_ORCH_DEBUG` | `false` | Modo debug |
 
@@ -154,7 +156,8 @@ O `.gitlab-ci.yml` constrói e publica as imagens no registry do GitLab:
 | `IGGY_TOPIC_RETRY` | `jobs-retry` | Tópico de retry |
 | `IGGY_TOPIC_RESULTS` | `job-results` | Tópico de resultados |
 | `IGGY_GROUP_ID` | `ckan-worker` | Consumer group do worker |
-| `IGGY_PARTITIONS` | `10` | Consumer slots e partições por tópico |
+| `IGGY_JOB_PARTITIONS` | `10` | Consumer slots e partições do tópico principal |
+| `IGGY_RETRY_PARTITIONS` | `10` | Consumer slots e partições do tópico de retry |
 | `DUCKLAKE_DATABASE` | (obrigatório) | Database DuckDB local |
 | `DUCKLAKE_CATALOG_URI` | (obrigatório) | URI do catálogo DuckLake (Postgres) |
 | `S3_ENDPOINT` | `rustfs:9000` | Endpoint S3/RustFS |
@@ -166,7 +169,7 @@ O `.gitlab-ci.yml` constrói e publica as imagens no registry do GitLab:
 
 ### Worker coordinator Rust
 
-O `worker-coordinator` inicializa de forma idempotente o stream e os tópicos Iggy e processa exclusivamente a sincronização de metadata. Ele usa `IGGY_ADDRESS`, `IGGY_USERNAME`, `IGGY_PASSWORD`, `IGGY_STREAM`, `IGGY_TOPIC`, `IGGY_TOPIC_RETRY`, `IGGY_TOPIC_RESULTS`, `IGGY_METADATA_SYNC_TOPIC`, `IGGY_METADATA_SYNC_RESULT_TOPIC`, `IGGY_METADATA_SYNC_GROUP_ID` e `IGGY_PARTITIONS`, além da mesma configuração DuckLake/S3 do worker. API e worker preservam sua criação idempotente de topologia como proteção durante a inicialização.
+O `worker-coordinator` inicializa de forma idempotente o stream e os tópicos Iggy e processa exclusivamente a sincronização de metadata. Ele usa `IGGY_ADDRESS`, `IGGY_USERNAME`, `IGGY_PASSWORD`, `IGGY_STREAM`, `IGGY_TOPIC`, `IGGY_TOPIC_RETRY`, `IGGY_TOPIC_RESULTS`, `IGGY_METADATA_SYNC_TOPIC`, `IGGY_METADATA_SYNC_RESULT_TOPIC`, `IGGY_METADATA_SYNC_GROUP_ID`, `IGGY_JOB_PARTITIONS`, `IGGY_RETRY_PARTITIONS` e `IGGY_RESULT_PARTITIONS`, além da mesma configuração DuckLake/S3 do worker. API e worker preservam sua criação idempotente de topologia como proteção durante a inicialização.
 
 ## Deploy
 

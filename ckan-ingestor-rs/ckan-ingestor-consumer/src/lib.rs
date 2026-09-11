@@ -39,7 +39,8 @@ pub struct IggySettings {
     pub retry_topic: String,
     pub result_topic: String,
     pub consumer_group: String,
-    pub partitions: u32,
+    pub job_partitions: u32,
+    pub retry_partitions: u32,
 }
 
 impl Default for IggySettings {
@@ -53,7 +54,8 @@ impl Default for IggySettings {
             retry_topic: "jobs-retry".into(),
             result_topic: "parquet-results".into(),
             consumer_group: "ckan-worker".into(),
-            partitions: 10,
+            job_partitions: 10,
+            retry_partitions: 10,
         }
     }
 }
@@ -68,13 +70,26 @@ impl IggySettings {
 
     pub fn from_env() -> Result<Self> {
         let defaults = Self::default();
-        let partitions = env::var("IGGY_PARTITIONS")
+        let job_partitions = env::var("IGGY_JOB_PARTITIONS")
             .ok()
             .map(|value| value.parse::<u32>())
             .transpose()
-            .context("IGGY_PARTITIONS must be a positive integer")?
-            .unwrap_or(defaults.partitions);
-        anyhow::ensure!(partitions > 0, "IGGY_PARTITIONS must be greater than zero");
+            .context("IGGY_JOB_PARTITIONS must be a positive integer")?
+            .unwrap_or(defaults.job_partitions);
+        anyhow::ensure!(
+            job_partitions > 0,
+            "IGGY_JOB_PARTITIONS must be greater than zero"
+        );
+        let retry_partitions = env::var("IGGY_RETRY_PARTITIONS")
+            .ok()
+            .map(|value| value.parse::<u32>())
+            .transpose()
+            .context("IGGY_RETRY_PARTITIONS must be a positive integer")?
+            .unwrap_or(defaults.retry_partitions);
+        anyhow::ensure!(
+            retry_partitions > 0,
+            "IGGY_RETRY_PARTITIONS must be greater than zero"
+        );
         Ok(Self {
             address: env::var("IGGY_ADDRESS").unwrap_or(defaults.address),
             username: env::var("IGGY_USERNAME").unwrap_or(defaults.username),
@@ -84,7 +99,8 @@ impl IggySettings {
             retry_topic: env::var("IGGY_TOPIC_RETRY").unwrap_or(defaults.retry_topic),
             result_topic: env::var("IGGY_PARQUET_RESULT_TOPIC").unwrap_or(defaults.result_topic),
             consumer_group: env::var("IGGY_GROUP_ID").unwrap_or(defaults.consumer_group),
-            partitions,
+            job_partitions,
+            retry_partitions,
         })
     }
 }
@@ -92,8 +108,8 @@ impl IggySettings {
 pub async fn run() -> Result<()> {
     let settings = IggySettings::from_env()?;
     info!(
-        "Worker starting with Iggy stream={}, partitions={}",
-        settings.stream, settings.partitions
+        "Worker starting with Iggy stream={}, job_partitions={}, retry_partitions={}",
+        settings.stream, settings.job_partitions, settings.retry_partitions
     );
 
     let connection_string = settings.connection_string();
@@ -109,10 +125,14 @@ pub async fn run() -> Result<()> {
 
     let s3 = create_s3_ingestor().await?;
     let processor = JobProcessor::new(s3, ParquetUploader::new(S3Settings::from_env()))?;
-    let mut workers = Vec::with_capacity((settings.partitions * 2) as usize);
+    let mut workers =
+        Vec::with_capacity((settings.job_partitions + settings.retry_partitions) as usize);
 
-    for topic in [&settings.source_topic, &settings.retry_topic] {
-        for slot in 0..settings.partitions {
+    for (topic, partitions) in [
+        (&settings.source_topic, settings.job_partitions),
+        (&settings.retry_topic, settings.retry_partitions),
+    ] {
+        for slot in 0..partitions {
             let client = connected_client(&connection_string).await?;
             let mut consumer = client
                 .consumer_group(&settings.consumer_group, &settings.stream, topic)?
@@ -167,8 +187,8 @@ pub async fn ensure_topology(client: &IggyClient, settings: &IggySettings) -> Re
     }
 
     for (topic_name, partitions) in [
-        (&settings.source_topic, settings.partitions),
-        (&settings.retry_topic, settings.partitions),
+        (&settings.source_topic, settings.job_partitions),
+        (&settings.retry_topic, settings.retry_partitions),
         (&settings.result_topic, 1),
     ] {
         let topic = topic_name.as_str().try_into()?;

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Iggy Cluster"
+  short_description: "Manage Iggy topics via Tailscale"
+  default_prompt: "Use $iggy-cluster to inspect the Iggy topology on the Noct cluster."

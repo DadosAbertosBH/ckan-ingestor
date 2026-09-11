@@ -35,7 +35,9 @@ def iggy_settings():
     settings.iggy_metadata_sync_result_topic = "ckan_metadata_sync_result"
     settings.iggy_metadata_sync_result_group_id = "metadata-results"
     settings.iggy_consumer_poll_interval_ms = 500
-    settings.iggy_partitions = 10
+    settings.iggy_job_partitions = 10
+    settings.iggy_retry_partitions = 4
+    settings.iggy_result_partitions = 3
     return settings
 
 
@@ -77,11 +79,13 @@ async def test_connect_creates_stream_and_topics_idempotently(iggy_settings):
     }
     for topic, call in calls_by_topic.items():
         assert call.kwargs["stream"] == "ckan-ingestor"
-        expected = (
-            1
-            if topic in {"job-results", "ckan_metadata_sync", "ckan_metadata_sync_result"}
-            else 10
-        )
+        expected = {
+            "jobs": 10,
+            "jobs-retry": 4,
+            "job-results": 3,
+            "ckan_metadata_sync": 1,
+            "ckan_metadata_sync_result": 1,
+        }[topic]
         assert call.kwargs["partitions_count"] == expected
 
 
@@ -136,6 +140,19 @@ async def test_publish_routes_deterministically_and_returns_generic_metadata(
     assert metadata.offset is None
     client.send_messages.assert_awaited_once()
     assert client.send_messages.await_args.kwargs["partitioning"] == metadata.partition
+
+
+@pytest.mark.asyncio
+async def test_publish_uses_the_partition_count_of_the_destination_topic(iggy_settings):
+    client = MagicMock()
+    client.send_messages = AsyncMock()
+    bus = IggyMessageBus(iggy_settings, client=client)
+
+    result = await bus.publish("job-results", b"result", key="result-key")
+    retry = await bus.publish("jobs-retry", b"retry", key="retry-key")
+
+    assert 0 <= result.partition < 3
+    assert 0 <= retry.partition < 4
 
 
 @pytest.mark.asyncio

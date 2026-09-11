@@ -42,7 +42,9 @@ class Settings(BaseSettings):
     iggy_result_group_id: str = "ckan-result-consumer"
     iggy_metadata_sync_result_group_id: str = "ckan-metadata-sync-result-consumer"
     iggy_consumer_poll_interval_ms: int = 500
-    iggy_partitions: int = 10
+    iggy_job_partitions: int = 10
+    iggy_retry_partitions: int = 10
+    iggy_result_partitions: int = 1
 
     # Scheduler
     scheduler_interval_minutes: int = 480  # 8 hours, same as Dagster sensor

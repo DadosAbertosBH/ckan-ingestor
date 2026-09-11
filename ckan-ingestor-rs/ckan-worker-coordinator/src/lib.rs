@@ -52,7 +52,9 @@ pub struct IggySettings {
     pub metadata_sync_topic: String,
     pub metadata_sync_result_topic: String,
     pub metadata_consumer_group: String,
-    pub partitions: u32,
+    pub job_partitions: u32,
+    pub retry_partitions: u32,
+    pub result_partitions: u32,
 }
 
 impl Default for IggySettings {
@@ -70,7 +72,9 @@ impl Default for IggySettings {
             metadata_sync_topic: "ckan_metadata_sync".into(),
             metadata_sync_result_topic: "ckan_metadata_sync_result".into(),
             metadata_consumer_group: "ckan-metadata-sync-worker".into(),
-            partitions: 10,
+            job_partitions: 10,
+            retry_partitions: 10,
+            result_partitions: 1,
         }
     }
 }
@@ -85,13 +89,36 @@ impl IggySettings {
 
     pub fn from_env() -> Result<Self> {
         let defaults = Self::default();
-        let partitions = env::var("IGGY_PARTITIONS")
+        let job_partitions = env::var("IGGY_JOB_PARTITIONS")
             .ok()
             .map(|value| value.parse::<u32>())
             .transpose()
-            .context("IGGY_PARTITIONS must be a positive integer")?
-            .unwrap_or(defaults.partitions);
-        anyhow::ensure!(partitions > 0, "IGGY_PARTITIONS must be greater than zero");
+            .context("IGGY_JOB_PARTITIONS must be a positive integer")?
+            .unwrap_or(defaults.job_partitions);
+        anyhow::ensure!(
+            job_partitions > 0,
+            "IGGY_JOB_PARTITIONS must be greater than zero"
+        );
+        let retry_partitions = env::var("IGGY_RETRY_PARTITIONS")
+            .ok()
+            .map(|value| value.parse::<u32>())
+            .transpose()
+            .context("IGGY_RETRY_PARTITIONS must be a positive integer")?
+            .unwrap_or(defaults.retry_partitions);
+        anyhow::ensure!(
+            retry_partitions > 0,
+            "IGGY_RETRY_PARTITIONS must be greater than zero"
+        );
+        let result_partitions = env::var("IGGY_RESULT_PARTITIONS")
+            .ok()
+            .map(|value| value.parse::<u32>())
+            .transpose()
+            .context("IGGY_RESULT_PARTITIONS must be a positive integer")?
+            .unwrap_or(defaults.result_partitions);
+        anyhow::ensure!(
+            result_partitions > 0,
+            "IGGY_RESULT_PARTITIONS must be greater than zero"
+        );
         Ok(Self {
             address: env::var("IGGY_ADDRESS").unwrap_or(defaults.address),
             username: env::var("IGGY_USERNAME").unwrap_or(defaults.username),
@@ -110,7 +137,9 @@ impl IggySettings {
                 .unwrap_or(defaults.metadata_sync_result_topic),
             metadata_consumer_group: env::var("IGGY_METADATA_SYNC_GROUP_ID")
                 .unwrap_or(defaults.metadata_consumer_group),
-            partitions,
+            job_partitions,
+            retry_partitions,
+            result_partitions,
         })
     }
 }
@@ -221,9 +250,9 @@ pub async fn ensure_topology(client: &IggyClient, settings: &IggySettings) -> Re
         warn!("Iggy stream was created concurrently: {error}");
     }
     for (topic_name, partitions) in [
-        (&settings.job_topic, settings.partitions),
-        (&settings.retry_topic, settings.partitions),
-        (&settings.result_topic, 1),
+        (&settings.job_topic, settings.job_partitions),
+        (&settings.retry_topic, settings.retry_partitions),
+        (&settings.result_topic, settings.result_partitions),
         (&settings.parquet_result_topic, 1),
         (&settings.metadata_sync_topic, 1),
         (&settings.metadata_sync_result_topic, 1),

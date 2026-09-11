@@ -38,7 +38,12 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
-            name: IGGY_PARTITIONS
+            name: IGGY_JOB_PARTITIONS
+            value: "10"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: IGGY_RETRY_PARTITIONS
             value: "10"
 
   - it: injects S3 configuration

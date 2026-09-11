@@ -140,7 +140,9 @@ iggy:
   metadataSyncGroupId: "ckan-metadata-sync-worker"
   resultGroupId: "ckan-result-consumer"
   metadataSyncResultGroupId: "ckan-metadata-sync-result-consumer"
-  partitions: 10
+  jobPartitions: 10
+  retryPartitions: 10
+  resultPartitions: 1
 
 # -- PostgreSQL configuration (CloudNativePG)
 postgres:

@@ -57,8 +57,8 @@ async fn creates_the_approved_stream_and_topics() -> anyhow::Result<()> {
     let stream_id = settings.stream.as_str().try_into()?;
     assert!(client.get_stream(&stream_id).await?.is_some());
     for (topic, partitions) in [
-        (settings.source_topic, settings.partitions),
-        (settings.retry_topic, settings.partitions),
+        (settings.source_topic, settings.job_partitions),
+        (settings.retry_topic, settings.retry_partitions),
         (settings.result_topic, 1),
     ] {
         let topic_id = topic.as_str().try_into()?;
