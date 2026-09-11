@@ -239,7 +239,11 @@ fn csv_with_bom() -> Result<()> {
     assert_eq!(result.encoding.as_deref(), Some("UTF-8"));
     assert_eq!(result.csv_strict_mode, Some(true));
     assert_eq!(result.csv_delimiter.as_deref(), Some(","));
-    assert_eq!(result.csv_samples.as_deref(), Some("25000"));
+    let expected_sample_size = CSV_READER_INITIAL_SAMPLE_RECORDS.to_string();
+    assert_eq!(
+        result.csv_samples.as_deref(),
+        Some(expected_sample_size.as_str())
+    );
     Ok(())
 }
 
@@ -445,8 +449,12 @@ fn promotes_integer_column_with_na_to_text_without_resniffing() -> Result<()> {
     let result = CsvReader::new(test_client()).read(&resource)?;
 
     // Assert
-    assert_eq!(result.rows_processed, 25_002);
-    assert_eq!(result.csv_samples.as_deref(), Some("25000"));
+    assert_eq!(result.rows_processed, CSV_READER_INITIAL_SAMPLE_RECORDS + 2);
+    let expected_sample_size = CSV_READER_INITIAL_SAMPLE_RECORDS.to_string();
+    assert_eq!(
+        result.csv_samples.as_deref(),
+        Some(expected_sample_size.as_str())
+    );
     assert_eq!(
         result.parquet.schema.field_with_name("value")?.data_type(),
         &arrow::datatypes::DataType::Utf8
@@ -476,8 +484,12 @@ fn promotes_boolean_column_with_f_to_text_without_resniffing() -> Result<()> {
     let result = CsvReader::new(test_client()).read(&resource)?;
 
     // Assert
-    assert_eq!(result.rows_processed, 25_002);
-    assert_eq!(result.csv_samples.as_deref(), Some("25000"));
+    assert_eq!(result.rows_processed, CSV_READER_INITIAL_SAMPLE_RECORDS + 2);
+    let expected_sample_size = CSV_READER_INITIAL_SAMPLE_RECORDS.to_string();
+    assert_eq!(
+        result.csv_samples.as_deref(),
+        Some(expected_sample_size.as_str())
+    );
     assert_eq!(
         result.parquet.schema.field_with_name("value")?.data_type(),
         &arrow::datatypes::DataType::Utf8

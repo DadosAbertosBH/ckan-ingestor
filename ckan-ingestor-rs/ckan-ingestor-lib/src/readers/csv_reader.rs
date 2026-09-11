@@ -559,7 +559,7 @@ mod tests {
 
         let result = reader.read(&resource)?;
 
-        assert_eq!(result.rows_processed, 25_002);
+        assert_eq!(result.rows_processed, CSV_READER_INITIAL_SAMPLE_RECORDS + 2);
         assert_eq!(result.parquet.schema.field(25).data_type(), &DataType::Utf8);
         Ok(())
     }
@@ -604,8 +604,12 @@ mod tests {
 
         let result = reader.read(&resource)?;
 
-        assert_eq!(result.rows_processed, 25_002);
-        assert_eq!(result.csv_samples.as_deref(), Some("25000"));
+        assert_eq!(result.rows_processed, CSV_READER_INITIAL_SAMPLE_RECORDS + 2);
+        let expected_sample_size = CSV_READER_INITIAL_SAMPLE_RECORDS.to_string();
+        assert_eq!(
+            result.csv_samples.as_deref(),
+            Some(expected_sample_size.as_str())
+        );
         assert_eq!(result.parquet.schema.field(24).data_type(), &DataType::Utf8);
         assert_eq!(result.parquet.schema.field(25).data_type(), &DataType::Utf8);
         Ok(())
