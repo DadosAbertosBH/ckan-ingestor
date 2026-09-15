@@ -91,14 +91,14 @@ impl MessageProcessor for MetadataProcessor {
                     command.instance_id.clone(),
                     metadata,
                 );
-                if let Err(error) = self.jobs.result(&pending, &id).await {
+                if let Err(error) = self.jobs.result(&pending).await {
                     log::error!("could not publish deleted resource discovery: {error:#}");
                     result.status = "failure".into();
                     result.error_message = Some(format!("could not publish deleted resource discovery: {error:#}"));
                     yield MetadataResult(result);
                     return;
                 }
-                if let Err(error) = self.jobs.result(&deleted, &id).await {
+                if let Err(error) = self.jobs.result(&deleted).await {
                     log::error!("could not publish deleted resource result: {error:#}");
                     result.status = "failure".into();
                     result.error_message = Some(format!("could not publish deleted resource result: {error:#}"));

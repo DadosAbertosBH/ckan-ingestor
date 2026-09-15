@@ -78,23 +78,30 @@ class TestJobHistory:
         assert job1.id != job2.id
         assert job2.status == JobStatus.PENDING
 
-    async def test_coordinated_job_is_not_created_when_pending_exists(
+    async def test_coordinated_job_is_created_when_pending_exists(
         self, sess, instance
     ):
-        """A coordinator PENDING event preserves a pending resource job."""
+        """Each coordinator PENDING event creates its own job history row."""
         service = JobService(sess)
         jc = JobCreate(resource_id="r2", dataset_name="d2", instance_id=instance.id)
 
         job1 = await create_coordinated_job(service, jc)
         job2 = await service.create_coordinated_job("coordinated-r2", jc)
 
-        assert job2 is None
+        assert job2 is not None
+        assert job2.id == "coordinated-r2"
+        assert job2.status == JobStatus.PENDING
         assert job1.status == JobStatus.PENDING
+        assert (
+            await sess.scalar(
+                select(func.count()).where(CkanDataJob.resource_id == "r2")
+            )
+        ) == 2
 
-    async def test_coordinated_job_is_not_created_when_processing_exists(
+    async def test_coordinated_job_is_created_when_processing_exists(
         self, sess, instance
     ):
-        """A coordinator PENDING event preserves an in-flight resource job."""
+        """An in-flight job does not suppress a distinct coordinator PENDING."""
         job = CkanDataJob(
             resource_id="r3",
             dataset_name="d3",
@@ -109,12 +116,14 @@ class TestJobHistory:
         jc = JobCreate(resource_id="r3", dataset_name="d3", instance_id=instance.id)
         new_job = await service.create_coordinated_job("coordinated-r3", jc)
 
-        assert new_job is None
+        assert new_job is not None
+        assert new_job.id == "coordinated-r3"
+        assert new_job.status == JobStatus.PENDING
         assert (
             await sess.scalar(
                 select(func.count()).where(CkanDataJob.resource_id == "r3")
             )
-        ) == 1
+        ) == 2
         await sess.refresh(job)
         assert job.status == JobStatus.PROCESSING
 

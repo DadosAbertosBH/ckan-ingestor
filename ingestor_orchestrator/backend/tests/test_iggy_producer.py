@@ -43,7 +43,7 @@ async def test_publish_sends_job_id_and_ckan_url():
     bus.publish.assert_awaited_once()
     args, kwargs = bus.publish.await_args
     assert args[0] == "jobs"
-    assert kwargs["key"] == "test-job"
+    assert kwargs["key"] == "resource-1"
     payload = json.loads(args[1].decode())
     assert payload["job_id"] == "test-job"
     assert payload["resource_id"] == "resource-1"

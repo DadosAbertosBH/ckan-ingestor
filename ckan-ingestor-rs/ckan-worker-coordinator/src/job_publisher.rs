@@ -93,15 +93,15 @@ impl<T: JobTransport> JobPublisher<T> {
         job: &JobMessage,
         retry: bool,
     ) -> anyhow::Result<()> {
-        let id = result.job_id.as_str();
-        self.send(Destination::Results, id, result).await?;
+        self.send(Destination::Results, result.partition_key(), result)
+            .await?;
         self.send(
             if retry {
                 Destination::Retries
             } else {
                 Destination::Jobs
             },
-            id,
+            job.partition_key(),
             job,
         )
         .await
@@ -114,27 +114,29 @@ impl<T: JobTransport> JobPublisher<T> {
         messages: &[(JobResultMessage, JobMessage)],
     ) -> anyhow::Result<()> {
         for (result, _) in messages {
-            self.send(Destination::Results, &result.job_id, result)
+            self.send(Destination::Results, result.partition_key(), result)
                 .await?;
         }
         for (_, job) in messages {
-            self.send(Destination::Jobs, &job.job_id, job).await?;
+            self.send(Destination::Jobs, job.partition_key(), job)
+                .await?;
         }
         Ok(())
     }
-    pub async fn skipped(&self, result: &JobResultMessage, key: &str) -> anyhow::Result<()> {
-        self.send(Destination::Results, key, result).await
+    pub async fn skipped(&self, result: &JobResultMessage) -> anyhow::Result<()> {
+        self.send(Destination::Results, result.partition_key(), result)
+            .await
     }
 
-    pub async fn result(&self, result: &JobResultMessage, key: &str) -> anyhow::Result<()> {
-        self.send(Destination::Results, key, result).await
+    pub async fn result(&self, result: &JobResultMessage) -> anyhow::Result<()> {
+        self.send(Destination::Results, result.partition_key(), result)
+            .await
     }
 }
 
 impl<T: JobTransport + Send + 'static> ResultPublisher<JobResultMessage> for JobPublisher<T> {
     async fn publish(&self, result: JobResultMessage) -> anyhow::Result<()> {
-        let key = result.partition_key().to_owned();
-        self.result(&result, &key).await
+        self.result(&result).await
     }
 }
 
@@ -145,10 +147,10 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     #[derive(Clone)]
-    struct Recorder(Arc<Mutex<Vec<Destination>>>);
+    struct Recorder(Arc<Mutex<Vec<(Destination, String)>>>);
     impl JobTransport for Recorder {
-        async fn send(&self, destination: Destination, _: &str, _: String) -> anyhow::Result<()> {
-            self.0.lock().unwrap().push(destination);
+        async fn send(&self, destination: Destination, key: &str, _: String) -> anyhow::Result<()> {
+            self.0.lock().unwrap().push((destination, key.into()));
             Ok(())
         }
     }
@@ -174,7 +176,10 @@ mod tests {
         publisher.pending(&result, &job, false).await.unwrap();
         assert_eq!(
             *sent.lock().unwrap(),
-            vec![Destination::Results, Destination::Jobs]
+            vec![
+                (Destination::Results, "resource".into()),
+                (Destination::Jobs, "resource".into()),
+            ]
         );
     }
 }

@@ -55,20 +55,6 @@ class JobService:
         if existing is not None:
             return existing
 
-        processing_job = await self.db.scalar(
-            select(CkanDataJob.id).where(
-                CkanDataJob.resource_id == data.resource_id,
-                CkanDataJob.status.in_([JobStatus.PENDING, JobStatus.PROCESSING]),
-            )
-        )
-        if processing_job is not None:
-            logger.info(
-                "Skipping coordinator PENDING job %s for resource %s: already active",
-                job_id,
-                data.resource_id,
-            )
-            return None
-
         job = CkanDataJob(
             id=job_id,
             resource_id=data.resource_id,
@@ -508,7 +494,7 @@ class JobService:
         payload = json.dumps(payload_data).encode()
 
         try:
-            return await get_iggy_bus().publish(topic, payload, key=job_id)
+            return await get_iggy_bus().publish(topic, payload, key=resource_id)
         except Exception as e:
             logger.error(f"Failed to publish job {job_id} to Iggy: {e}")
             raise

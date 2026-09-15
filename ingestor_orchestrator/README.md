@@ -129,7 +129,8 @@ O coordinator Rust publica os jobs e o backend Python os persiste a partir de
 eventos `PENDING`:
 
 1. O mesmo `job_id` é idempotente e mantém o registro existente.
-2. Um evento para uma resource que já está `processing` não cria um novo registro `pending`.
+2. Cada novo `job_id` cria seu próprio registro `pending`, inclusive quando
+   houver outro job ativo para a mesma resource.
 3. A ingestão em si usa `CREATE OR REPLACE TABLE` e merge/upsert no DuckLake.
 4. Jobs `failed` podem ser retentados pelo endpoint de retry.
 

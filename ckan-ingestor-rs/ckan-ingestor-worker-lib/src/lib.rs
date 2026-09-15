@@ -212,6 +212,12 @@ impl JobResultMessage {
     }
 }
 
+impl OutgoingMessage for JobMessage {
+    fn partition_key(&self) -> &str {
+        &self.resource_id
+    }
+}
+
 impl OutgoingMessage for JobResultMessage {
     fn partition_key(&self) -> &str {
         &self.resource_id
