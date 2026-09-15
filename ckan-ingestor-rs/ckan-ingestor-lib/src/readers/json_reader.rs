@@ -17,9 +17,9 @@
 
 use anyhow::Result;
 use arrow::datatypes::{DataType, Field, Fields, Schema};
-use arrow_json::reader::{infer_json_schema, infer_json_schema_from_iterator, ReaderBuilder};
+use arrow_json::reader::{infer_json_schema_from_iterator, ReaderBuilder};
+use serde_json::Value;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::sync::Arc;
 
 use crate::{
@@ -27,6 +27,7 @@ use crate::{
     parquet_output::ParquetOutput,
     readers::{
         ckan_reader::{download_to_temp, CkanReader, FailedResult, ReadResult, SuccessResult},
+        geojson::{geojson_to_record_batch, write_geoparquet},
         temp_file_cleanup::TempFileCleanup,
     },
 };
@@ -71,15 +72,11 @@ impl JsonReader {
     }
 
     fn try_read_json(&self, path: &str) -> Result<ParquetOutput> {
-        match self.read_json(BufReader::new(File::open(path)?)) {
-            Ok(output) => Ok(output),
-            Err(line_delimited_error) => {
-                let document = match serde_json::from_reader(File::open(path)?) {
-                    Ok(document) => document,
-                    Err(_) => return Err(line_delimited_error),
-                };
-                self.read_json_document(document)
-            }
+        let document = serde_json::from_reader(File::open(path)?)?;
+        if is_geojson(&document) {
+            write_geoparquet(geojson_to_record_batch(serde_json::from_value(document)?)?)
+        } else {
+            self.read_json_document(document)
         }
     }
 
@@ -110,29 +107,10 @@ impl JsonReader {
         output.finish()?;
         Ok(output)
     }
+}
 
-    fn read_json<R: BufRead + Seek>(&self, mut schema_reader: R) -> Result<ParquetOutput> {
-        let (schema, _) = infer_json_schema(&mut schema_reader, None)?;
-        schema_reader.seek(SeekFrom::Start(0))?;
-        let schema = Arc::new(normalize_null_fields(schema));
-        let reader = ReaderBuilder::new(schema)
-            .with_batch_size(8192)
-            .build(schema_reader)?;
-        let mut output = None;
-        for batch_result in reader {
-            let batch = batch_result?;
-            if output.is_none() {
-                output = Some(ParquetOutput::try_new(&batch)?);
-            }
-            output
-                .as_mut()
-                .expect("Parquet output initialized")
-                .write(&batch)?;
-        }
-        let mut output = output.ok_or_else(|| anyhow::anyhow!("No data"))?;
-        output.finish()?;
-        Ok(output)
-    }
+fn is_geojson(document: &serde_json::Value) -> bool {
+    document.get("type").and_then(Value::as_str) == Some("FeatureCollection")
 }
 
 fn normalize_null_fields(schema: Schema) -> Schema {
@@ -140,7 +118,7 @@ fn normalize_null_fields(schema: Schema) -> Schema {
     let fields = schema
         .fields
         .into_iter()
-        .map(|field| normalize_null_field(field))
+        .map(|field| normalize_null_field(field.as_ref()))
         .collect::<Vec<_>>();
     Schema::new_with_metadata(fields, metadata)
 }

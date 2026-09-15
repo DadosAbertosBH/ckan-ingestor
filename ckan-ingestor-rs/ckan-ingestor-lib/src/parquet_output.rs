@@ -23,6 +23,7 @@ use arrow::{
     compute::cast,
     datatypes::{DataType, Field, Fields, Schema, SchemaRef},
 };
+use geoparquet::writer::GeoParquetRecordBatchEncoder;
 use parquet::{
     arrow::ArrowWriter,
     errors::ParquetError,
@@ -41,6 +42,7 @@ pub struct ParquetOutput {
     pub columns: usize,
     pub preview: Option<Vec<serde_json::Value>>,
     metadata: Option<ParquetMetaData>,
+    geoparquet_encoder: Option<GeoParquetRecordBatchEncoder>,
 }
 
 impl ParquetOutput {
@@ -60,6 +62,30 @@ impl ParquetOutput {
             columns: 0,
             preview: None,
             metadata: None,
+            geoparquet_encoder: None,
+        })
+    }
+
+    pub fn try_new_geoparquet(
+        batch: &RecordBatch,
+        encoder: GeoParquetRecordBatchEncoder,
+    ) -> Result<Self, ParquetError> {
+        let path = std::env::temp_dir().join(format!("{}.parquet", uuid::Uuid::new_v4()));
+        let file = File::create(&path)?;
+        let schema = schema_with_field_ids(&encoder.target_schema());
+        let writer_properties = WriterProperties::builder()
+            .set_max_row_group_bytes(Some(MAX_ROW_GROUP_BYTES))
+            .build();
+        let writer = ArrowWriter::try_new(file, schema.clone(), Some(writer_properties))?;
+        Ok(Self {
+            path,
+            schema,
+            writer,
+            rows: 0,
+            columns: batch.num_columns(),
+            preview: None,
+            metadata: None,
+            geoparquet_encoder: Some(encoder),
         })
     }
 
@@ -68,7 +94,13 @@ impl ParquetOutput {
     }
 
     pub fn write(&mut self, batch: &RecordBatch) -> Result<(), ParquetError> {
-        let columns = batch
+        let encoded_batch = match self.geoparquet_encoder.as_mut() {
+            Some(encoder) => encoder
+                .encode_record_batch(batch)
+                .map_err(|error| ParquetError::General(error.to_string()))?,
+            None => batch.clone(),
+        };
+        let columns = encoded_batch
             .columns()
             .iter()
             .zip(self.schema.fields())
@@ -85,6 +117,12 @@ impl ParquetOutput {
     }
 
     pub fn finish(&mut self) -> Result<(), ParquetError> {
+        if let Some(encoder) = self.geoparquet_encoder.take() {
+            let metadata = encoder
+                .into_keyvalue()
+                .map_err(|error| ParquetError::General(error.to_string()))?;
+            self.writer.append_key_value_metadata(metadata);
+        }
         self.metadata = Some(self.writer.finish()?);
         Ok(())
     }

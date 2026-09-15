@@ -23,7 +23,7 @@ use ckan_ingestor_lib::readers::json_reader::JsonReader;
 use httpmock::{Method::GET, MockServer};
 
 #[test]
-fn reads_multiple_json_objects() -> Result<()> {
+fn rejects_json_lines_documents() -> Result<()> {
     let path = std::env::temp_dir().join(format!(
         "ckan-ingestor-json-reader-{}.json",
         std::process::id()
@@ -43,12 +43,50 @@ fn reads_multiple_json_objects() -> Result<()> {
         last_modified: String::new(),
     };
 
-    let result = reader.read(&resource)?;
+    let result = reader.read(&resource);
 
     std::fs::remove_file(&path)?;
+    assert!(result.is_err());
+    Ok(())
+}
+
+#[test]
+fn reads_geojson_feature_collection_as_geoparquet() -> Result<()> {
+    let path = std::env::temp_dir().join(format!(
+        "ckan-ingestor-geojson-reader-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"{
+          "type": "FeatureCollection",
+          "features": [
+            {"type": "Feature", "properties": {"ID_LT": "1", "NULOTCTM": 10}, "geometry": {"type": "Point", "coordinates": [-43.9, -22.9]}},
+            {"type": "Feature", "properties": {"ID_LT": "2", "NULOTCTM": 20}, "geometry": {"type": "Polygon", "coordinates": [[[-43.9, -22.9], [-43.8, -22.9], [-43.9, -22.9]]]}}
+          ]
+        }"#,
+    )?;
+    let resource = CkanResource {
+        id: "geojson-resource".to_string(),
+        package_id: String::new(),
+        url: path.to_string_lossy().to_string(),
+        format: "JSON".to_string(),
+        datastore_active: false,
+        last_modified: String::new(),
+    };
+
+    let result = JsonReader::new().read(&resource);
+    std::fs::remove_file(&path)?;
+    let result = result?;
     assert_eq!(result.rows_processed, 2);
-    assert_eq!(result.number_of_columns, 2);
-    assert_eq!(result.preview[0]["name"], "Ana");
+    assert!(result.parquet.schema.field_with_name("geometry").is_ok());
+    assert!(result.parquet.schema.field_with_name("ID_LT").is_ok());
+    assert!(result.parquet.schema.field_with_name("NULOTCTM").is_ok());
+    assert!(result
+        .parquet
+        .metadata()
+        .and_then(|metadata| metadata.file_metadata().key_value_metadata())
+        .is_some_and(|metadata| metadata.iter().any(|entry| entry.key == "geo")));
     Ok(())
 }
 

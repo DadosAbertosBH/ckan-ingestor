@@ -19,6 +19,7 @@ pub mod csv_reader;
 pub mod datapackage_reader;
 pub mod datastore_reader;
 pub mod file_reference_reader;
+mod geojson;
 pub mod json_reader;
 pub mod multiple_reader;
 pub mod temp_file_cleanup;
