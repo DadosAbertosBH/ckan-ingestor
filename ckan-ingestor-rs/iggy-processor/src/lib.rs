@@ -84,7 +84,9 @@ impl MessagePublisher for IggyPublisher {
         self.producers
             .as_ref()
             .get(&message.topic)
-            .unwrap()
+            .ok_or_else(|| {
+                anyhow::anyhow!("No Iggy producer configured for topic '{}'", message.topic)
+            })?
             .send_with_partitioning(vec![iggy_message], Some(partitioning))
             .await
             .map_err(|error| {
@@ -94,5 +96,33 @@ impl MessagePublisher for IggyPublisher {
                     error
                 )
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use message_processor::{MessagePublisher, OutgoingMessage};
+
+    use super::IggyPublisher;
+
+    #[test]
+    fn publishing_to_an_unconfigured_topic_returns_an_error() {
+        futures::executor::block_on(async {
+            let publisher = IggyPublisher::new(Vec::new().into_iter());
+
+            let error = publisher
+                .publish(OutgoingMessage::new(
+                    "missing-topic".into(),
+                    "partition-key".into(),
+                    "payload",
+                ))
+                .await
+                .unwrap_err();
+
+            assert_eq!(
+                error.to_string(),
+                "No Iggy producer configured for topic 'missing-topic'"
+            );
+        });
     }
 }

@@ -190,10 +190,10 @@ pub async fn run() -> Result<()> {
         IggySource::new(consumer),
         publisher.clone(),
         MetadataProcessor::new(
-            settings.job_topic,
-            settings.retry_topic,
-            settings.result_topic,
-            settings.metadata_sync_result_topic,
+            settings.job_topic.clone(),
+            settings.retry_topic.clone(),
+            settings.result_topic.clone(),
+            settings.metadata_sync_result_topic.clone(),
             processor,
         ),
     );
@@ -203,7 +203,7 @@ pub async fn run() -> Result<()> {
         0,
         IggySource::new(parquet_consumer),
         publisher.clone(),
-        ParquetProcessor::new(settings.parquet_result_topic, registrar),
+        parquet_processor(&settings, registrar),
     );
     parquet_consumer.run();
     let shutdown = Arc::new(Notify::new());
@@ -214,6 +214,10 @@ pub async fn run() -> Result<()> {
     tokio::task::spawn_blocking(move || parquet_consumer.shutdown()).await?;
     info!("CKAN worker coordinator stopped");
     Ok(())
+}
+
+fn parquet_processor(settings: &IggySettings, registrar: ParquetRegistrar) -> ParquetProcessor {
+    ParquetProcessor::new(settings.result_topic.clone(), registrar)
 }
 
 async fn connected_client(connection_string: &str) -> Result<IggyClient> {
@@ -299,4 +303,36 @@ fn install_shutdown_handler(shutdown: Arc<Notify>) {
         tokio::select! { _ = sigterm.recv() => {}, _ = sigint.recv() => {} }
         shutdown.notify_waiters();
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use futures::StreamExt;
+    use tempfile::tempdir;
+
+    use super::*;
+    use ckan_ingestor_worker_lib::{JobResultMessage, JobStatus};
+    use message_processor::MessageProcessor;
+
+    #[tokio::test]
+    async fn parquet_results_are_forwarded_to_the_terminal_result_topic() {
+        let temp = tempdir().unwrap();
+        let settings = IggySettings {
+            result_topic: "terminal-results".into(),
+            parquet_result_topic: "internal-parquet-results".into(),
+            ..IggySettings::default()
+        };
+        let registrar = ParquetRegistrar::new(DucklakeFactory::for_sqlite(
+            &temp.path().join("catalog.sqlite"),
+            &temp.path().join("data"),
+        ));
+        let processor = parquet_processor(&settings, registrar);
+        let mut result = JobResultMessage::pending("job", "resource", "dataset", "instance");
+        result.status = JobStatus::Failed;
+
+        let messages = processor.process(result).collect::<Vec<_>>().await;
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].topic, "terminal-results");
+    }
 }
