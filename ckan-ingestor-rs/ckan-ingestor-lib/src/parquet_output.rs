@@ -171,6 +171,27 @@ impl ParquetOutput {
 }
 
 fn schema_with_field_ids(schema: &Schema) -> SchemaRef {
+    fn assign_fields(fields: &Fields, next_id: &mut i32) -> Vec<Field> {
+        let mut used_names = std::collections::HashSet::new();
+        fields
+            .iter()
+            .map(|field| {
+                let mut field = assign(field, next_id);
+                let original_name = field.name().clone();
+                let mut candidate = original_name.clone();
+                let mut suffix = 2;
+                while !used_names.insert(candidate.to_lowercase()) {
+                    candidate = format!("{original_name}__{suffix}");
+                    suffix += 1;
+                }
+                if candidate != original_name {
+                    field = field.with_name(candidate);
+                }
+                field
+            })
+            .collect()
+    }
+
     fn assign(field: &Field, next_id: &mut i32) -> Field {
         let id = *next_id;
         *next_id += 1;
@@ -191,12 +212,9 @@ fn schema_with_field_ids(schema: &Schema) -> SchemaRef {
             DataType::LargeListView(child) => {
                 DataType::LargeListView(std::sync::Arc::new(assign(child, next_id)))
             }
-            DataType::Struct(children) => DataType::Struct(Fields::from(
-                children
-                    .iter()
-                    .map(|child| assign(child, next_id))
-                    .collect::<Vec<_>>(),
-            )),
+            DataType::Struct(children) => {
+                DataType::Struct(Fields::from(assign_fields(children, next_id)))
+            }
             DataType::Map(child, sorted) => {
                 DataType::Map(std::sync::Arc::new(assign(child, next_id)), *sorted)
             }
@@ -211,11 +229,7 @@ fn schema_with_field_ids(schema: &Schema) -> SchemaRef {
     }
 
     let mut next_id = 1;
-    let fields = schema
-        .fields()
-        .iter()
-        .map(|field| assign(field, &mut next_id))
-        .collect::<Vec<_>>();
+    let fields = assign_fields(schema.fields(), &mut next_id);
     std::sync::Arc::new(Schema::new_with_metadata(fields, schema.metadata().clone()))
 }
 
@@ -254,6 +268,32 @@ mod tests {
 
         assert_eq!(output.rows, 2);
         assert_eq!(output.columns, 1);
+    }
+
+    #[test]
+    fn makes_top_level_column_names_unique_case_insensitively() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("T_hospedagem", DataType::Utf8, true),
+            Field::new("T_Hospedagem", DataType::Utf8, true),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(vec![Some("hotel")])),
+                Arc::new(StringArray::from(vec![Some("pousada")])),
+            ],
+        )
+        .expect("valid record batch");
+
+        let output = ParquetOutput::try_new(&batch).expect("valid Parquet output");
+        let names = output
+            .schema
+            .fields()
+            .iter()
+            .map(|field| field.name().as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["T_hospedagem", "T_Hospedagem__2"]);
     }
 
     #[test]
