@@ -8,6 +8,17 @@ metadata:
     app.kubernetes.io/component: postgres
 spec:
   instances: {{ .Values.postgres.instances }}
+  {{- with .Values.postgres.service.annotations }}
+  managed:
+    services:
+      additional:
+        - selectorType: rw
+          serviceTemplate:
+            metadata:
+              name: {{ include "ingestor-orchestrator.fullname" $ }}-postgres-tailscale
+              annotations:
+                {{- toYaml . | nindent 16 }}
+  {{- end }}
   storage:
     size: {{ .Values.postgres.storage.size }}
     {{- if .Values.postgres.storage.storageClass }}

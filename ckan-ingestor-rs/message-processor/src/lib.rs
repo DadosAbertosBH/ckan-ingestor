@@ -96,19 +96,11 @@ pub mod test_support {
         }
     }
 
-    impl<OutcomingMessage> MockResultPublisher<OutcomingMessage> {
-        pub fn new() -> Self {
-            Self {
-                published: Arc::new(Mutex::new(vec![])),
-            }
-        }
-    }
-
-    impl<OutcomingMessage: OutgoingMessage> ResultPublisher<OutcomingMessage>
-        for MockResultPublisher<OutcomingMessage>
-    {
-        async fn publish(&self, result: OutcomingMessage) -> Result<()> {
-            self.published.lock().unwrap().push(result);
+    impl<T: Serialize + Copy + Sync + Send> ResultPublisher<T> for MockResultPublisher<T> {
+        async fn publish(&self, result: OutgoingMessage<'_, T>) -> Result<()> {
+            self.published
+                .get_mut()
+                .push(OwnedOutgoingMessage::new(result));
             Ok(())
         }
     }
