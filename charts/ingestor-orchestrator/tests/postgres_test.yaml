@@ -11,6 +11,7 @@ tests:
   - it: should render CNPG Cluster when deploy is true
     set:
       postgres.deploy: true
+      postgres.service.annotations.tailscale\.com/expose: "true"
     asserts:
       - hasDocuments:
           count: 1
@@ -27,3 +28,12 @@ tests:
       - equal:
           path: spec.resources.limits.memory
           value: 1Gi
+      - equal:
+          path: spec.managed.services.additional[0].serviceTemplate.metadata.name
+          value: RELEASE-NAME-ingestor-orchestrator-postgres-tailscale
+      - equal:
+          path: spec.managed.services.additional[0].serviceTemplate.metadata.annotations["tailscale.com/expose"]
+          value: "true"
+      - equal:
+          path: spec.managed.services.additional[0].selectorType
+          value: rw
