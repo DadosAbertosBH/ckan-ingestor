@@ -7,7 +7,7 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use std::{str::FromStr, sync::Arc};
+use std::{collections::HashMap, str::FromStr, sync::Arc, vec::IntoIter};
 
 use anyhow::{Result, anyhow};
 use futures::StreamExt;
@@ -15,9 +15,10 @@ use iggy::{
     clients::producer::IggyProducer,
     prelude::{IggyConsumer, IggyMessage, Partitioning},
 };
-use message_processor::{BrokerMessage, MessageSource, OutgoingMessage, ResultPublisher};
+use message_processor::{BrokerMessage, MessagePublisher, MessageSource, OutgoingMessage};
 
 pub use iggy;
+use serde::Serialize;
 
 pub struct IggySource {
     consumer: IggyConsumer,
@@ -50,29 +51,40 @@ impl MessageSource for IggySource {
 }
 
 #[derive(Clone)]
-pub struct IggyResultPublisher {
-    producer: Arc<IggyProducer>,
+pub struct IggyPublisher {
+    producers: Arc<HashMap<String, IggyProducer>>,
 }
 
-impl IggyResultPublisher {
-    pub fn new(producer: IggyProducer) -> Self {
+impl IggyPublisher {
+    pub fn single(producer: IggyProducer) -> Self {
+        let mut producers = HashMap::new();
+        producers.insert(producer.topic().as_string(), producer);
         Self {
-            producer: Arc::new(producer),
+            producers: Arc::new(producers),
+        }
+    }
+
+    pub fn new(producers: IntoIter<IggyProducer>) -> Self {
+        let producers = producers.fold(HashMap::new(), |mut hashmap, producer| {
+            hashmap.insert(producer.topic().as_string(), producer);
+            hashmap
+        });
+        Self {
+            producers: Arc::new(producers),
         }
     }
 }
 
-impl<T> ResultPublisher<T> for IggyResultPublisher
-where
-    T: serde::Serialize,
-    T: OutgoingMessage + Send,
-{
-    async fn publish(&self, message: T) -> Result<(), anyhow::Error> {
-        let payload = serde_json::to_string(&message).map_err(|error| anyhow::anyhow!(error))?;
+impl MessagePublisher for IggyPublisher {
+    async fn publish(&self, message: OutgoingMessage<impl Serialize>) -> Result<(), anyhow::Error> {
+        let payload =
+            serde_json::to_string(&message.data).map_err(|error| anyhow::anyhow!(error))?;
         let iggy_message = IggyMessage::from_str(&payload)?;
-        let partitioning = Arc::new(Partitioning::messages_key_str(message.partition_key())?);
-        self.producer
+        let partitioning = Arc::new(Partitioning::messages_key_str(&message.partition_key)?);
+        self.producers
             .as_ref()
+            .get(&message.topic)
+            .unwrap()
             .send_with_partitioning(vec![iggy_message], Some(partitioning))
             .await
             .map_err(|error| {

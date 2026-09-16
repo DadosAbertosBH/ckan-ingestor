@@ -7,7 +7,6 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use message_processor::OutgoingMessage;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -209,18 +208,6 @@ impl JobResultMessage {
             preview: None,
             artifact: None,
         }
-    }
-}
-
-impl OutgoingMessage for JobMessage {
-    fn partition_key(&self) -> &str {
-        &self.resource_id
-    }
-}
-
-impl OutgoingMessage for JobResultMessage {
-    fn partition_key(&self) -> &str {
-        &self.resource_id
     }
 }
 

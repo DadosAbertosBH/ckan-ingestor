@@ -9,10 +9,8 @@
 
 pub mod data_writer;
 pub mod ducklake_data_writer;
-pub mod job_publisher;
 pub mod metadata_message_processor;
 pub mod metadata_processor;
-pub mod metadata_publisher;
 pub mod parquet_message_processor;
 pub mod parquet_registrar;
 
@@ -28,15 +26,13 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 use crate::ducklake_data_writer::DucklakeDataWriter;
-use crate::job_publisher::JobPublisher;
 use crate::metadata_message_processor::MetadataProcessor;
 use crate::metadata_processor::RealMetadataProcessor;
-use crate::metadata_publisher::MetadataPublisher;
 use crate::parquet_message_processor::ParquetProcessor;
 use crate::parquet_registrar::ParquetRegistrar;
 use ckan_ingestor_lib::ducklake_factory::DucklakeFactory;
-use iggy_processor::IggySource;
-use message_processor::ConsumerWorker;
+use iggy_processor::{IggyPublisher, IggySource};
+use message_processor::WorkerHandler;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IggySettings {
@@ -149,26 +145,7 @@ pub async fn run() -> Result<()> {
     let connection_string = settings.connection_string();
     let admin = connected_client(&connection_string).await?;
     ensure_topology(&admin, &settings).await?;
-    let producer = admin
-        .producer(&settings.stream, &settings.metadata_sync_result_topic)?
-        .direct(DirectConfig::builder().batch_length(100).build())
-        .build();
-    producer.init().await?;
-    let result_producer = admin
-        .producer(&settings.stream, &settings.result_topic)?
-        .direct(DirectConfig::builder().batch_length(100).build())
-        .build();
-    result_producer.init().await?;
-    let job_producer = admin
-        .producer(&settings.stream, &settings.job_topic)?
-        .direct(DirectConfig::builder().batch_length(100).build())
-        .build();
-    job_producer.init().await?;
-    let retry_producer = admin
-        .producer(&settings.stream, &settings.retry_topic)?
-        .direct(DirectConfig::builder().batch_length(100).build())
-        .build();
-    retry_producer.init().await?;
+
     let client = connected_client(&connection_string).await?;
     let mut consumer = client
         .consumer_group(
@@ -203,24 +180,30 @@ pub async fn run() -> Result<()> {
     factory.initialize().await?;
     let registrar = ParquetRegistrar::new(factory.clone());
     registrar.initialize().await?;
-    let jobs = JobPublisher::new(result_producer, job_producer, retry_producer);
     let metadata_writer =
         DucklakeDataWriter::new(factory.client().await?, factory.storage_options().to_vec());
     let processor = RealMetadataProcessor::new(factory.clone(), metadata_writer);
-    let mut metadata_consumer = ConsumerWorker::new(
+    let publisher = create_publisher(admin, &settings).await?;
+    let mut metadata_consumer = WorkerHandler::new(
         settings.metadata_sync_topic.clone(),
         0,
         IggySource::new(consumer),
-        MetadataPublisher::new(producer),
-        MetadataProcessor::new(jobs.clone(), processor),
+        publisher.clone(),
+        MetadataProcessor::new(
+            settings.job_topic,
+            settings.retry_topic,
+            settings.result_topic,
+            settings.metadata_sync_result_topic,
+            processor,
+        ),
     );
     metadata_consumer.run();
-    let mut parquet_consumer = ConsumerWorker::new(
+    let mut parquet_consumer = WorkerHandler::new(
         settings.parquet_result_topic.clone(),
         0,
         IggySource::new(parquet_consumer),
-        jobs,
-        ParquetProcessor::new(registrar),
+        publisher.clone(),
+        ParquetProcessor::new(settings.parquet_result_topic, registrar),
     );
     parquet_consumer.run();
     let shutdown = Arc::new(Notify::new());
@@ -278,6 +261,33 @@ pub async fn ensure_topology(client: &IggyClient, settings: &IggySettings) -> Re
         }
     }
     Ok(())
+}
+
+async fn create_publisher(admin: IggyClient, settings: &IggySettings) -> Result<IggyPublisher> {
+    let sync_producer = admin
+        .producer(&settings.stream, &settings.metadata_sync_result_topic)?
+        .direct(DirectConfig::builder().batch_length(100).build())
+        .build();
+    sync_producer.init().await?;
+    let result_producer = admin
+        .producer(&settings.stream, &settings.result_topic)?
+        .direct(DirectConfig::builder().batch_length(100).build())
+        .build();
+    result_producer.init().await?;
+    let job_producer = admin
+        .producer(&settings.stream, &settings.job_topic)?
+        .direct(DirectConfig::builder().batch_length(100).build())
+        .build();
+    job_producer.init().await?;
+    let retry_producer = admin
+        .producer(&settings.stream, &settings.retry_topic)?
+        .direct(DirectConfig::builder().batch_length(100).build())
+        .build();
+    retry_producer.init().await?;
+
+    Ok(IggyPublisher::new(
+        vec![sync_producer, result_producer, job_producer, retry_producer].into_iter(),
+    ))
 }
 
 fn install_shutdown_handler(shutdown: Arc<Notify>) {

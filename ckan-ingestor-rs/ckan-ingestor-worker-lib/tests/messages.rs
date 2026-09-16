@@ -8,7 +8,6 @@
 // (at your option) any later version.
 
 use ckan_ingestor_worker_lib::{JobDiscoveryMetadata, JobResultMessage, JobStatus};
-use message_processor::OutgoingMessage;
 
 #[test]
 fn pending_result_carries_the_mysql_job_fields() {
@@ -56,11 +55,4 @@ fn result_messages_require_a_job_id() {
     }));
 
     assert!(result.is_err());
-}
-
-#[test]
-fn result_messages_partition_by_resource_id() {
-    let message = JobResultMessage::pending("job-1", "resource-1", "dataset", "instance-1");
-
-    assert_eq!(message.partition_key(), "resource-1");
 }

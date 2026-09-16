@@ -9,32 +9,75 @@
 
 use async_stream::stream;
 use ckan_ingestor_worker_lib::{JobDiscoveryMetadata, JobMessage, JobResultMessage};
-use ckan_metadata_ingestor::MetadataSyncCommand;
+use ckan_metadata_ingestor::{MetadataSyncCommand, MetadataSyncResult};
+use futures::Stream;
 use message_processor::{MessageProcessor, OutgoingMessage};
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::job_publisher::JobPublisher;
 use crate::metadata_processor::{RealMetadataProcessor, ResourceCandidate};
 
+#[derive(Serialize)]
+#[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
+pub enum OutgoingDestination {
+    Job(JobMessage),
+    JobRetry(JobMessage),
+    JobResult(JobResultMessage),
+    SyncResult(MetadataSyncResult),
+}
+
 pub struct MetadataProcessor {
-    jobs: JobPublisher,
+    job_destination: String,
+    retry_destination: String,
+    job_result_destination: String,
+    sync_destination: String,
     processor: RealMetadataProcessor,
 }
 
 impl MetadataProcessor {
-    pub fn new(jobs: JobPublisher, processor: RealMetadataProcessor) -> Self {
-        Self { jobs, processor }
+    pub fn new(
+        job_destination: String,
+        retry_destination: String,
+        job_result_destination: String,
+        sync_destination: String,
+        processor: RealMetadataProcessor,
+    ) -> Self {
+        Self {
+            job_destination,
+            retry_destination,
+            job_result_destination,
+            sync_destination,
+            processor,
+        }
     }
-}
 
-#[derive(Serialize)]
-#[serde(transparent)]
-pub struct MetadataResult(pub ckan_metadata_ingestor::MetadataSyncResult);
-
-impl OutgoingMessage for MetadataResult {
-    fn partition_key(&self) -> &str {
-        &self.0.sync_id
+    fn outgoing_message_from(
+        &self,
+        destination: OutgoingDestination,
+    ) -> OutgoingMessage<OutgoingDestination> {
+        match &destination {
+            OutgoingDestination::Job(job) => OutgoingMessage {
+                topic: self.job_destination.clone(),
+                partition_key: job.resource_id.clone(),
+                data: destination,
+            },
+            OutgoingDestination::JobRetry(job) => OutgoingMessage {
+                topic: self.retry_destination.clone(),
+                partition_key: job.resource_id.clone(),
+                data: destination,
+            },
+            OutgoingDestination::JobResult(job_result_message) => OutgoingMessage {
+                topic: self.job_result_destination.clone(),
+                partition_key: job_result_message.resource_id.clone(),
+                data: destination,
+            },
+            OutgoingDestination::SyncResult(sync) => OutgoingMessage {
+                topic: self.sync_destination.clone(),
+                partition_key: sync.instance_id.clone(),
+                data: destination,
+            },
+        }
     }
 }
 
@@ -52,101 +95,89 @@ fn job_id(instance_id: &str, candidate: &ResourceCandidate) -> String {
 
 impl MessageProcessor for MetadataProcessor {
     type IncomingMessage = MetadataSyncCommand;
-    type OutgoingMessage = MetadataResult;
-
-    fn process(&self, command: MetadataSyncCommand) -> impl futures::Stream<Item = MetadataResult> {
+    fn process(
+        &self,
+        command: MetadataSyncCommand,
+    ) -> impl Stream<Item = OutgoingMessage<impl Serialize>> {
         stream! {
-        let processed = self.processor.process(command.clone()).await;
-        let deleted_resource_candidates = processed.deleted_resource_candidates;
-        let mut result = processed.result;
-        if result.status == "success" {
-            for candidate in &deleted_resource_candidates {
-                let id = Uuid::new_v5(
-                    &Uuid::NAMESPACE_URL,
-                    format!(
-                        "{}:{}:deleted:{}",
-                        command.instance_id, candidate.resource_id, candidate.source_version
+            let processed = self.processor.process(command.clone()).await;
+            let deleted_resource_candidates = processed.deleted_resource_candidates;
+            let result = processed.result;
+            if result.status == "success" {
+                for candidate in &deleted_resource_candidates {
+                    let id = Uuid::new_v5(
+                        &Uuid::NAMESPACE_URL,
+                        format!(
+                            "{}:{}:deleted:{}",
+                            command.instance_id, candidate.resource_id, candidate.source_version
+                        )
+                        .as_bytes(),
                     )
-                    .as_bytes(),
-                )
-                .to_string();
-                let metadata = JobDiscoveryMetadata {
-                    resource_name: candidate.resource_name.clone(),
-                    resource_url: candidate.resource_url.clone(),
-                    resource_format: candidate.resource_format.clone(),
-                    ckan_url: Some(command.instance_url.clone()),
-                    datastore_active: Some(candidate.datastore_active),
+                    .to_string();
+                    let metadata = JobDiscoveryMetadata {
+                        resource_name: candidate.resource_name.clone(),
+                        resource_url: candidate.resource_url.clone(),
+                        resource_format: candidate.resource_format.clone(),
+                        ckan_url: Some(command.instance_url.clone()),
+                        datastore_active: Some(candidate.datastore_active),
+                    };
+                    let pending = JobResultMessage::pending_with_metadata(
+                        id.clone(),
+                        candidate.resource_id.clone(),
+                        candidate.dataset_name.clone(),
+                        command.instance_id.clone(),
+                        metadata.clone(),
+                    );
+                    let deleted = JobResultMessage::deleted(
+                        id.clone(),
+                        candidate.resource_id.clone(),
+                        candidate.dataset_name.clone(),
+                        command.instance_id.clone(),
+                        metadata,
+                    );
+                    yield self.outgoing_message_from(OutgoingDestination::JobResult(pending));
+                    yield self.outgoing_message_from(OutgoingDestination::JobResult(deleted));
+                }
+                let candidates = match self.processor.outdated_resources(&command.instance_url).await {
+                    Ok(candidates) => candidates,
+                    Err(error) => {
+                        log::error!("could not determine outdated resources: {error:#}");
+                        yield self.outgoing_message_from(OutgoingDestination::SyncResult(result));
+                        return;
+                    }
                 };
-                let pending = JobResultMessage::pending_with_metadata(
-                    id.clone(),
-                    candidate.resource_id.clone(),
-                    candidate.dataset_name.clone(),
-                    command.instance_id.clone(),
-                    metadata.clone(),
-                );
-                let deleted = JobResultMessage::deleted(
-                    id.clone(),
-                    candidate.resource_id.clone(),
-                    candidate.dataset_name.clone(),
-                    command.instance_id.clone(),
-                    metadata,
-                );
-                if let Err(error) = self.jobs.result(&pending).await {
-                    log::error!("could not publish deleted resource discovery: {error:#}");
-                    result.status = "failure".into();
-                    result.error_message = Some(format!("could not publish deleted resource discovery: {error:#}"));
-                    yield MetadataResult(result);
-                    return;
+                for candidate in candidates {
+                    let id = job_id(&command.instance_id, &candidate);
+                    let mut pending = JobResultMessage::pending(
+                        id.clone(),
+                        candidate.resource_id.clone(),
+                        candidate.dataset_name.clone(),
+                        command.instance_id.clone(),
+                    );
+                    pending.resource_name = candidate.resource_name.clone();
+                    pending.resource_url = candidate.resource_url.clone();
+                    pending.resource_format = candidate.resource_format.clone();
+                    pending.ckan_url = Some(command.instance_url.clone());
+                    pending.datastore_active = Some(candidate.datastore_active);
+
+                    yield self.outgoing_message_from(OutgoingDestination::JobResult(pending));
+
+                    let job = JobMessage {
+                        job_id: id,
+                        resource_id: candidate.resource_id,
+                        source_version: candidate.source_version,
+                        package_id: candidate.package_id,
+                        ckan_url: command.instance_url.clone(),
+                        resource_url: candidate.resource_url.unwrap_or_default(),
+                        resource_format: candidate.resource_format.unwrap_or_default(),
+                        csv_delimiter: None,
+                        datastore_active: candidate.datastore_active,
+                    };
+
+                    yield self.outgoing_message_from(OutgoingDestination::Job(job));
                 }
-                if let Err(error) = self.jobs.result(&deleted).await {
-                    log::error!("could not publish deleted resource result: {error:#}");
-                    result.status = "failure".into();
-                    result.error_message = Some(format!("could not publish deleted resource result: {error:#}"));
-                    yield MetadataResult(result);
-                    return;
-                }
+                yield self.outgoing_message_from(OutgoingDestination::SyncResult(result));
             }
-            let candidates = match self.processor.outdated_resources(&command.instance_url).await {
-                Ok(candidates) => candidates,
-                Err(error) => {
-                    log::error!("could not determine outdated resources: {error:#}");
-                    yield MetadataResult(result);
-                    return;
-                }
-            };
-            let messages = candidates.into_iter().map(|candidate| {
-                let id = job_id(&command.instance_id, &candidate);
-                let mut pending = JobResultMessage::pending(
-                    id.clone(),
-                    candidate.resource_id.clone(),
-                    candidate.dataset_name.clone(),
-                    command.instance_id.clone(),
-                );
-                pending.resource_name = candidate.resource_name.clone();
-                pending.resource_url = candidate.resource_url.clone();
-                pending.resource_format = candidate.resource_format.clone();
-                pending.ckan_url = Some(command.instance_url.clone());
-                pending.datastore_active = Some(candidate.datastore_active);
-                let job = JobMessage {
-                    job_id: id,
-                    resource_id: candidate.resource_id,
-                    source_version: candidate.source_version,
-                    package_id: candidate.package_id,
-                    ckan_url: command.instance_url.clone(),
-                    resource_url: candidate.resource_url.unwrap_or_default(),
-                    resource_format: candidate.resource_format.unwrap_or_default(),
-                    csv_delimiter: None,
-                    datastore_active: candidate.datastore_active,
-                };
-                (pending, job)
-            }).collect::<Vec<_>>();
-            if let Err(error) = self.jobs.pending_batch(&messages).await {
-                log::error!("could not publish metadata jobs: {error:#}");
-                result.status = "failure".into();
-                result.error_message = Some(format!("could not publish metadata jobs: {error:#}"));
-            }
-        }
-        yield MetadataResult(result);
         }
     }
 }

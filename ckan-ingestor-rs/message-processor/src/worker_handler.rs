@@ -20,31 +20,29 @@ use futures::StreamExt;
 use serde::de::DeserializeOwned;
 use tokio::sync::Notify;
 
-use crate::{BrokerMessage, MessageProcessor, MessageSource, OutgoingMessage, ResultPublisher};
+use crate::{BrokerMessage, MessageProcessor, MessagePublisher, MessageSource};
 
-pub struct ConsumerWorker<M, Publisher, Proc>
+pub struct WorkerHandler<M, Publisher, Proc>
 where
     M: MessageSource,
     Proc: MessageProcessor,
-    Proc::OutgoingMessage: OutgoingMessage,
-    Publisher: ResultPublisher<Proc::OutgoingMessage>,
+    Publisher: MessagePublisher,
 {
-    publisher: Publisher,
     topic: String,
     slot: usize,
     source: Option<M>,
     processor: Option<Proc>,
+    publisher: Option<Publisher>,
     thread: Option<JoinHandle<()>>,
     shutdown: Arc<Notify>,
 }
 
-impl<M, Publisher, Proc> ConsumerWorker<M, Publisher, Proc>
+impl<M, Publisher, Proc> WorkerHandler<M, Publisher, Proc>
 where
     M: MessageSource + Send + 'static,
-    Publisher: ResultPublisher<Proc::OutgoingMessage> + Send + 'static,
+    Publisher: MessagePublisher + Send + 'static,
     Proc: MessageProcessor + Send + 'static,
     Proc::IncomingMessage: DeserializeOwned,
-    Proc::OutgoingMessage: OutgoingMessage,
 {
     pub fn new(
         topic: String,
@@ -58,7 +56,7 @@ where
             slot,
             source: Some(source),
             processor: Some(processor),
-            publisher,
+            publisher: Some(publisher),
             thread: None,
             shutdown: Arc::new(Notify::new()),
         }
@@ -96,9 +94,9 @@ where
     }
 
     pub fn run(&mut self) {
-        let mut source = self.source.take().expect("worker started twice");
-        let publisher = self.publisher.clone();
-        let processor = self.processor.take().expect("worker started twice");
+        let mut source = self.source.take().expect("worker already running");
+        let publisher = self.publisher.take().expect("worker already running");
+        let processor = self.processor.take().expect("worker already running");
         let shutdown = self.shutdown.clone();
         let topic = self.topic.clone();
         let slot = self.slot;
@@ -108,13 +106,20 @@ where
                 .build()
                 .expect("worker runtime");
             loop {
-                let message = runtime.block_on(async { tokio::select! { _ = shutdown.notified() => None, message = source.recv() => Some(message) } });
+                let message = runtime.block_on(async {
+                    tokio::select! {
+                        _ = shutdown.notified() => None,
+                        message = source.recv() => Some(message)
+                    }
+                });
                 let Some(message) = message else {
                     return;
                 };
                 match message {
                     Ok(message) => {
-                        match runtime.block_on(Self::handle(&publisher, &processor, &message)) {
+                        let result =
+                            runtime.block_on(Self::handle(&publisher, &processor, &message));
+                        match result {
                             Ok(()) => {
                                 if let Err(error) = runtime
                                     .block_on(source.commit(message.partition, message.offset))

@@ -22,9 +22,10 @@ use std::{
     time::Duration,
 };
 
-use futures::stream;
+use async_stream::stream;
+use futures::Stream;
 use message_processor::{
-    BrokerMessage, ConsumerWorker, MessageProcessor, OutgoingMessage,
+    BrokerMessage, MessageProcessor, OutgoingMessage, WorkerHandler,
     test_support::{MockMessageSource, MockResultPublisher},
 };
 use serde::{Deserialize, Serialize};
@@ -38,20 +39,24 @@ struct Input {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 struct Output(u8);
 
-impl OutgoingMessage for Output {
-    fn partition_key(&self) -> &str {
-        "input"
-    }
-}
-
 struct Processor;
 
 impl MessageProcessor for Processor {
     type IncomingMessage = Input;
-    type OutgoingMessage = Output;
 
-    fn process(&self, message: Input) -> impl futures::Stream<Item = Output> {
-        stream::iter([Output(message.value), Output(message.value + 1)])
+    fn process(&self, message: Input) -> impl Stream<Item = OutgoingMessage<impl Serialize>> {
+        stream! {
+            yield OutgoingMessage::new(
+                "test".to_string(),
+                "test".to_string(),
+                Output(message.value),
+            );
+            yield OutgoingMessage::new(
+                "test".to_string(),
+                "test".to_string(),
+                Output(message.value + 1),
+            );
+        }
     }
 }
 
@@ -61,16 +66,23 @@ struct BlockingProcessor {
 
 impl MessageProcessor for BlockingProcessor {
     type IncomingMessage = Input;
-    type OutgoingMessage = Output;
 
-    fn process(&self, message: Input) -> impl futures::Stream<Item = Output> {
+    fn process(&self, message: Input) -> impl Stream<Item = OutgoingMessage<impl Serialize>> {
         let processed = Arc::clone(&self.processed);
         async_stream::stream! {
-            yield Output(message.value);
+            yield OutgoingMessage::new(
+                "test".to_string(),
+                "test".to_string(),
+                Output(message.value),
+            );
             tokio::task::spawn_blocking(move || processed.store(true, Ordering::SeqCst))
                 .await
                 .unwrap();
-            yield Output(message.value + 1);
+            yield OutgoingMessage::new(
+                "test".to_string(),
+                "test".to_string(),
+                Output(message.value + 1),
+            );
         }
     }
 }
@@ -89,7 +101,7 @@ fn publishes_every_processor_output_before_committing_the_source_message() {
     let committed = source.committed.clone();
     let publisher = MockResultPublisher::new();
     let published = publisher.published.clone();
-    let mut worker = ConsumerWorker::new("source".into(), 0, source, publisher, Processor);
+    let mut worker = WorkerHandler::new("source".into(), 0, source, publisher, Processor);
 
     worker.run();
     for _ in 0..100 {
@@ -100,7 +112,15 @@ fn publishes_every_processor_output_before_committing_the_source_message() {
     }
     worker.shutdown();
 
-    assert_eq!(*published.lock().unwrap(), vec![Output(41), Output(42)]);
+    assert_eq!(
+        published
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|message| message.data.as_str())
+            .collect::<Vec<_>>(),
+        vec!["41", "42"]
+    );
     assert_eq!(*committed.lock().unwrap(), vec![(3, 42)]);
 }
 
@@ -117,7 +137,7 @@ fn supports_a_processor_that_defers_blocking_work_until_after_its_first_output()
     let source = MockMessageSource::new(receiver);
     let committed = source.committed.clone();
     let processed = Arc::new(AtomicBool::new(false));
-    let mut worker = ConsumerWorker::new(
+    let mut worker = WorkerHandler::new(
         "source".into(),
         0,
         source,

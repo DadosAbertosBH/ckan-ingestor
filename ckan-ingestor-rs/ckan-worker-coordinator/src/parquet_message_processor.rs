@@ -11,28 +11,33 @@ use std::time::Duration;
 
 use async_stream::stream;
 use ckan_ingestor_worker_lib::{JobResultMessage, JobStatus};
-use message_processor::MessageProcessor;
+use futures::Stream;
+use message_processor::{MessageProcessor, OutgoingMessage};
+use serde::Serialize;
 
 use crate::parquet_registrar::ParquetRegistrar;
 
 pub struct ParquetProcessor {
+    job_result_destination: String,
     registrar: ParquetRegistrar,
 }
 
 impl ParquetProcessor {
-    pub fn new(registrar: ParquetRegistrar) -> Self {
-        Self { registrar }
+    pub fn new(job_result_destination: String, registrar: ParquetRegistrar) -> Self {
+        Self {
+            job_result_destination,
+            registrar,
+        }
     }
 }
 
 impl MessageProcessor for ParquetProcessor {
     type IncomingMessage = JobResultMessage;
-    type OutgoingMessage = JobResultMessage;
 
     fn process(
         &self,
         mut result: JobResultMessage,
-    ) -> impl futures::Stream<Item = JobResultMessage> {
+    ) -> impl Stream<Item = OutgoingMessage<impl Serialize>> {
         stream! {
             if result.status == JobStatus::Success {
                 let registration = async {
@@ -71,7 +76,7 @@ impl MessageProcessor for ParquetProcessor {
                 }
             }
             result.artifact = None;
-            yield result;
+            yield OutgoingMessage::new(self.job_result_destination.clone(), result.resource_id.clone(), result)
         }
     }
 }

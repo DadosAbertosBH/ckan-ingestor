@@ -26,8 +26,8 @@ use tokio::sync::Notify;
 
 use crate::job_processor::JobProcessor;
 use crate::parquet_uploader::ParquetUploader;
-use iggy_processor::{IggyResultPublisher, IggySource};
-use message_processor::ConsumerWorker;
+use iggy_processor::{IggyPublisher, IggySource};
+use message_processor::WorkerHandler;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IggySettings {
@@ -121,10 +121,14 @@ pub async fn run() -> Result<()> {
         .direct(DirectConfig::builder().batch_length(1).build())
         .build();
     result_producer.init().await?;
-    let publisher = IggyResultPublisher::new(result_producer);
+    let publisher = IggyPublisher::single(result_producer);
 
     let s3 = create_s3_ingestor().await?;
-    let processor = JobProcessor::new(s3, ParquetUploader::new(S3Settings::from_env()))?;
+    let processor = JobProcessor::new(
+        settings.result_topic,
+        s3,
+        ParquetUploader::new(S3Settings::from_env()),
+    )?;
     let mut workers =
         Vec::with_capacity((settings.job_partitions + settings.retry_partitions) as usize);
 
@@ -145,7 +149,7 @@ pub async fn run() -> Result<()> {
                 .build();
             consumer.init().await?;
             let source = IggySource::new(consumer);
-            let mut worker = ConsumerWorker::new(
+            let mut worker = WorkerHandler::new(
                 topic.clone(),
                 slot as usize,
                 source,

@@ -32,24 +32,30 @@ use tokio::runtime::Runtime;
 
 use crate::messages::{JobMessage, JobResultMessage, JobStatus};
 use crate::parquet_uploader::ParquetUploader;
-use message_processor::MessageProcessor;
+use message_processor::{MessageProcessor, OutgoingMessage};
 
 // ---------------------------------------------------------------------------
 // RealJobProcessor — production implementation
 // ---------------------------------------------------------------------------
 
 pub struct JobProcessor {
+    job_result_destination: String,
     s3: S3DocumentIngestor,
     uploader: ParquetUploader,
     runtime: Arc<Runtime>,
 }
 
 impl JobProcessor {
-    pub fn new(s3: S3DocumentIngestor, uploader: ParquetUploader) -> anyhow::Result<Self> {
+    pub fn new(
+        job_result_destination: String,
+        s3: S3DocumentIngestor,
+        uploader: ParquetUploader,
+    ) -> anyhow::Result<Self> {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
         Ok(Self {
+            job_result_destination,
             s3,
             uploader,
             runtime: Arc::new(runtime),
@@ -60,6 +66,7 @@ impl JobProcessor {
 impl Clone for JobProcessor {
     fn clone(&self) -> Self {
         Self {
+            job_result_destination: self.job_result_destination.clone(),
             s3: self.s3.clone(),
             uploader: self.uploader.clone(),
             runtime: self.runtime.clone(),
@@ -69,10 +76,13 @@ impl Clone for JobProcessor {
 
 impl MessageProcessor for JobProcessor {
     type IncomingMessage = JobMessage;
-    type OutgoingMessage = JobResultMessage;
 
-    fn process(&self, job: JobMessage) -> impl Stream<Item = JobResultMessage> {
+    fn process(
+        &self,
+        message: Self::IncomingMessage,
+    ) -> impl Stream<Item = OutgoingMessage<impl serde::Serialize>> {
         stream! {
+            let job = message;
             log::debug!(
                 "Starting job {} for resource {} (version {})",
                 job.job_id,
@@ -80,23 +90,29 @@ impl MessageProcessor for JobProcessor {
                 if job.source_version.is_empty() { "legacy" } else { &job.source_version },
             );
             let processing = processing_job(&job);
-            yield processing;
+            yield OutgoingMessage::new(
+                self.job_result_destination.clone(),
+                job.resource_id.clone(),
+                processing
+            );
 
             let runtime = Arc::clone(&self.runtime);
             let uploader = self.uploader.clone();
             let s3 = self.s3.clone();
             let conversion_job = job.clone();
-            let message = match tokio::task::spawn_blocking(move || {
+            let result = match tokio::task::spawn_blocking(move || {
                 run_conversion(&runtime, &uploader, &conversion_job, &s3)
-            })
-            .await
-            {
+            }).await {
                 Ok(Ok(result)) => result,
                 Ok(Err(error)) => failed_job(&job, error),
                 Err(error) => failed_job(&job, error),
             };
 
-            yield message;
+            yield OutgoingMessage::new(
+                self.job_result_destination.clone(),
+                job.resource_id.clone(),
+                result
+            );
         }
     }
 }

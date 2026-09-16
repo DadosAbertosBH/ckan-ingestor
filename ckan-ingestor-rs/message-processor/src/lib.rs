@@ -13,20 +13,35 @@ use serde::{Serialize, de::DeserializeOwned};
 use std::future::Future;
 
 pub mod worker_handler;
-pub use worker_handler::ConsumerWorker;
+pub use worker_handler::WorkerHandler;
 
-pub trait OutgoingMessage: Serialize {
-    fn partition_key(&self) -> &str;
+pub struct OutgoingMessage<T: Serialize> {
+    pub topic: String,
+    pub partition_key: String,
+    pub data: T,
+}
+
+impl<T: Serialize> OutgoingMessage<T> {
+    pub fn new(topic: String, partition_key: String, data: T) -> Self {
+        Self {
+            topic,
+            partition_key,
+            data,
+        }
+    }
 }
 
 pub trait MessageProcessor {
     type IncomingMessage: DeserializeOwned;
-    type OutgoingMessage: OutgoingMessage;
-    fn process(&self, message: Self::IncomingMessage) -> impl Stream<Item = Self::OutgoingMessage>;
+    fn process(
+        &self,
+        message: Self::IncomingMessage,
+    ) -> impl Stream<Item = OutgoingMessage<impl Serialize>>;
 }
 
-pub trait ResultPublisher<T: OutgoingMessage>: Clone {
-    fn publish(&self, message: T) -> impl Future<Output = Result<()>>;
+pub trait MessagePublisher {
+    fn publish(&self, message: OutgoingMessage<impl Serialize>)
+    -> impl Future<Output = Result<()>>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,9 +61,10 @@ pub mod test_support {
     use std::sync::{Arc, Mutex};
 
     use anyhow::{Result, anyhow};
+    use serde::Serialize;
     use tokio::sync::mpsc;
 
-    use crate::{BrokerMessage, MessageSource, OutgoingMessage, ResultPublisher};
+    use crate::{BrokerMessage, MessagePublisher, MessageSource, OutgoingMessage};
 
     pub struct MockMessageSource {
         receiver: mpsc::Receiver<BrokerMessage>,
@@ -78,29 +94,31 @@ pub mod test_support {
         }
     }
 
-    pub struct MockResultPublisher<OutcomingMessage> {
-        pub published: Arc<Mutex<Vec<OutcomingMessage>>>,
+    pub struct MockResultPublisher {
+        pub published: Arc<Mutex<Vec<OutgoingMessage<String>>>>,
     }
 
-    impl<OutcomingMessage> Clone for MockResultPublisher<OutcomingMessage> {
-        fn clone(&self) -> Self {
+    impl MockResultPublisher {
+        pub fn new() -> Self {
             Self {
-                published: Arc::clone(&self.published),
+                published: Arc::new(Mutex::new(vec![])),
             }
         }
     }
 
-    impl<OutcomingMessage> Default for MockResultPublisher<OutcomingMessage> {
+    impl Default for MockResultPublisher {
         fn default() -> Self {
             Self::new()
         }
     }
 
-    impl<T: Serialize + Copy + Sync + Send> ResultPublisher<T> for MockResultPublisher<T> {
-        async fn publish(&self, result: OutgoingMessage<'_, T>) -> Result<()> {
-            self.published
-                .get_mut()
-                .push(OwnedOutgoingMessage::new(result));
+    impl MessagePublisher for MockResultPublisher {
+        async fn publish(&self, message: OutgoingMessage<impl Serialize>) -> Result<()> {
+            self.published.lock().unwrap().push(OutgoingMessage::new(
+                message.topic,
+                message.partition_key,
+                serde_json::to_string(&message.data)?,
+            ));
             Ok(())
         }
     }
@@ -109,56 +127,8 @@ pub mod test_support {
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use futures::StreamExt;
-    use serde::{Deserialize, Serialize};
 
-    use super::{BrokerMessage, MessageProcessor, MessageSource, OutgoingMessage, ResultPublisher};
-
-    #[derive(Deserialize)]
-    struct Input(u8);
-
-    #[derive(Deserialize, Serialize)]
-    struct Output(u8);
-
-    impl OutgoingMessage for Output {
-        fn partition_key(&self) -> &str {
-            "test"
-        }
-    }
-
-    #[derive(Clone)]
-    struct Increment;
-
-    impl MessageProcessor for Increment {
-        type IncomingMessage = Input;
-        type OutgoingMessage = Output;
-
-        fn process(&self, message: Input) -> impl futures::Stream<Item = Output> {
-            futures::stream::iter([Output(message.0 + 1)])
-        }
-    }
-
-    #[tokio::test]
-    async fn defines_a_typed_message_transformation_contract() {
-        let output = Increment.process(Input(41)).next().await.unwrap();
-
-        assert_eq!(output.0, 42);
-    }
-
-    #[derive(Clone)]
-    struct Publisher;
-
-    impl ResultPublisher<Output> for Publisher {
-        async fn publish(&self, _: Output) -> Result<()> {
-            Ok(())
-        }
-    }
-
-    #[test]
-    fn defines_a_typed_result_publication_contract() {
-        let publisher = Publisher;
-        std::mem::drop(publisher.publish(Output(42)));
-    }
+    use super::{BrokerMessage, MessageSource};
 
     struct Source;
 
