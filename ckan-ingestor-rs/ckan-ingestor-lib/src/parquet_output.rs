@@ -175,13 +175,19 @@ fn schema_with_field_ids(schema: &Schema) -> SchemaRef {
         let mut used_names = std::collections::HashSet::new();
         fields
             .iter()
-            .map(|field| {
+            .enumerate()
+            .map(|(index, field)| {
                 let mut field = assign(field, next_id);
                 let original_name = field.name().clone();
-                let mut candidate = original_name.clone();
+                let base_name = if original_name.trim().is_empty() {
+                    format!("column_{}", index + 1)
+                } else {
+                    original_name.clone()
+                };
+                let mut candidate = base_name.clone();
                 let mut suffix = 2;
                 while !used_names.insert(candidate.to_lowercase()) {
-                    candidate = format!("{original_name}__{suffix}");
+                    candidate = format!("{base_name}__{suffix}");
                     suffix += 1;
                 }
                 if candidate != original_name {
@@ -294,6 +300,26 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(names, vec!["T_hospedagem", "T_Hospedagem__2"]);
+    }
+
+    #[test]
+    fn gives_empty_column_names_a_stable_non_empty_name() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("", DataType::Utf8, true),
+            Field::new(" ", DataType::Utf8, true),
+            Field::new("column_1", DataType::Utf8, true),
+        ]));
+        let batch = RecordBatch::new_empty(schema);
+
+        let output = ParquetOutput::try_new(&batch).expect("valid Parquet output");
+        let names = output
+            .schema
+            .fields()
+            .iter()
+            .map(|field| field.name().as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["column_1", "column_2", "column_1__2"]);
     }
 
     #[test]
