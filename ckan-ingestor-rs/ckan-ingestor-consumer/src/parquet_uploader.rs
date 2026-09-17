@@ -71,13 +71,14 @@ impl ParquetUploader {
     }
 
     pub fn destination_uri(&self, resource_id: &str, version: &str) -> String {
-        let resource =
-            url::form_urlencoded::byte_serialize(resource_id.as_bytes()).collect::<String>();
-        let version = url::form_urlencoded::byte_serialize(version.as_bytes()).collect::<String>();
-        format!(
-            "s3://{}/{resource}/ducklake_{version}.parquet",
-            self.s3.bucket
-        )
+        let mut destination = Url::parse(&format!("s3://{}/", self.s3.bucket))
+            .expect("S3 bucket must produce a valid URL");
+        destination
+            .path_segments_mut()
+            .expect("S3 URL must support path segments")
+            .push(resource_id)
+            .push(&format!("ducklake_{version}.parquet"));
+        destination.into()
     }
 }
 
@@ -165,7 +166,7 @@ mod tests {
     }
 
     #[test]
-    fn destination_is_deterministic_for_a_resource_version() {
+    fn destination_is_deterministic_and_keeps_uri_path_characters_readable() {
         let uploader = ParquetUploader::new(S3Settings {
             bucket: "warehouse".into(),
             ..Default::default()
@@ -173,7 +174,7 @@ mod tests {
 
         assert_eq!(
             uploader.destination_uri("resource/id", "2026-09-02T12:00:00Z"),
-            "s3://warehouse/resource%2Fid/ducklake_2026-09-02T12%3A00%3A00Z.parquet"
+            "s3://warehouse/resource%2Fid/ducklake_2026-09-02T12:00:00Z.parquet"
         );
     }
 
