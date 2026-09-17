@@ -189,7 +189,7 @@ describe("JobDetailView — loading and error states", () => {
   });
 });
 
-describe("JobDetailView — retry and delete", () => {
+describe("JobDetailView — actions", () => {
   it("shows Retry button for failed job", async () => {
     mockFetchJob.mockResolvedValue(makeJob({ status: "failed" }));
 
@@ -197,15 +197,6 @@ describe("JobDetailView — retry and delete", () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain("Retry");
-  });
-
-  it("shows Cancel button for pending job", async () => {
-    mockFetchJob.mockResolvedValue(makeJob({ status: "pending" }));
-
-    const wrapper = await mountDetail();
-    await flushPromises();
-
-    expect(wrapper.text()).toContain("Cancel");
   });
 
   it("does not show Retry for completed job", async () => {

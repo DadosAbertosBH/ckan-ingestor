@@ -244,16 +244,3 @@ async def retry_job(job_id: str, db: AsyncSession = Depends(get_db)):
         message_partition=job.message_partition,
         message_offset=job.message_offset,
     )
-
-
-@router.delete("/{job_id}", status_code=204)
-async def delete_job(job_id: str, db: AsyncSession = Depends(get_db)):
-    job = await db.get(CkanDataJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    if job.status not in (JobStatus.PENDING, JobStatus.FAILED):
-        raise HTTPException(
-            status_code=409, detail="Can only delete pending or failed jobs"
-        )
-    await db.delete(job)
-    await db.commit()

@@ -38,13 +38,6 @@
                     >
                         Retry
                     </button>
-                    <button
-                        v-if="job.status === 'pending'"
-                        class="btn-danger"
-                        @click="handleDelete"
-                    >
-                        Cancel
-                    </button>
                 </div>
             </div>
 
@@ -131,7 +124,6 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { useRouter } from "vue-router";
 import JobStatusBadge from "@/components/JobStatusBadge.vue";
 import JobResultPanel from "@/components/JobResultPanel.vue";
 import ResourceLabelBadge from "@/components/ResourceLabelBadge.vue";
@@ -139,8 +131,7 @@ import { useApi } from "@/composables/useApi";
 import type { Job } from "@/types";
 
 const props = defineProps<{ id: string }>();
-const router = useRouter();
-const { fetchJob, retryJob, deleteJob } = useApi();
+const { fetchJob, retryJob } = useApi();
 
 const job = ref<Job | null>(null);
 const loading = ref(true);
@@ -163,16 +154,6 @@ async function handleRetry() {
         job.value = await retryJob(props.id);
     } catch (e: any) {
         alert(e.message || "Failed to retry");
-    }
-}
-
-async function handleDelete() {
-    if (!confirm("Cancel this job?")) return;
-    try {
-        await deleteJob(props.id);
-        router.push("/jobs");
-    } catch (e: any) {
-        alert(e.message || "Failed to delete");
     }
 }
 
