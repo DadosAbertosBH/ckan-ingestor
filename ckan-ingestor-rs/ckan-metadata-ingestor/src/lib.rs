@@ -16,4 +16,4 @@ mod package_processing;
 
 pub use fetcher::CkanDatasetFetcher;
 pub use ipc::StructuredIpc;
-pub use models::{MetadataSyncCommand, MetadataSyncResult};
+pub use models::{MetadataSyncCommand, MetadataSyncResult, MetadataSyncStatus};

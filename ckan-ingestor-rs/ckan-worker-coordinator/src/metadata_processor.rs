@@ -17,7 +17,9 @@ use arrow::compute::{cast, concat_batches, filter_record_batch};
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use arrow_ipc::reader::FileReader;
 use ckan_ingestor_lib::ducklake_factory::DucklakeFactory;
-use ckan_metadata_ingestor::{MetadataSyncCommand, MetadataSyncResult, StructuredIpc};
+use ckan_metadata_ingestor::{
+    MetadataSyncCommand, MetadataSyncResult, MetadataSyncStatus, StructuredIpc,
+};
 use ducklake::Ducklake;
 use object_store::{ObjectStoreExt, parse_url_opts};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
@@ -90,7 +92,7 @@ impl<T: DataWriter> RealMetadataProcessor<T> {
                         sync_id: command.sync_id,
                         instance_id: command.instance_id,
                         instance_name: command.instance_name,
-                        status: "failure".into(),
+                        status: MetadataSyncStatus::Failure,
                         total_packages: 0,
                         new_datasets: 0,
                         new_resources: 0,
@@ -98,6 +100,7 @@ impl<T: DataWriter> RealMetadataProcessor<T> {
                         updated_resources: 0,
                         dataset_count: 0,
                         resource_count: 0,
+                        outdated_resources: 0,
                         deleted_datasets: 0,
                         deleted_resources: 0,
                         error_message: Some(error.to_string().chars().take(16_000).collect()),
@@ -207,7 +210,7 @@ impl<T: DataWriter> RealMetadataProcessor<T> {
                 sync_id: command.sync_id.clone(),
                 instance_id: command.instance_id.clone(),
                 instance_name: command.instance_name.clone(),
-                status: "success".into(),
+                status: MetadataSyncStatus::Success,
                 total_packages: ipc.package_rows() as i64,
                 new_datasets: datasets.new,
                 new_resources: resources.as_ref().map_or(0, |result| result.new),
@@ -229,6 +232,7 @@ impl<T: DataWriter> RealMetadataProcessor<T> {
                         Some(("ckan_url", command.instance_url.as_str())),
                     )
                 })? as i64,
+                outdated_resources: 0,
                 deleted_datasets,
                 deleted_resources,
                 error_message: None,
