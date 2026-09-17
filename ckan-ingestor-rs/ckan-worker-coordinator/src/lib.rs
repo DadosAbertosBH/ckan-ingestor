@@ -185,8 +185,6 @@ pub async fn run() -> Result<()> {
     let processor = RealMetadataProcessor::new(factory.clone(), metadata_writer);
     let publisher = create_publisher(admin, &settings).await?;
     let mut metadata_consumer = WorkerHandler::new(
-        settings.metadata_sync_topic.clone(),
-        0,
         IggySource::new(consumer),
         publisher.clone(),
         MetadataProcessor::new(
@@ -199,8 +197,6 @@ pub async fn run() -> Result<()> {
     );
     metadata_consumer.run();
     let mut parquet_consumer = WorkerHandler::new(
-        settings.parquet_result_topic.clone(),
-        0,
         IggySource::new(parquet_consumer),
         publisher.clone(),
         parquet_processor(&settings, registrar),

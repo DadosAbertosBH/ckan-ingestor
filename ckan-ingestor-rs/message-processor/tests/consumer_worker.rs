@@ -101,7 +101,7 @@ fn publishes_every_processor_output_before_committing_the_source_message() {
     let committed = source.committed.clone();
     let publisher = MockResultPublisher::new();
     let published = publisher.published.clone();
-    let mut worker = WorkerHandler::new("source".into(), 0, source, publisher, Processor);
+    let mut worker = WorkerHandler::new(source, publisher, Processor);
 
     worker.run();
     for _ in 0..100 {
@@ -138,8 +138,6 @@ fn supports_a_processor_that_defers_blocking_work_until_after_its_first_output()
     let committed = source.committed.clone();
     let processed = Arc::new(AtomicBool::new(false));
     let mut worker = WorkerHandler::new(
-        "source".into(),
-        0,
         source,
         MockResultPublisher::new(),
         BlockingProcessor {

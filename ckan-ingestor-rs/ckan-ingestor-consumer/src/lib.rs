@@ -136,7 +136,7 @@ pub async fn run() -> Result<()> {
         (&settings.source_topic, settings.job_partitions),
         (&settings.retry_topic, settings.retry_partitions),
     ] {
-        for slot in 0..partitions {
+        for _ in 0..partitions {
             let client = connected_client(&connection_string).await?;
             let mut consumer = client
                 .consumer_group(&settings.consumer_group, &settings.stream, topic)?
@@ -149,13 +149,7 @@ pub async fn run() -> Result<()> {
                 .build();
             consumer.init().await?;
             let source = IggySource::new(consumer);
-            let mut worker = WorkerHandler::new(
-                topic.clone(),
-                slot as usize,
-                source,
-                publisher.clone(),
-                processor.clone(),
-            );
+            let mut worker = WorkerHandler::new(source, publisher.clone(), processor.clone());
             worker.run();
             workers.push(worker);
         }

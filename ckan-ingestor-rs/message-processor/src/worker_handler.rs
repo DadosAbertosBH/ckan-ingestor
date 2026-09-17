@@ -28,8 +28,6 @@ where
     Proc: MessageProcessor,
     Publisher: MessagePublisher,
 {
-    topic: String,
-    slot: usize,
     source: Option<M>,
     processor: Option<Proc>,
     publisher: Option<Publisher>,
@@ -44,16 +42,8 @@ where
     Proc: MessageProcessor + Send + 'static,
     Proc::IncomingMessage: DeserializeOwned,
 {
-    pub fn new(
-        topic: String,
-        slot: usize,
-        source: M,
-        publisher: Publisher,
-        processor: Proc,
-    ) -> Self {
+    pub fn new(source: M, publisher: Publisher, processor: Proc) -> Self {
         Self {
-            topic,
-            slot,
             source: Some(source),
             processor: Some(processor),
             publisher: Some(publisher),
@@ -98,8 +88,6 @@ where
         let publisher = self.publisher.take().expect("worker already running");
         let processor = self.processor.take().expect("worker already running");
         let shutdown = self.shutdown.clone();
-        let topic = self.topic.clone();
-        let slot = self.slot;
         self.thread = Some(std::thread::spawn(move || {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -124,17 +112,13 @@ where
                                 if let Err(error) = runtime
                                     .block_on(source.commit(message.partition, message.offset))
                                 {
-                                    log::error!(
-                                        "offset commit failed: topic={topic} slot={slot}: {error}"
-                                    );
+                                    log::error!("offset commit failed: {error}");
                                 }
                             }
-                            Err(error) => log::error!(
-                                "message handling failed: topic={topic} slot={slot}: {error}"
-                            ),
+                            Err(error) => log::error!("message handling failed: {error}"),
                         }
                     }
-                    Err(error) => log::error!("consumer error: topic={topic} slot={slot}: {error}"),
+                    Err(error) => log::error!("consumer error: {error}"),
                 }
             }
         }));
