@@ -36,6 +36,7 @@ impl<'a> FileReferenceReader<'a> {
         Self {
             ingestor,
             supported_formats: vec![
+                "HTML".to_string(),
                 "DOCX".to_string(),
                 "MAP".to_string(),
                 "PDF".to_string(),
@@ -97,7 +98,10 @@ mod tests {
         let ingestor = S3DocumentIngestor::new(S3Settings::default()).expect("valid S3 settings");
         let reader = FileReferenceReader::new(&ingestor);
 
-        assert_eq!(reader.supported_formats(), &["DOCX", "MAP", "PDF", "TAB"]);
+        assert_eq!(
+            reader.supported_formats(),
+            &["HTML", "DOCX", "MAP", "PDF", "TAB"]
+        );
     }
 
     #[test]
