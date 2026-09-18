@@ -14,6 +14,7 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
+#[derive(Clone)]
 pub struct CkanResource {
     pub id: String,
     pub package_id: String,

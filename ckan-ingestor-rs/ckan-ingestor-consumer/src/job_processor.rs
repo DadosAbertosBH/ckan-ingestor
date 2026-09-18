@@ -23,7 +23,7 @@ use ckan_ingestor_lib::readers::datapackage_reader::DatapackageReader;
 use ckan_ingestor_lib::readers::datastore_reader::DatastoreReader;
 use ckan_ingestor_lib::readers::file_reference_reader::FileReferenceReader;
 use ckan_ingestor_lib::readers::json_reader::JsonReader;
-use ckan_ingestor_lib::readers::multiple_reader::MultipleReader;
+use ckan_ingestor_lib::readers::multiple_reader::{HttpFormatResolver, MultipleReader};
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
 use futures::Stream;
 use reqwest::blocking::Client;
@@ -215,9 +215,10 @@ fn run_conversion(
             job.csv_delimiter.clone(),
         )),
         Box::new(DatapackageReader::with_client(http_client.clone())),
-        Box::new(JsonReader::with_client(http_client)),
+        Box::new(JsonReader::with_client(http_client.clone())),
         Box::new(FileReferenceReader::new(s3)),
-    ]);
+    ])
+    .with_format_resolver(HttpFormatResolver::new(http_client));
     match reader.read(&resource) {
         Ok(result) => {
             let artifact =

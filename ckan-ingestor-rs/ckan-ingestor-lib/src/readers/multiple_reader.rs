@@ -17,12 +17,109 @@
 use crate::ckan_resource::CkanResource;
 use crate::readers::ckan_reader::{CkanReader, FailedResult, HttpStatusError, ReadResult};
 use log::info;
+use reqwest::blocking::Client;
+use reqwest::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
+
+/// Infers the format of a CKAN resource that has an empty `format` field.
+///
+/// Implementations inspect the remote resource (for example through an HTTP
+/// header request) and return the CKAN format token readers understand.
+pub trait FormatResolver {
+    fn resolve(&self, resource: &CkanResource) -> Option<String>;
+}
+
+/// Resolves a missing format by issuing a `HEAD` request and inferring the
+/// format from the response headers.
+pub struct HttpFormatResolver {
+    client: Client,
+}
+
+impl HttpFormatResolver {
+    pub fn new(client: Client) -> Self {
+        Self { client }
+    }
+}
+
+impl FormatResolver for HttpFormatResolver {
+    fn resolve(&self, resource: &CkanResource) -> Option<String> {
+        let response = self.client.head(&resource.url).send().ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let headers = response.headers();
+        let content_type = headers
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok());
+        let content_disposition = headers
+            .get(CONTENT_DISPOSITION)
+            .and_then(|value| value.to_str().ok());
+        infer_format(content_type, content_disposition)
+    }
+}
+
+/// Infers a CKAN format from the HTTP response headers of a resource.
+///
+/// The `Content-Type` header drives the match. When it is generic or missing
+/// (for example `application/octet-stream`), the filename in
+/// `Content-Disposition` provides the extension used instead.
+pub fn infer_format(
+    content_type: Option<&str>,
+    content_disposition: Option<&str>,
+) -> Option<String> {
+    content_type
+        .and_then(format_from_content_type)
+        .or_else(|| content_disposition.and_then(format_from_content_disposition))
+}
+
+fn format_from_content_type(content_type: &str) -> Option<String> {
+    let mime = content_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    let format = match mime.as_str() {
+        "text/csv" | "application/csv" | "application/x-csv" => "CSV",
+        "text/tab-separated-values" => "TAB",
+        "application/json" | "text/json" | "application/geo+json" | "application/ld+json" => "JSON",
+        "text/html" | "application/xhtml+xml" => "HTML",
+        "application/pdf" => "PDF",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => "DOCX",
+        _ => return None,
+    };
+    Some(format.to_string())
+}
+
+fn format_from_content_disposition(content_disposition: &str) -> Option<String> {
+    let filename = content_disposition.split(';').find_map(|part| {
+        let (name, value) = part.trim().split_once('=')?;
+        name.trim()
+            .eq_ignore_ascii_case("filename")
+            .then(|| value.trim().trim_matches('"'))
+    })?;
+    format_from_extension(filename)
+}
+
+fn format_from_extension(filename: &str) -> Option<String> {
+    let extension = filename.rsplit_once('.')?.1.to_ascii_lowercase();
+    let format = match extension.as_str() {
+        "csv" => "CSV",
+        "tsv" | "tab" => "TAB",
+        "json" | "geojson" => "JSON",
+        "html" | "htm" => "HTML",
+        "pdf" => "PDF",
+        "docx" => "DOCX",
+        _ => return None,
+    };
+    Some(format.to_string())
+}
 
 /// Aggregate multiple types of a readers
 /// into a single struct
 pub struct MultipleReader<'a> {
     readers: Vec<Box<dyn CkanReader + 'a>>,
     supported_formarts: Vec<String>,
+    format_resolver: Option<Box<dyn FormatResolver + 'a>>,
 }
 
 impl<'a> MultipleReader<'a> {
@@ -36,7 +133,29 @@ impl<'a> MultipleReader<'a> {
         Self {
             readers,
             supported_formarts,
+            format_resolver: None,
         }
+    }
+
+    /// Sets the resolver used to infer the format when CKAN leaves it empty.
+    pub fn with_format_resolver(mut self, resolver: impl FormatResolver + 'a) -> Self {
+        self.format_resolver = Some(Box::new(resolver));
+        self
+    }
+
+    fn resolved_resource(&self, resource: &CkanResource) -> Option<CkanResource> {
+        if !resource.format.trim().is_empty() {
+            return None;
+        }
+        let format = self.format_resolver.as_ref()?.resolve(resource)?;
+        info!(
+            "Inferred format {} for CKAN resource {} from its HTTP headers",
+            format, resource.id
+        );
+        Some(CkanResource {
+            format,
+            ..resource.clone()
+        })
     }
 }
 
@@ -46,6 +165,8 @@ impl CkanReader for MultipleReader<'_> {
     }
 
     fn do_read(&self, resource: &CkanResource) -> ReadResult {
+        let resolved = self.resolved_resource(resource);
+        let resource = resolved.as_ref().unwrap_or(resource);
         let mut last_failure = None;
         for reader in &self.readers {
             if !reader.can_read(resource) {
@@ -212,6 +333,39 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
+    struct FakeResolver {
+        format: Option<String>,
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl FakeResolver {
+        fn returning(format: &str) -> Self {
+            Self {
+                format: Some(format.to_string()),
+                calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            }
+        }
+
+        fn unable_to_resolve() -> Self {
+            Self {
+                format: None,
+                calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            }
+        }
+
+        fn calls(&self) -> usize {
+            self.calls.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    impl FormatResolver for FakeResolver {
+        fn resolve(&self, _resource: &CkanResource) -> Option<String> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.format.clone()
+        }
+    }
+
     fn resource(format: &str) -> CkanResource {
         CkanResource {
             id: "resource-id".to_string(),
@@ -314,5 +468,97 @@ mod tests {
 
         assert!(is_not_found(&not_found));
         assert!(!is_not_found(&other));
+    }
+
+    #[test]
+    fn infers_the_format_from_the_content_type() {
+        assert_eq!(infer_format(Some("text/csv"), None).as_deref(), Some("CSV"));
+        assert_eq!(
+            infer_format(Some("application/json; charset=utf-8"), None).as_deref(),
+            Some("JSON")
+        );
+        assert_eq!(
+            infer_format(Some("application/geo+json"), None).as_deref(),
+            Some("JSON")
+        );
+        assert_eq!(
+            infer_format(Some("text/tab-separated-values"), None).as_deref(),
+            Some("TAB")
+        );
+        assert_eq!(
+            infer_format(Some("text/html"), None).as_deref(),
+            Some("HTML")
+        );
+        assert_eq!(
+            infer_format(Some("application/pdf"), None).as_deref(),
+            Some("PDF")
+        );
+        assert_eq!(
+            infer_format(
+                Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+                None
+            )
+            .as_deref(),
+            Some("DOCX")
+        );
+    }
+
+    #[test]
+    fn falls_back_to_the_content_disposition_filename() {
+        assert_eq!(
+            infer_format(
+                Some("application/octet-stream"),
+                Some("attachment; filename=\"data.csv\"")
+            )
+            .as_deref(),
+            Some("CSV")
+        );
+        assert_eq!(
+            infer_format(None, Some("attachment; filename=report.pdf")).as_deref(),
+            Some("PDF")
+        );
+    }
+
+    #[test]
+    fn returns_no_format_when_the_headers_are_inconclusive() {
+        assert!(infer_format(Some("application/octet-stream"), None).is_none());
+        assert!(infer_format(None, None).is_none());
+        assert!(infer_format(
+            Some("application/octet-stream"),
+            Some("attachment; filename=\"data.bin\"")
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn infers_the_format_when_the_resource_format_is_empty() {
+        let reader = MultipleReader::new(vec![Box::new(TestReader::with_data(&["CSV"]))])
+            .with_format_resolver(FakeResolver::returning("CSV"));
+
+        assert!(reader.read(&resource("")).is_ok());
+    }
+
+    #[test]
+    fn leaves_the_resource_format_untouched_when_it_is_present() {
+        let resolver = FakeResolver::returning("PDF");
+        let reader = MultipleReader::new(vec![Box::new(TestReader::with_data(&["CSV"]))])
+            .with_format_resolver(resolver.clone());
+
+        assert!(reader.read(&resource("CSV")).is_ok());
+        assert_eq!(resolver.calls(), 0);
+    }
+
+    #[test]
+    fn reports_an_unsupported_format_when_the_resolver_finds_none() {
+        let reader = MultipleReader::new(vec![Box::new(TestReader::with_data(&["CSV"]))])
+            .with_format_resolver(FakeResolver::unable_to_resolve());
+
+        match reader.read(&resource("")) {
+            Err(error) => assert!(
+                error.to_string().contains("unsupported format"),
+                "unexpected error: {error}"
+            ),
+            Ok(_) => panic!("an unresolved empty format must be reported as unsupported"),
+        }
     }
 }
