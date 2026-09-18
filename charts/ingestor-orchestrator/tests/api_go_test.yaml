@@ -1,12 +1,20 @@
-suite: Hybrid Python and Go API deployment
+suite: Go API deployment
 templates:
   - deployment-api.yaml
   - service.yaml
   - configmap.yaml
 tests:
-  - it: exposes both API runtimes from the same image
+  - it: exposes one Go API and runs Go migrations
     asserts:
-      - contains:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: go-migrate
+        template: deployment-api.yaml
+      - equal:
+          path: spec.template.spec.initContainers[0].args[0]
+          value: migrate
+        template: deployment-api.yaml
+      - notContains:
           path: spec.template.spec.containers[0].ports
           content:
             name: go-http
@@ -16,7 +24,7 @@ tests:
       - notExists:
           path: spec.template.spec.containers[0].command
         template: deployment-api.yaml
-      - contains:
+      - notContains:
           path: spec.ports
           content:
             port: 8081
@@ -24,7 +32,6 @@ tests:
             protocol: TCP
             name: go-http
         template: service.yaml
-      - equal:
+      - notExists:
           path: data.INGEST_ORCH_GO_API_URL
-          value: "http://127.0.0.1:8081"
         template: configmap.yaml

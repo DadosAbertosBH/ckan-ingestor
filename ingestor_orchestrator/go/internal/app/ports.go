@@ -44,6 +44,21 @@ type Store interface {
 	Ping(context.Context) error
 }
 
+type QueryStore interface {
+	ListInstances(context.Context) ([]Instance, error)
+	GetInstance(context.Context, string) (*Instance, error)
+	CreateInstance(context.Context, *Instance) error
+	DeleteInstance(context.Context, string) error
+	ListJobs(context.Context, JobQuery) ([]JobView, error)
+	GetJob(context.Context, string) (*JobView, error)
+	ListResources(context.Context, ResourceQuery) ([]ResourceView, error)
+	GetResource(context.Context, string) (*ResourceView, error)
+	ListDatasets(context.Context, ResourceQuery) ([]DatasetView, error)
+	Dashboard(context.Context) ([]InstanceStats, error)
+	ListSyncs(context.Context, SyncQuery) ([]MetadataSync, error)
+	GetSync(context.Context, string) (*MetadataSync, error)
+}
+
 type Publisher interface {
 	Publish(context.Context, string, []byte, string) (Routing, error)
 }

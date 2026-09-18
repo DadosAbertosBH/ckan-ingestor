@@ -25,7 +25,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("INGEST_ORCH_MYSQL_PASSWORD", "")
 	cfg := Load()
 
-	if cfg.HTTPAddress != ":8081" {
+	if cfg.HTTPAddress != ":8000" {
 		t.Fatalf("HTTPAddress = %q", cfg.HTTPAddress)
 	}
 	if cfg.IggyAddress != "localhost:8090" {

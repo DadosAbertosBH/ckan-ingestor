@@ -57,18 +57,18 @@ type Job struct {
 }
 
 type JobResult struct {
-	ID             string
-	JobID          string
-	Success        bool
-	Status         JobStatus
-	ErrorMessage   *string
-	ErrorTrace     *string
-	DatasetPreview json.RawMessage
-	RowsProcessed  *int64
-	ExpectedRows   *int64
-	ResourceSize   *int64
-	Encoding       *string
-	CreatedAt      time.Time
+	ID             string          `json:"id"`
+	JobID          string          `json:"job_id"`
+	Success        bool            `json:"success"`
+	Status         JobStatus       `json:"status"`
+	ErrorMessage   *string         `json:"error_message"`
+	ErrorTrace     *string         `json:"error_trace"`
+	DatasetPreview json.RawMessage `json:"dataset_preview"`
+	RowsProcessed  *int64          `json:"rows_processed"`
+	ExpectedRows   *int64          `json:"expected_rows"`
+	ResourceSize   *int64          `json:"resource_size"`
+	Encoding       *string         `json:"encoding"`
+	CreatedAt      time.Time       `json:"created_at"`
 }
 
 type LatestResource struct {
@@ -93,28 +93,31 @@ type TerminalState struct {
 }
 
 type Instance struct {
-	ID                 string
-	Name               string
-	URL                string
-	DatasetCount       int64
-	ResourceCount      int64
-	LastMetadataSynced *time.Time
+	ID                 string     `json:"id"`
+	Name               string     `json:"name"`
+	URL                string     `json:"url"`
+	DatasetCount       int64      `json:"dataset_count"`
+	ResourceCount      int64      `json:"resource_count"`
+	LastMetadataSynced *time.Time `json:"last_metadata_synced"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
 type MetadataSync struct {
-	ID               string
-	InstanceID       string
-	StartTime        time.Time
-	EndTime          *time.Time
-	Status           string
-	ErrorMessage     *string
-	TotalPackages    int64
-	NewDatasets      int64
-	NewResources     int64
-	UpdatedDatasets  int64
-	UpdatedResources int64
-	DeletedDatasets  int64
-	DeletedResources int64
+	ID               string     `json:"id"`
+	InstanceID       string     `json:"instance_id"`
+	InstanceName     *string    `json:"instance_name"`
+	StartTime        time.Time  `json:"start_time"`
+	EndTime          *time.Time `json:"end_time"`
+	Status           string     `json:"status"`
+	ErrorMessage     *string    `json:"error_message"`
+	TotalPackages    int64      `json:"total_packages"`
+	NewDatasets      int64      `json:"new_datasets"`
+	NewResources     int64      `json:"new_resources"`
+	UpdatedDatasets  int64      `json:"updated_datasets"`
+	UpdatedResources int64      `json:"updated_resources"`
+	DeletedDatasets  int64      `json:"deleted_datasets"`
+	DeletedResources int64      `json:"deleted_resources"`
 }
 
 type JobResultMessage struct {
@@ -164,4 +167,72 @@ type Routing struct {
 	Topic      string `json:"topic"`
 	Partition  int    `json:"partition"`
 	Offset     *int64 `json:"offset"`
+}
+
+type JobQuery struct {
+	Status, ResourceID, InstanceID, Tags, OrderBy, OrderDir string
+	Limit, Offset                                           int
+}
+
+type ResourceQuery struct {
+	Status, InstanceID, Search string
+	Limit, Offset              int
+}
+
+type SyncQuery struct {
+	InstanceID    string
+	Limit, Offset int
+}
+
+type JobView struct {
+	Job
+	CKANResourceURL string       `json:"ckan_resource_url"`
+	Labels          []string     `json:"labels"`
+	Results         *[]JobResult `json:"results,omitempty"`
+}
+
+type ResourceView struct {
+	ResourceID      string    `json:"resource_id"`
+	DatasetName     string    `json:"dataset_name"`
+	Status          string    `json:"status"`
+	InstanceID      string    `json:"instance_id"`
+	CKANResourceURL string    `json:"ckan_resource_url"`
+	ResourceName    *string   `json:"resource_name"`
+	ResourceURL     *string   `json:"resource_url"`
+	ResourceFormat  *string   `json:"resource_format"`
+	Labels          []string  `json:"labels"`
+	JobCount        int64     `json:"job_count"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+	LatestJob       *JobView  `json:"latest_job,omitempty"`
+	Jobs            []JobView `json:"jobs,omitempty"`
+	Preview         any       `json:"preview,omitempty"`
+}
+
+type DatasetView struct {
+	InstanceID           string     `json:"instance_id"`
+	InstanceName         *string    `json:"instance_name"`
+	DatasetName          string     `json:"dataset_name"`
+	CKANDatasetURL       string     `json:"ckan_dataset_url"`
+	TotalResources       int64      `json:"total_resources"`
+	PendingResources     int64      `json:"pending_resources"`
+	ProcessingResources  int64      `json:"processing_resources"`
+	CompletedResources   int64      `json:"completed_resources"`
+	FailedResources      int64      `json:"failed_resources"`
+	OutdatedResources    int64      `json:"outdated_resources"`
+	DeletedResources     int64      `json:"deleted_resources"`
+	EmptyResources       int64      `json:"empty_resources"`
+	UpdatedAt            *time.Time `json:"updated_at"`
+	InstanceLastSyncedAt *time.Time `json:"instance_last_synced_at"`
+}
+
+type InstanceStats struct {
+	Instance   Instance `json:"instance"`
+	Pending    int64    `json:"pending"`
+	Processing int64    `json:"processing"`
+	Completed  int64    `json:"completed"`
+	Failed     int64    `json:"failed"`
+	Deleted    int64    `json:"deleted"`
+	Outdated   int64    `json:"outdated"`
+	Empty      int64    `json:"empty"`
 }

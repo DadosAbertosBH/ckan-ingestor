@@ -17,10 +17,6 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
-    - port: {{ .Values.api.service.goPort }}
-      targetPort: go-http
-      protocol: TCP
-      name: go-http
   selector:
     {{- include "ingestor-orchestrator.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: api

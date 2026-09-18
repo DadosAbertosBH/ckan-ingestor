@@ -26,7 +26,6 @@ api:
   service:
     type: ClusterIP
     port: 8000
-    goPort: 8081
   # -- Health check configuration
   livenessProbe:
     httpGet:

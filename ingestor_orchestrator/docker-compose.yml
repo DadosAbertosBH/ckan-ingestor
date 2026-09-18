@@ -128,8 +128,7 @@ services:
       INGEST_ORCH_MYSQL_USER: root
       INGEST_ORCH_MYSQL_PASSWORD: ${INGEST_ORCH_MYSQL_PASSWORD:-ckan_orch_pass}
       INGEST_ORCH_MYSQL_DATABASE: ${INGEST_ORCH_MYSQL_DATABASE:-ingestor_orchestrator}
-    entrypoint: ["alembic"]
-    command: ["-c", "ingestor_orchestrator/backend/alembic.ini", "upgrade", "head"]
+    command: ["migrate"]
     networks:
       - orchestrator_net
 
@@ -139,7 +138,6 @@ services:
       dockerfile: ingestor_orchestrator/Dockerfile
     ports:
       - "8000:8000"
-      - "8081:8081"
     deploy:
       resources:
         limits:

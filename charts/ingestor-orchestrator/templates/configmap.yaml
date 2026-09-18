@@ -9,7 +9,6 @@ data:
   INGEST_ORCH_MYSQL_PORT: {{ .Values.mysql.port | quote }}
   INGEST_ORCH_MYSQL_USER: {{ .Values.mysql.user | quote }}
   INGEST_ORCH_MYSQL_DATABASE: {{ .Values.mysql.database | quote }}
-  INGEST_ORCH_GO_API_URL: "http://127.0.0.1:8081"
   INGEST_ORCH_IGGY_ADDRESS: {{ .Values.iggy.address | quote }}
   INGEST_ORCH_IGGY_USERNAME: {{ .Values.iggy.username | quote }}
   INGEST_ORCH_IGGY_STREAM: {{ .Values.iggy.stream | quote }}

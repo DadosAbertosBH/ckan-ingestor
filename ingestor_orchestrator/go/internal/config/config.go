@@ -25,6 +25,7 @@ import (
 
 type Config struct {
 	HTTPAddress         string
+	StaticDir           string
 	MySQLDSN            string
 	IggyAddress         string
 	IggyUsername        string
@@ -53,7 +54,8 @@ func Load() Config {
 	database := env("INGEST_ORCH_MYSQL_DATABASE", "ingestor_orchestrator")
 
 	return Config{
-		HTTPAddress:         env("INGEST_ORCH_GO_ADDRESS", ":8081"),
+		HTTPAddress:         env("INGEST_ORCH_GO_ADDRESS", ":8000"),
+		StaticDir:           env("INGEST_ORCH_STATIC_DIR", "/app/frontend"),
 		MySQLDSN:            fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&loc=UTC", user, password, host, port, database),
 		IggyAddress:         env("INGEST_ORCH_IGGY_ADDRESS", "localhost:8090"),
 		IggyUsername:        env("INGEST_ORCH_IGGY_USERNAME", "iggy"),

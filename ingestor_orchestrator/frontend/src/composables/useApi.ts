@@ -11,7 +11,6 @@ import type {
 } from "@/types";
 
 const API_BASE = "/api";
-const GO_API_BASE = `${window.location.protocol}//${window.location.hostname}:8081/api`;
 
 async function requestFrom<T>(
   base: string,
@@ -34,8 +33,6 @@ async function requestFrom<T>(
 
 const request = <T>(path: string, options?: RequestInit) =>
   requestFrom<T>(API_BASE, path, options);
-const requestGo = <T>(path: string, options?: RequestInit) =>
-  requestFrom<T>(GO_API_BASE, path, options);
 
 export function useApi() {
   const loading = ref(false);
@@ -67,12 +64,10 @@ export function useApi() {
   };
   const fetchJob = (id: string) => request<Job>(`/jobs/${id}`);
   const retryJob = (id: string) =>
-    requestGo<Job>(`/jobs/${id}/retry`, { method: "POST" });
-  const deleteJob = (id: string) =>
-    request<void>(`/jobs/${id}`, { method: "DELETE" });
+    request<Job>(`/jobs/${id}/retry`, { method: "POST" });
   const syncMetadata = (instanceId?: string) => {
     const path = instanceId ? `/metadata/sync/${instanceId}` : "/metadata/sync";
-    return requestGo<Record<string, unknown>>(path, { method: "POST" });
+    return request<Record<string, unknown>>(path, { method: "POST" });
   };
   const fetchResources = (params?: {
     status?: JobStatus;
@@ -128,7 +123,6 @@ export function useApi() {
     fetchJobs,
     fetchJob,
     retryJob,
-    deleteJob,
     syncMetadata,
     fetchResources,
     fetchResource,

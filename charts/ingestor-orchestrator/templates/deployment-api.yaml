@@ -29,11 +29,11 @@ spec:
             value: "0"
         {{- end }}
       initContainers:
-        - name: alembic-migrate
+        - name: go-migrate
           image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "api") }}
           imagePullPolicy: {{ .Values.api.image.pullPolicy | default .Values.global.image.pullPolicy }}
-          command:
-            ["python", "-m", "alembic", "-c", "/app/ingestor_orchestrator/backend/alembic.ini", "upgrade", "head"]
+          command: ["/usr/local/bin/orchestrator-go"]
+          args: ["migrate"]
           envFrom:
             - configMapRef:
                 name: {{ include "ingestor-orchestrator.fullname" . }}
@@ -51,9 +51,6 @@ spec:
           ports:
             - name: http
               containerPort: 8000
-              protocol: TCP
-            - name: go-http
-              containerPort: 8081
               protocol: TCP
           envFrom:
             - configMapRef:

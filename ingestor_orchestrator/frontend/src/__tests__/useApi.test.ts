@@ -116,7 +116,7 @@ describe("useApi — success cases", () => {
     const data = await syncMetadata("inst-1");
     expect(data).toEqual(result);
     expect(fn).toHaveBeenCalledWith(
-      `${window.location.protocol}//${window.location.hostname}:8081/api/metadata/sync/inst-1`,
+      "/api/metadata/sync/inst-1",
       {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -130,7 +130,7 @@ describe("useApi — success cases", () => {
     const { syncMetadata } = useApi();
     await syncMetadata();
     expect(fn).toHaveBeenCalledWith(
-      `${window.location.protocol}//${window.location.hostname}:8081/api/metadata/sync`,
+      "/api/metadata/sync",
       {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -138,14 +138,14 @@ describe("useApi — success cases", () => {
     );
   });
 
-  it("retryJob calls the Go API directly", async () => {
+  it("retryJob uses the same-origin API", async () => {
     const fn = mockFetch({ ok: true, body: { id: "retry-1" } });
 
     const { retryJob } = useApi();
     await retryJob("failed-1");
 
     expect(fn).toHaveBeenCalledWith(
-      `${window.location.protocol}//${window.location.hostname}:8081/api/jobs/failed-1/retry`,
+      "/api/jobs/failed-1/retry",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -213,33 +213,6 @@ describe("useApi — error handling", () => {
     const { fetchInstanceStats } = useApi();
     await expect(fetchInstanceStats()).rejects.toThrow(
       "Database connection failed",
-    );
-  });
-
-  it("deleteJob returns null on 204", async () => {
-    const fn = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 204,
-      statusText: "No Content",
-    });
-    vi.stubGlobal("fetch", fn);
-
-    const { deleteJob } = useApi();
-    const result = await deleteJob("1");
-    expect(result).toBeNull();
-  });
-
-  it("deleteJob throws on 409 conflict", async () => {
-    mockFetch({
-      ok: false,
-      status: 409,
-      statusText: "Conflict",
-      body: { detail: "Can only delete pending or failed jobs" },
-    });
-
-    const { deleteJob } = useApi();
-    await expect(deleteJob("1")).rejects.toThrow(
-      "Can only delete pending or failed jobs",
     );
   });
 

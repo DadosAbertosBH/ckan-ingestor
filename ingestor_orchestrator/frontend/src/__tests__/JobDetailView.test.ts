@@ -6,13 +6,11 @@ import type { Job } from "@/types";
 
 const mockFetchJob = vi.fn();
 const mockRetryJob = vi.fn();
-const mockDeleteJob = vi.fn();
 
 vi.mock("@/composables/useApi", () => ({
   useApi: () => ({
     fetchJob: mockFetchJob,
     retryJob: mockRetryJob,
-    deleteJob: mockDeleteJob,
   }),
 }));
 
