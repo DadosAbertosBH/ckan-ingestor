@@ -55,6 +55,10 @@ RUN cargo chef cook --release --recipe-path recipe.json
 # The production image only needs the application sources. Keeping tests,
 # fixtures, and local metadata out of this COPY preserves the build cache.
 COPY ckan-ingestor-lib/src/ ckan-ingestor-lib/src/
+# `build.rs` compiles `src/gtfs-realtime.proto` into a descriptor written to
+# `OUT_DIR`, which `src/readers/gtfs_realtime.rs` includes at compile time. It
+# lives outside `src/`, so it needs its own COPY.
+COPY ckan-ingestor-lib/build.rs ckan-ingestor-lib/build.rs
 COPY ckan-ingestor-worker-lib/src/ ckan-ingestor-worker-lib/src/
 COPY message-processor/src/ message-processor/src/
 COPY iggy-processor/src/ iggy-processor/src/

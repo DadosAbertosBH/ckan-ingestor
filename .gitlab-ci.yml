@@ -250,12 +250,12 @@ build-orchestrator:
   rules:
     - if: $CI_COMMIT_TAG
 
-build-worker-amd64:
-  extends: .build-worker-base
-  variables:
-    TARGET_ARCH: amd64
-  tags:
-    - saas-linux-medium-amd64
+# build-worker-amd64:
+#   extends: .build-worker-base
+#   variables:
+#     TARGET_ARCH: amd64
+#   tags:
+#     - saas-linux-medium-amd64
 
 build-worker-arm64:
   extends: .build-worker-base
@@ -268,14 +268,14 @@ build-worker:
   stage: build
   timeout: 2h
   needs:
-    - build-worker-amd64
+    # - build-worker-amd64
     - build-worker-arm64
   script:
     - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
     - docker context create builder
     - docker buildx create builder --use
     - |
-      AMD64="$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA-amd64"
+      # AMD64="$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA-amd64"
       ARM64="$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA-arm64"
       docker buildx imagetools create \
         --tag "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA" \
@@ -286,21 +286,21 @@ build-worker:
       if [ -n "$CI_COMMIT_TAG" ]; then
         docker buildx imagetools create \
           --tag "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_TAG" \
-          "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA-amd64" \
+          # "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA-amd64" \
           "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA-arm64"
       fi
   rules:
     - if: $CI_COMMIT_TAG
 
-build-worker-coordinator-amd64:
-  extends: .build-worker-base
-  variables:
-    TARGET_ARCH: amd64
-    WORKER_IMAGE: worker-coordinator
-    WORKER_PACKAGE: ckan_worker_coordinator
-    WORKER_BINARY: ckan-worker-coordinator
-  tags:
-    - saas-linux-medium-amd64
+# build-worker-coordinator-amd64:
+#   extends: .build-worker-base
+#   variables:
+#     TARGET_ARCH: amd64
+#     WORKER_IMAGE: worker-coordinator
+#     WORKER_PACKAGE: ckan_worker_coordinator
+#     WORKER_BINARY: ckan-worker-coordinator
+#   tags:
+#     - saas-linux-medium-amd64
 
 build-worker-coordinator-arm64:
   extends: .build-worker-base
@@ -316,14 +316,14 @@ build-worker-coordinator:
   stage: build
   timeout: 2h
   needs:
-    - build-worker-coordinator-amd64
+    # - build-worker-coordinator-amd64
     - build-worker-coordinator-arm64
   script:
     - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
     - docker context create builder
     - docker buildx create builder --use
     - |
-      AMD64="$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-amd64"
+      # AMD64="$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-amd64"
       ARM64="$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-arm64"
       docker buildx imagetools create \
         --tag "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA" \
@@ -334,7 +334,7 @@ build-worker-coordinator:
       if [ -n "$CI_COMMIT_TAG" ]; then
         docker buildx imagetools create \
           --tag "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_TAG" \
-          "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-amd64" \
+          # "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-amd64" \
           "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-arm64"
       fi
   rules:
