@@ -8,6 +8,14 @@ RUN npm ci
 COPY ingestor_orchestrator/frontend/ ./
 RUN npx vite build
 
+# --- Go API, Iggy consumers, and scheduler ---
+FROM golang:1.26-bookworm AS go-builder
+WORKDIR /src
+COPY ingestor_orchestrator/go/go.mod ingestor_orchestrator/go/go.sum ./
+RUN go mod download
+COPY ingestor_orchestrator/go/ ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/orchestrator-go ./cmd/orchestrator
+
 # --- Python backend ---
 FROM python:3.13-slim
 
@@ -15,6 +23,7 @@ WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/bin/uv
 COPY --from=frontend-builder /src/dist /app/frontend
+COPY --from=go-builder /out/orchestrator-go /usr/local/bin/orchestrator-go
 
 # Copy only dependency manifests first — layers stay cached when code changes
 COPY ingestor_orchestrator/backend/pyproject.toml /app/ingestor_orchestrator/backend/
@@ -28,10 +37,13 @@ RUN uv pip install --system /app/ingestor_orchestrator/backend/
 
 # Now copy the actual source code (fast, only this layer is rebuilt on code changes)
 COPY ingestor_orchestrator/backend/ /app/ingestor_orchestrator/backend/
+COPY ingestor_orchestrator/entrypoint.sh /usr/local/bin/orchestrator-entrypoint
+RUN chmod +x /usr/local/bin/orchestrator-entrypoint
 
 # Ensure the real source is used, not the stale placeholder from pip install
 ENV PYTHONPATH=/app/ingestor_orchestrator/backend
 
-EXPOSE 8000
+EXPOSE 8000 8081
 
+ENTRYPOINT ["/usr/local/bin/orchestrator-entrypoint"]
 CMD ["uvicorn", "ingestor_orchestrator.main:app", "--host", "0.0.0.0", "--port", "8000"]

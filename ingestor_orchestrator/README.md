@@ -1,27 +1,28 @@
 # CKAN Orchestrator
 
-Substituto leve do Dagster para orquestração de ingestão de dados do portal CKAN.
+Serviço composto para orquestração de ingestão de dados do portal CKAN. A API
+FastAPI mantém as consultas; o binário Go é responsável por toda comunicação
+com Apache Iggy, operações de escrita, scheduler e consumo de resultados.
 
 ## Arquitetura
 
 ```mermaid
 graph TD
-    A[Vue.js Frontend]:::accent0 -->|HTTP| B[FastAPI API]:::accent1
-    C[Scheduler]:::accent2 -->|enfileira jobs| D[NATS JetStream]:::accent3
-    B -->|enfileira jobs| D
-    D -->|consome jobs| E[Worker]:::accent4
-    E -->|ingere dados via ckan_ingestor| F[DuckLake / RustFS]:::accent5
-    E -->|atualiza estado| G[MySQL]:::accent6
+    A[Vue.js Frontend]:::accent0 -->|consultas| B[FastAPI API]:::accent1
+    A -->|retry e sync :8081| C[Serviço Go]:::accent2
+    C -->|Apache Iggy| D[Workers Rust]:::accent3
+    D -->|resultados Iggy| C
+    C -->|atualiza estado| G[MySQL]:::accent6
     B -->|consulta estado| G
 ```
 
 | Componente | Tecnologia | Descrição |
 |---|---|---|
-| **API** | FastAPI | Endpoints REST para disparar e monitorar jobs de ingestão |
-| **Worker** | NATS consumer | Consome mensagens da fila e executa a ingestão via `ckan_ingestor` |
-| **Scheduler** | asyncio loop | Detecta recursos desatualizados no DuckLake e enfileira jobs (substitui o sensor Dagster) |
+| **API** | FastAPI | Endpoints REST de leitura e monitoramento |
+| **Orquestração** | Go + Apache Iggy | Retry, sync de metadados, scheduler e consumo idempotente de resultados |
+| **Worker** | Rust + Iggy | Consome mensagens da fila e executa a ingestão |
 | **Frontend** | Vue.js 3 + TypeScript | Dashboard para visualizar e gerenciar jobs |
-| **NATS** | JetStream | Fila de mensagens persistente para comunicação assíncrona |
+| **Iggy** | Apache Iggy | Fila de mensagens persistente para comunicação assíncrona |
 | **MySQL** | 8.0 | Armazena estado dos jobs via SQLAlchemy async |
 
 ## Como rodar com Docker
@@ -38,15 +39,18 @@ docker compose up -d
 docker compose --profile dev up -d
 ```
 
-A API estará disponível em `http://localhost:8000`. A documentação interativa em `http://localhost:8000/docs`.
+A API estará disponível em `http://localhost:8000`, a API Go de escrita em
+`http://localhost:8081`, e a documentação interativa em
+`http://localhost:8000/docs`.
 
 ## Como rodar sem Docker
 
 ### Pré-requisitos
 
-- Python 3.11+
+- Python 3.13+
+- Go 1.26+
 - MySQL 8.0
-- NATS Server com JetStream
+- Apache Iggy 0.8+
 
 ### Instalação
 
@@ -66,15 +70,12 @@ uv pip install -e .
 ### Executar
 
 ```bash
-# API
-orchestrator-api
-# ou: uvicorn ingestor_orchestrator.main:app --host 0.0.0.0 --port 8000
+# API de leitura
+uvicorn ingestor_orchestrator.main:app --host 0.0.0.0 --port 8000
 
-# Worker
-orchestrator-worker
-
-# Scheduler
-orchestrator-scheduler
+# Serviço Go: Iggy, escrita, scheduler e resultados
+cd ../go
+go run ./cmd/orchestrator
 
 # Frontend (dev)
 cd ../frontend
@@ -90,7 +91,8 @@ npm run dev
 | `GET` | `/api/dashboard/stats` | Estatísticas do dashboard |
 | `GET` | `/api/jobs` | Lista jobs (filtros: `status`, `resource_id`, `limit`, `offset`) |
 | `GET` | `/api/jobs/{id}` | Detalhe do job com resultados |
-| `POST` | `/api/jobs/{id}/retry` | Retry de um job com falha |
+| `POST` | `http://localhost:8081/api/jobs/{id}/retry` | Retry de um job com falha |
+| `POST` | `http://localhost:8081/api/metadata/sync[/{instance_id}]` | Dispara sincronização de metadados |
 | `DELETE` | `/api/jobs/{id}` | Remove um job pending ou failed |
 
 ## Modelo de Dados
@@ -125,7 +127,7 @@ npm run dev
 
 ## Idempotência
 
-O coordinator Rust publica os jobs e o backend Python os persiste a partir de
+O coordinator Rust publica os jobs e o serviço Go os persiste a partir de
 eventos `PENDING`:
 
 1. O mesmo `job_id` é idempotente e mantém o registro existente.
@@ -145,10 +147,9 @@ Todas as variáveis de ambiente usam o prefixo `INGEST_ORCH_`.
 | `INGEST_ORCH_MYSQL_USER` | `root` | Usuário do MySQL |
 | `INGEST_ORCH_MYSQL_PASSWORD` | (vazio) | Senha do MySQL |
 | `INGEST_ORCH_MYSQL_DATABASE` | `ingestor_orchestrator` | Database do MySQL |
-| `INGEST_ORCH_NATS_URL` | `nats://localhost:4222` | URL do NATS |
-| `INGEST_ORCH_NATS_STREAM` | `CKAN_INGEST` | Nome do stream JetStream |
-| `INGEST_ORCH_NATS_SUBJECT` | `ckan.ingest.resource` | Subject NATS para publicar jobs |
-| `INGEST_ORCH_CKAN_URL` | `https://dados.pbh.gov.br/` | URL do portal CKAN |
+| `INGEST_ORCH_GO_ADDRESS` | `:8081` | Endereço HTTP do serviço Go |
+| `INGEST_ORCH_IGGY_ADDRESS` | `localhost:8090` | Endpoint TCP do Apache Iggy |
+| `INGEST_ORCH_IGGY_STREAM` | `ckan-ingestor` | Stream Iggy |
 | `INGEST_ORCH_SCHEDULER_INTERVAL_MINUTES` | `480` | Intervalo do scheduler em minutos (padrão: 8h) |
 | `INGEST_ORCH_DEBUG` | `false` | Modo debug |
 

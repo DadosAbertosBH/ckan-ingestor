@@ -28,11 +28,8 @@ from ingestor_orchestrator.models import (
     JobStatus,
     ResourceMetadataLabel,
 )
-from ingestor_orchestrator.services.job_service import JobService
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
-
-
 def _build_ckan_resource_url(
     instance_url: str, dataset_name: str, resource_id: str
 ) -> str:
@@ -204,40 +201,6 @@ async def get_job(job_id: str, db: AsyncSession = Depends(get_db)):
         completed_at=job.completed_at,
         labels=labels,
         results=job.results,
-        broker_type=job.broker_type,
-        message_stream=job.message_stream,
-        message_topic=job.message_topic,
-        message_partition=job.message_partition,
-        message_offset=job.message_offset,
-    )
-
-
-@router.post("/{job_id}/retry", response_model=JobResponse)
-async def retry_job(job_id: str, db: AsyncSession = Depends(get_db)):
-    service = JobService(db)
-    job = await service.retry_job(job_id)
-    await db.refresh(job, attribute_names=["instance"])
-    return JobResponse(
-        id=job.id,
-        resource_id=job.resource_id,
-        resource_name=job.resource_name,
-        resource_url=job.resource_url,
-        resource_format=job.resource_format,
-        dataset_name=job.dataset_name,
-        status=job.status,
-        idempotency_key=job.idempotency_key,
-        instance_id=job.instance_id,
-        ckan_resource_url=_build_ckan_resource_url(
-            job.instance.url, job.dataset_name, job.resource_id
-        )
-        if job.instance
-        else "",
-        created_at=job.created_at,
-        updated_at=job.updated_at,
-        started_at=job.started_at,
-        completed_at=job.completed_at,
-        labels=[],
-        results=[],
         broker_type=job.broker_type,
         message_stream=job.message_stream,
         message_topic=job.message_topic,

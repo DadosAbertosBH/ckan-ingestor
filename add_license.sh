@@ -1,6 +1,6 @@
 #!/bin/bash
 
-for i in $(find ./ \( -name '*.py' -o -name '*.rs' \) \
+for i in $(find ./ \( -name '*.py' -o -name '*.rs' -o -name '*.go' \) \
   -not -path './.venv/*' \
   -not -path '*/site-packages/*' \
   -not -path '*/.venv/*' \
@@ -10,6 +10,7 @@ for i in $(find ./ \( -name '*.py' -o -name '*.rs' \) \
   if ! grep -qi 'GNU AFFERO' "$i"; then
     case "$i" in
       *.rs) cat LICENSE_HEADER_RS "$i" > "$i.new" && mv "$i.new" "$i" ;;
+      *.go) cat LICENSE_HEADER_GO "$i" > "$i.new" && mv "$i.new" "$i" ;;
       *)    cat LICENSE_HEADER "$i" > "$i.new" && mv "$i.new" "$i" ;;
     esac
   fi

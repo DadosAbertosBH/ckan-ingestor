@@ -15,19 +15,19 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """Tests for /health and /ready probes."""
 
-from types import SimpleNamespace
-
 import pytest
 from fastapi.testclient import TestClient
 from ingestor_orchestrator.main import app
 
 
 @pytest.fixture(autouse=True)
-def clear_overrides():
+def clear_overrides(monkeypatch):
+    async def go_ready():
+        return True
+
+    monkeypatch.setattr("ingestor_orchestrator.main._go_ready", go_ready)
     yield
     app.dependency_overrides.clear()
-    if hasattr(app.state, "result_consumer"):
-        del app.state.result_consumer
 
 
 class TestHealthEndpoint:
@@ -38,15 +38,19 @@ class TestHealthEndpoint:
 
 
 class TestReadyEndpoint:
-    def test_ready_503_when_result_consumer_is_disconnected(self, monkeypatch):
-        """Readiness requires an active result consumer."""
+    def test_ready_503_when_go_api_is_disconnected(self, monkeypatch):
+        """Readiness requires the Go API and its consumers."""
         monkeypatch.delenv("DUCKLAKE_CATALOG_URI", raising=False)
-        app.state.result_consumer = SimpleNamespace(is_connected=False)
+
+        async def go_down():
+            return False
+
+        monkeypatch.setattr("ingestor_orchestrator.main._go_ready", go_down)
 
         response = TestClient(app).get("/ready")
 
         assert response.status_code == 503
-        assert response.json()["result_consumer"] == "unreachable"
+        assert response.json()["go_api"] == "unreachable"
 
     def test_ready_503_when_db_down(self, monkeypatch):
         """Readiness probe returns 503 when database is unreachable."""

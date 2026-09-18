@@ -46,16 +46,3 @@ class TestDatabaseUrl:
         assert "mysql+aiomysql://root:@localhost:3306/ingestor_orchestrator" in (
             settings.database_url
         )
-
-
-class TestIggyConnectionString:
-    def test_credentials_are_url_encoded(self):
-        settings = Settings(
-            iggy_address="iggy:8090",
-            iggy_username="iggy",
-            iggy_password="password*with*asterisk",
-        )
-
-        assert settings.iggy_connection_string == (
-            "iggy+tcp://iggy:password*with*asterisk@iggy:8090"
-        )

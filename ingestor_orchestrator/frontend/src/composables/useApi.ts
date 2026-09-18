@@ -11,9 +11,14 @@ import type {
 } from "@/types";
 
 const API_BASE = "/api";
+const GO_API_BASE = `${window.location.protocol}//${window.location.hostname}:8081/api`;
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+async function requestFrom<T>(
+  base: string,
+  path: string,
+  options?: RequestInit,
+): Promise<T> {
+  const response = await fetch(`${base}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
@@ -26,6 +31,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   if (response.status === 204) return null as T;
   return response.json();
 }
+
+const request = <T>(path: string, options?: RequestInit) =>
+  requestFrom<T>(API_BASE, path, options);
+const requestGo = <T>(path: string, options?: RequestInit) =>
+  requestFrom<T>(GO_API_BASE, path, options);
 
 export function useApi() {
   const loading = ref(false);
@@ -57,12 +67,12 @@ export function useApi() {
   };
   const fetchJob = (id: string) => request<Job>(`/jobs/${id}`);
   const retryJob = (id: string) =>
-    request<Job>(`/jobs/${id}/retry`, { method: "POST" });
+    requestGo<Job>(`/jobs/${id}/retry`, { method: "POST" });
   const deleteJob = (id: string) =>
     request<void>(`/jobs/${id}`, { method: "DELETE" });
   const syncMetadata = (instanceId?: string) => {
     const path = instanceId ? `/metadata/sync/${instanceId}` : "/metadata/sync";
-    return request<Record<string, unknown>>(path, { method: "POST" });
+    return requestGo<Record<string, unknown>>(path, { method: "POST" });
   };
   const fetchResources = (params?: {
     status?: JobStatus;

@@ -115,10 +115,13 @@ describe("useApi — success cases", () => {
     const { syncMetadata } = useApi();
     const data = await syncMetadata("inst-1");
     expect(data).toEqual(result);
-    expect(fn).toHaveBeenCalledWith("/api/metadata/sync/inst-1", {
+    expect(fn).toHaveBeenCalledWith(
+      `${window.location.protocol}//${window.location.hostname}:8081/api/metadata/sync/inst-1`,
+      {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-    });
+      },
+    );
   });
 
   it("syncMetadata calls POST without instance_id to sync all", async () => {
@@ -126,10 +129,28 @@ describe("useApi — success cases", () => {
 
     const { syncMetadata } = useApi();
     await syncMetadata();
-    expect(fn).toHaveBeenCalledWith("/api/metadata/sync", {
+    expect(fn).toHaveBeenCalledWith(
+      `${window.location.protocol}//${window.location.hostname}:8081/api/metadata/sync`,
+      {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-    });
+      },
+    );
+  });
+
+  it("retryJob calls the Go API directly", async () => {
+    const fn = mockFetch({ ok: true, body: { id: "retry-1" } });
+
+    const { retryJob } = useApi();
+    await retryJob("failed-1");
+
+    expect(fn).toHaveBeenCalledWith(
+      `${window.location.protocol}//${window.location.hostname}:8081/api/jobs/failed-1/retry`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   });
 });
 

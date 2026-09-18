@@ -128,7 +128,8 @@ services:
       INGEST_ORCH_MYSQL_USER: root
       INGEST_ORCH_MYSQL_PASSWORD: ${INGEST_ORCH_MYSQL_PASSWORD:-ckan_orch_pass}
       INGEST_ORCH_MYSQL_DATABASE: ${INGEST_ORCH_MYSQL_DATABASE:-ingestor_orchestrator}
-    command: alembic -c ingestor_orchestrator/backend/alembic.ini upgrade head
+    entrypoint: ["alembic"]
+    command: ["-c", "ingestor_orchestrator/backend/alembic.ini", "upgrade", "head"]
     networks:
       - orchestrator_net
 
@@ -138,6 +139,7 @@ services:
       dockerfile: ingestor_orchestrator/Dockerfile
     ports:
       - "8000:8000"
+      - "8081:8081"
     deploy:
       resources:
         limits:
@@ -161,7 +163,6 @@ services:
       INGEST_ORCH_IGGY_ADDRESS: iggy:8090
       INGEST_ORCH_IGGY_USERNAME: iggy
       INGEST_ORCH_IGGY_PASSWORD: iggy
-    command: uvicorn ingestor_orchestrator.main:app --host 0.0.0.0 --port 8000
     networks:
       - orchestrator_net
 

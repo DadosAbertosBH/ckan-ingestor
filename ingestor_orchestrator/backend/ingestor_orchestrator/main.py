@@ -16,6 +16,7 @@
 import asyncio
 import logging
 import os
+import urllib.request
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -29,15 +30,11 @@ from ingestor_orchestrator.api import (
     datasets,
     instances,
     jobs,
-    metadata,
     resources,
     syncs,
 )
 from ingestor_orchestrator.config import settings
 from ingestor_orchestrator.db import async_session
-from ingestor_orchestrator.services.scheduler import Scheduler
-from ingestor_orchestrator.result_consumer import ResultConsumer
-from ingestor_orchestrator.iggy_queue import get_iggy_bus
 
 logger = logging.getLogger(__name__)
 
@@ -51,26 +48,8 @@ async def lifespan(app: FastAPI):
     logging.getLogger("ingestor_orchestrator").setLevel(logging.INFO)
     logger.info("Starting API server")
 
-    scheduler = Scheduler()
-    scheduler_task = asyncio.create_task(scheduler.start())
-
-    result_consumer = ResultConsumer()
-    app.state.result_consumer = result_consumer
-    result_task = asyncio.create_task(result_consumer.start())
-
-    logger.info("Scheduler and result consumer started")
-
     yield
 
-    # Shutdown
-    scheduler.stop()
-    scheduler_task.cancel()
-    await result_consumer.stop()
-    result_task.cancel()
-    try:
-        await asyncio.gather(scheduler_task, result_task, return_exceptions=True)
-    except asyncio.CancelledError:
-        pass
     logger.info("API server stopped")
 
 
@@ -92,7 +71,6 @@ app.add_middleware(
 app.include_router(jobs.router)
 app.include_router(datasets.router)
 app.include_router(dashboard.router)
-app.include_router(metadata.router)
 app.include_router(instances.router)
 app.include_router(resources.router)
 app.include_router(syncs.router)
@@ -131,21 +109,24 @@ async def ready():
         except Exception:
             checks["ducklake"] = "unreachable"
 
-    try:
-        await get_iggy_bus().ping()
-        checks["iggy"] = "ok"
-    except Exception:
-        checks["iggy"] = "unreachable"
-
-    result_consumer = getattr(app.state, "result_consumer", None)
-    if result_consumer is not None:
-        checks["result_consumer"] = (
-            "ok" if result_consumer.is_connected else "unreachable"
-        )
+    checks["go_api"] = "ok" if await _go_ready() else "unreachable"
 
     if any(v != "ok" for v in checks.values()):
         return JSONResponse(status_code=503, content={"status": "error", **checks})
     return {"status": "ok", **checks}
+
+
+async def _go_ready() -> bool:
+    url = os.environ.get("INGEST_ORCH_GO_API_URL", "http://127.0.0.1:8081")
+
+    def check() -> bool:
+        try:
+            with urllib.request.urlopen(f"{url}/ready", timeout=2) as response:
+                return response.status == 200
+        except Exception:
+            return False
+
+    return await asyncio.to_thread(check)
 
 
 if os.path.isdir(frontend_dir):

@@ -76,20 +76,6 @@ wheels = [
 ]
 
 [[package]]
-name = "apache-iggy"
-version = "0.8.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/25/7a/890fcddcf7cc3f7a45a0675a935cfb69dbb0fa106e2157b79f407ef1a777/apache_iggy-0.8.0.tar.gz", hash = "sha256:f95e48eff23db962a290cbfe587dc7cc1bf2fe707c5462f39554c2741fd33c4e", size = 429484 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/23/53/8880bac8e972f437ee55bf54ec75f89d1adcd736e40e3a2f66367ea931d3/apache_iggy-0.8.0-cp313-cp313-macosx_10_12_x86_64.whl", hash = "sha256:247b7fad1bfb98d533c79b2a4c4d1d337f35918b9591480489de3b3365e09bc1", size = 4982324 },
-    { url = "https://files.pythonhosted.org/packages/85/21/39d8d0c429cbe2e2f203b42a542aae50add7cff8d01ad7d1ef1874696cf6/apache_iggy-0.8.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:bd4aedf9ad5af8192d51122ad4122a267927f13f7bdc72515d2956be2208484e", size = 4836015 },
-    { url = "https://files.pythonhosted.org/packages/b2/3e/ad2f7b041b1c6f75b1a0dec953050a154fd352e093c782470ee884468b65/apache_iggy-0.8.0-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0161acc29310dcb084381caa57dc3e912a23b70fae45944318d8e9449b8d42d7", size = 5233947 },
-    { url = "https://files.pythonhosted.org/packages/b3/fc/0a63ac51e7d0c4e80eb77c1d5286a8d447f3f25803c6d62cee06661442e4/apache_iggy-0.8.0-cp313-cp313-manylinux_2_34_x86_64.whl", hash = "sha256:e10863db5863309a1564d489d8c33765513bcb1841717bacb2834ab362c2388c", size = 5342330 },
-    { url = "https://files.pythonhosted.org/packages/7e/fe/0b9fa52eccc93736cc6429c41c13b78652d056c62207a1e48c37ff390d26/apache_iggy-0.8.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:96b863008503685c4c21b07641af758ead10ccdf0e1e48e8520466c4dc5d48c3", size = 5408022 },
-    { url = "https://files.pythonhosted.org/packages/f0/7f/c4d6607704e2ad524d285c126aefe696f1b55d51c8856a5fecb40cc63481/apache_iggy-0.8.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:73be0d5d9f1bdf582527eb7cdea2fc9a8111ca2adea4e8a02e89f4a6a137da80", size = 5565128 },
-]
-
-[[package]]
 name = "certifi"
 version = "2026.5.20"
 source = { registry = "https://pypi.org/simple" }
@@ -475,7 +461,6 @@ source = { editable = "." }
 dependencies = [
     { name = "aiomysql" },
     { name = "alembic" },
-    { name = "apache-iggy" },
     { name = "cryptography" },
     { name = "duckdb" },
     { name = "fastapi" },
@@ -499,7 +484,6 @@ dev = [
 requires-dist = [
     { name = "aiomysql", specifier = ">=0.2.0" },
     { name = "alembic", specifier = ">=1.14.0" },
-    { name = "apache-iggy", specifier = "==0.8.0" },
     { name = "cryptography", specifier = ">=43.0.0" },
     { name = "duckdb", specifier = ">=1.5.3,<2" },
     { name = "fastapi", specifier = ">=0.115.0" },
