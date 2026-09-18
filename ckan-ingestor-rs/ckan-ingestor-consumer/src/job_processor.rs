@@ -230,12 +230,23 @@ fn run_conversion(
                 artifact,
             ))
         }
-        Err(failed) => Ok(job_result_from_failure(
-            &job.job_id,
-            &job.resource_id,
-            job.datastore_active,
-            failed,
-        )),
+        Err(failed) => {
+            if failed.is_deleted() {
+                Ok(job_result_from_deleted(
+                    &job.job_id,
+                    &job.resource_id,
+                    job.datastore_active,
+                    failed,
+                ))
+            } else {
+                Ok(job_result_from_failure(
+                    &job.job_id,
+                    &job.resource_id,
+                    job.datastore_active,
+                    failed,
+                ))
+            }
+        }
     }
 }
 
@@ -332,6 +343,42 @@ fn job_result_from_failure(
     }
 }
 
+fn job_result_from_deleted(
+    job_id: &str,
+    resource_id: &str,
+    datastore_active: bool,
+    failed: ckan_ingestor_lib::readers::ckan_reader::FailedResult,
+) -> JobResultMessage {
+    JobResultMessage {
+        job_id: job_id.into(),
+        status: JobStatus::Deleted,
+        resource_id: resource_id.into(),
+        source_version: None,
+        dataset_name: None,
+        resource_name: None,
+        resource_url: None,
+        resource_format: None,
+        instance_id: None,
+        ckan_url: None,
+        datastore_active: Some(datastore_active),
+        reader: Some(failed.reader),
+        rows_processed: None,
+        expected_rows: failed
+            .expected_rows
+            .and_then(|value| i64::try_from(value).ok()),
+        encoding: None,
+        csv_strict_mode: None,
+        csv_delimiter: None,
+        csv_samples: None,
+        expected_columns: failed
+            .expected_columns
+            .and_then(|value| i64::try_from(value).ok()),
+        error_message: None,
+        preview: None,
+        artifact: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -347,7 +394,7 @@ mod tests {
     };
     use ckan_ingestor_worker_lib::ParquetArtifact;
 
-    use super::{job_result_from_failure, job_result_from_success};
+    use super::{job_result_from_deleted, job_result_from_failure, job_result_from_success};
     use crate::messages::JobStatus;
 
     fn successful_result() -> SuccessResult {
@@ -409,6 +456,21 @@ mod tests {
             result.error_message.as_deref(),
             Some("No data to create table from")
         );
+        assert!(result.artifact.is_none());
+    }
+
+    #[test]
+    fn maps_deleted_conversion_to_the_protocol_deleted_status() {
+        let deleted = FailedResult::from_string(
+            "resource download failed with HTTP status 404 Not Found",
+            "test-reader".into(),
+        )
+        .into_deleted();
+        let result = job_result_from_deleted("job-1", "resource-1", false, deleted);
+
+        assert_eq!(result.status, JobStatus::Deleted);
+        assert_eq!(result.resource_id, "resource-1");
+        assert!(result.error_message.is_none());
         assert!(result.artifact.is_none());
     }
 }

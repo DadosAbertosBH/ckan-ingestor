@@ -43,10 +43,11 @@ pub fn download_to_temp(client: &Client, url: &str, suffix: &str) -> Result<Stri
             .get(CONTENT_ENCODING)
             .and_then(|value| value.to_str().ok())
             .unwrap_or("<missing or invalid>");
-        anyhow::bail!(
+        let message = format!(
             "resource download failed with HTTP status {status} \
              (Content-Type: {content_type}, Content-Encoding: {content_encoding}): {url}"
         );
+        return Err(anyhow::Error::new(HttpStatusError::new(status, message)));
     }
 
     let temp_path = std::env::temp_dir().join(format!("{}{}", uuid::Uuid::new_v4(), suffix));
@@ -57,6 +58,41 @@ pub fn download_to_temp(client: &Client, url: &str, suffix: &str) -> Result<Stri
     cleanup.commit();
     Ok(temp_path.to_string_lossy().into_owned())
 }
+
+/// A non-success HTTP status returned while downloading or fetching a resource.
+///
+/// Carrying the status as a typed value (instead of only a formatted message)
+/// lets callers detect specific statuses such as `404 Not Found` reliably.
+#[derive(Debug)]
+pub struct HttpStatusError {
+    status: reqwest::StatusCode,
+    message: String,
+}
+
+impl HttpStatusError {
+    pub fn new(status: reqwest::StatusCode, message: impl Into<String>) -> Self {
+        Self {
+            status,
+            message: message.into(),
+        }
+    }
+
+    pub fn status(&self) -> reqwest::StatusCode {
+        self.status
+    }
+
+    pub fn is_not_found(&self) -> bool {
+        self.status == reqwest::StatusCode::NOT_FOUND
+    }
+}
+
+impl std::fmt::Display for HttpStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for HttpStatusError {}
 
 pub struct SuccessResult {
     pub parquet: ParquetOutput,
@@ -76,6 +112,7 @@ pub struct SuccessResult {
 pub struct FailedResult {
     pub error: anyhow::Error,
     pub reader: String,
+    pub deleted: bool,
     pub expected_rows: Option<usize>,
     pub expected_columns: Option<usize>,
 }
@@ -133,9 +170,19 @@ impl FailedResult {
         Self {
             error: anyhow::anyhow!(error.to_string()),
             reader,
+            deleted: false,
             expected_rows: None,
             expected_columns: None,
         }
+    }
+
+    pub fn into_deleted(mut self) -> Self {
+        self.deleted = true;
+        self
+    }
+
+    pub fn is_deleted(&self) -> bool {
+        self.deleted
     }
 }
 
@@ -148,6 +195,7 @@ where
         Self {
             error: error.into(),
             reader: String::new(),
+            deleted: false,
             expected_rows: None,
             expected_columns: None,
         }

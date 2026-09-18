@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 use crate::ckan_resource::CkanResource;
-use crate::readers::ckan_reader::{CkanReader, FailedResult, ReadResult};
+use crate::readers::ckan_reader::{CkanReader, FailedResult, HttpStatusError, ReadResult};
 use log::info;
 
 /// Aggregate multiple types of a readers
@@ -68,6 +68,9 @@ impl CkanReader for MultipleReader<'_> {
                         resource.id,
                         error.error
                     );
+                    if is_not_found(&error.error) {
+                        return Err(error.into_deleted());
+                    }
                     last_failure = Some(error);
                 }
             };
@@ -86,6 +89,12 @@ impl CkanReader for MultipleReader<'_> {
     }
 }
 
+fn is_not_found(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<HttpStatusError>()
+        .is_some_and(HttpStatusError::is_not_found)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -101,7 +110,7 @@ mod tests {
 
     struct TestReader {
         formats: Vec<String>,
-        fails: bool,
+        failure: Option<(reqwest::StatusCode, String)>,
         returns_data: bool,
     }
 
@@ -118,7 +127,12 @@ mod tests {
         fn new(formats: &[&str], fails: bool) -> Self {
             Self {
                 formats: formats.iter().map(|format| (*format).to_string()).collect(),
-                fails,
+                failure: fails.then(|| {
+                    (
+                        reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+                        "test reader failed".to_string(),
+                    )
+                }),
                 returns_data: false,
             }
         }
@@ -126,8 +140,20 @@ mod tests {
         fn with_data(formats: &[&str]) -> Self {
             Self {
                 formats: formats.iter().map(|format| (*format).to_string()).collect(),
-                fails: false,
+                failure: None,
                 returns_data: true,
+            }
+        }
+
+        fn failing_with_status(
+            formats: &[&str],
+            status: reqwest::StatusCode,
+            message: &str,
+        ) -> Self {
+            Self {
+                formats: formats.iter().map(|format| (*format).to_string()).collect(),
+                failure: Some((status, message.to_string())),
+                returns_data: false,
             }
         }
     }
@@ -138,37 +164,34 @@ mod tests {
         }
 
         fn do_read(&self, _resource: &CkanResource) -> ReadResult {
-            if self.fails {
-                Err(FailedResult::from_string(
-                    "test reader failed",
-                    self.reader_name().to_string(),
-                ))
-            } else {
-                let data = if self.returns_data {
-                    let schema = Arc::new(Schema::new(vec![Field::new(
-                        "value",
-                        DataType::Utf8,
-                        false,
-                    )]));
-                    vec![RecordBatch::try_new(
-                        schema,
-                        vec![Arc::new(StringArray::from(vec!["value"])) as ArrayRef],
-                    )
-                    .expect("valid test batch")]
-                } else {
-                    let schema =
-                        Arc::new(Schema::new(vec![Field::new("value", DataType::Utf8, true)]));
-                    vec![RecordBatch::try_new(
-                        schema,
-                        vec![Arc::new(StringArray::from(Vec::<String>::new())) as ArrayRef],
-                    )
-                    .expect("valid empty test batch")]
-                };
-                Ok(crate::readers::ckan_reader::SuccessResult::new(
-                    output(&data),
-                    self.reader_name().to_string(),
-                ))
+            if let Some((status, message)) = &self.failure {
+                return Err(
+                    anyhow::Error::new(HttpStatusError::new(*status, message.clone())).into(),
+                );
             }
+            let data = if self.returns_data {
+                let schema = Arc::new(Schema::new(vec![Field::new(
+                    "value",
+                    DataType::Utf8,
+                    false,
+                )]));
+                vec![RecordBatch::try_new(
+                    schema,
+                    vec![Arc::new(StringArray::from(vec!["value"])) as ArrayRef],
+                )
+                .expect("valid test batch")]
+            } else {
+                let schema = Arc::new(Schema::new(vec![Field::new("value", DataType::Utf8, true)]));
+                vec![RecordBatch::try_new(
+                    schema,
+                    vec![Arc::new(StringArray::from(Vec::<String>::new())) as ArrayRef],
+                )
+                .expect("valid empty test batch")]
+            };
+            Ok(crate::readers::ckan_reader::SuccessResult::new(
+                output(&data),
+                self.reader_name().to_string(),
+            ))
         }
     }
 
@@ -257,5 +280,39 @@ mod tests {
         let reader = MultipleReader::new(vec![Box::new(TestReader::new(&["CSV"], false))]);
 
         assert!(reader.read(&resource("PDF")).is_err());
+    }
+
+    #[test]
+    fn returns_a_deleted_result_when_a_reader_fails_with_404() {
+        let reader = MultipleReader::new(vec![
+            Box::new(TestReader::failing_with_status(
+                &["CSV"],
+                reqwest::StatusCode::NOT_FOUND,
+                "resource download failed with HTTP status 404 Not Found",
+            )),
+            Box::new(TestReader::with_data(&["CSV"])),
+        ]);
+
+        let result = reader.read(&resource("CSV"));
+
+        match result {
+            Err(error) => assert!(error.is_deleted()),
+            Ok(_) => panic!("a 404 failure must be returned as a deleted result"),
+        }
+    }
+
+    #[test]
+    fn detects_an_http_404_error() {
+        let not_found = anyhow::Error::new(HttpStatusError::new(
+            reqwest::StatusCode::NOT_FOUND,
+            "resource download failed with HTTP status 404 Not Found",
+        ));
+        let other = anyhow::Error::new(HttpStatusError::new(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            "resource download failed with HTTP status 500 Internal Server Error",
+        ));
+
+        assert!(is_not_found(&not_found));
+        assert!(!is_not_found(&other));
     }
 }

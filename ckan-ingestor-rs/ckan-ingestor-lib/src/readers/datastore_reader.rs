@@ -19,7 +19,9 @@ use std::sync::Arc;
 use crate::{
     ckan_resource::CkanResource,
     parquet_output::ParquetOutput,
-    readers::ckan_reader::{format_contains, CkanReader, FailedResult, ReadResult, SuccessResult},
+    readers::ckan_reader::{
+        format_contains, CkanReader, FailedResult, HttpStatusError, ReadResult, SuccessResult,
+    },
 };
 use anyhow::{Context, Result};
 use arrow::{
@@ -95,7 +97,8 @@ impl DatastoreReader {
         let response = self.client.get(url).send()?;
         let status = response.status();
         if !status.is_success() {
-            anyhow::bail!("datastore request failed with HTTP status {status}: {url}");
+            let message = format!("datastore request failed with HTTP status {status}: {url}");
+            return Err(anyhow::Error::new(HttpStatusError::new(status, message)));
         }
         let body = response.text()?;
         decode_json_body(body, url)
