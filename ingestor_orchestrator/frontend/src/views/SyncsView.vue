@@ -37,6 +37,7 @@
                     <th>New Resources</th>
                     <th>Updated Datasets</th>
                     <th>Updated Resources</th>
+                    <th>Outdated Resources</th>
                     <th>Deleted Datasets</th>
                     <th>Deleted Resources</th>
                     <th>Status</th>
@@ -52,12 +53,13 @@
                     <td>{{ sync.new_resources }}</td>
                     <td>{{ sync.updated_datasets }}</td>
                     <td>{{ sync.updated_resources }}</td>
+                    <td>{{ sync.outdated_resources }}</td>
                     <td>{{ sync.deleted_datasets }}</td>
                     <td>{{ sync.deleted_resources }}</td>
                     <td><span :class="['status', sync.status || 'pending']">{{ statusLabel(sync.status) }}</span></td>
                 </tr>
                 <tr v-if="syncs.length === 0">
-                    <td colspan="11" class="empty-state">No syncs found</td>
+                    <td colspan="12" class="empty-state">No syncs found</td>
                 </tr>
             </tbody>
         </table>

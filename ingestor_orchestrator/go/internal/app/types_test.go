@@ -27,7 +27,7 @@ func TestAPITypesUseSnakeCaseJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := string(encoded)
-	for _, key := range []string{"resource_id", "dataset_preview", "ckan_resource_url", "total_resources", "start_time", "pending"} {
+	for _, key := range []string{"resource_id", "dataset_preview", "ckan_resource_url", "total_resources", "start_time", "pending", "outdated_resources"} {
 		if !strings.Contains(body, `"`+key+`"`) {
 			t.Fatalf("JSON does not contain %q: %s", key, body)
 		}

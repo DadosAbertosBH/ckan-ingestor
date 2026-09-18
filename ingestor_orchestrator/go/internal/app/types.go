@@ -104,20 +104,21 @@ type Instance struct {
 }
 
 type MetadataSync struct {
-	ID               string     `json:"id"`
-	InstanceID       string     `json:"instance_id"`
-	InstanceName     *string    `json:"instance_name"`
-	StartTime        time.Time  `json:"start_time"`
-	EndTime          *time.Time `json:"end_time"`
-	Status           string     `json:"status"`
-	ErrorMessage     *string    `json:"error_message"`
-	TotalPackages    int64      `json:"total_packages"`
-	NewDatasets      int64      `json:"new_datasets"`
-	NewResources     int64      `json:"new_resources"`
-	UpdatedDatasets  int64      `json:"updated_datasets"`
-	UpdatedResources int64      `json:"updated_resources"`
-	DeletedDatasets  int64      `json:"deleted_datasets"`
-	DeletedResources int64      `json:"deleted_resources"`
+	ID                string     `json:"id"`
+	InstanceID        string     `json:"instance_id"`
+	InstanceName      *string    `json:"instance_name"`
+	StartTime         time.Time  `json:"start_time"`
+	EndTime           *time.Time `json:"end_time"`
+	Status            string     `json:"status"`
+	ErrorMessage      *string    `json:"error_message"`
+	TotalPackages     int64      `json:"total_packages"`
+	NewDatasets       int64      `json:"new_datasets"`
+	NewResources      int64      `json:"new_resources"`
+	UpdatedDatasets   int64      `json:"updated_datasets"`
+	UpdatedResources  int64      `json:"updated_resources"`
+	OutdatedResources int64      `json:"outdated_resources"`
+	DeletedDatasets   int64      `json:"deleted_datasets"`
+	DeletedResources  int64      `json:"deleted_resources"`
 }
 
 type JobResultMessage struct {
@@ -145,20 +146,21 @@ type JobResultMessage struct {
 }
 
 type MetadataSyncResultMessage struct {
-	SyncID           string  `json:"sync_id"`
-	InstanceID       string  `json:"instance_id"`
-	InstanceName     string  `json:"instance_name"`
-	Status           string  `json:"status"`
-	TotalPackages    int64   `json:"total_packages"`
-	NewDatasets      int64   `json:"new_datasets"`
-	NewResources     int64   `json:"new_resources"`
-	UpdatedDatasets  int64   `json:"updated_datasets"`
-	UpdatedResources int64   `json:"updated_resources"`
-	DeletedDatasets  int64   `json:"deleted_datasets"`
-	DeletedResources int64   `json:"deleted_resources"`
-	DatasetCount     int64   `json:"dataset_count"`
-	ResourceCount    int64   `json:"resource_count"`
-	ErrorMessage     *string `json:"error_message,omitempty"`
+	SyncID            string  `json:"sync_id"`
+	InstanceID        string  `json:"instance_id"`
+	InstanceName      string  `json:"instance_name"`
+	Status            string  `json:"status"`
+	TotalPackages     int64   `json:"total_packages"`
+	NewDatasets       int64   `json:"new_datasets"`
+	NewResources      int64   `json:"new_resources"`
+	UpdatedDatasets   int64   `json:"updated_datasets"`
+	UpdatedResources  int64   `json:"updated_resources"`
+	OutdatedResources int64   `json:"outdated_resources"`
+	DeletedDatasets   int64   `json:"deleted_datasets"`
+	DeletedResources  int64   `json:"deleted_resources"`
+	DatasetCount      int64   `json:"dataset_count"`
+	ResourceCount     int64   `json:"resource_count"`
+	ErrorMessage      *string `json:"error_message,omitempty"`
 }
 
 type Routing struct {

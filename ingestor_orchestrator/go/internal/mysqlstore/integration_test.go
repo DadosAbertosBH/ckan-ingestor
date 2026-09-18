@@ -102,4 +102,14 @@ func TestQueryStoreAgainstMySQL(t *testing.T) {
 	if err != nil || len(syncs) < 1 {
 		t.Fatalf("syncs=%+v err=%v", syncs, err)
 	}
+	if err := store.InTx(ctx, func(tx app.Tx) error {
+		sync.OutdatedResources = 6
+		return tx.UpdateSync(ctx, sync)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	syncs, err = store.ListSyncs(ctx, app.SyncQuery{InstanceID: instance.ID, Limit: 50})
+	if err != nil || len(syncs) < 1 || syncs[0].OutdatedResources != 6 {
+		t.Fatalf("syncs=%+v err=%v", syncs, err)
+	}
 }

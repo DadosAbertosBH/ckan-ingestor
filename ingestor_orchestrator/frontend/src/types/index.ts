@@ -111,6 +111,7 @@ export interface MetadataSync {
   new_resources: number;
   updated_datasets: number;
   updated_resources: number;
+  outdated_resources: number;
   deleted_datasets: number;
   deleted_resources: number;
 }

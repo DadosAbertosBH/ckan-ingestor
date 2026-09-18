@@ -349,13 +349,13 @@ func (s *Store) Dashboard(ctx context.Context) ([]app.InstanceStats, error) {
 	return out, nil
 }
 
-const syncColumns = `s.id,s.instance_id,i.name,s.start_time,s.end_time,s.status,s.error_message,s.total_packages,s.new_datasets,s.new_resources,s.updated_datasets,s.updated_resources,s.deleted_datasets,s.deleted_resources`
+const syncColumns = `s.id,s.instance_id,i.name,s.start_time,s.end_time,s.status,s.error_message,s.total_packages,s.new_datasets,s.new_resources,s.updated_datasets,s.updated_resources,s.outdated_resources,s.deleted_datasets,s.deleted_resources`
 
 func scanSync(row scanner) (app.MetadataSync, error) {
 	var v app.MetadataSync
 	var name, status, message sql.NullString
 	var end sql.NullTime
-	err := row.Scan(&v.ID, &v.InstanceID, &name, &v.StartTime, &end, &status, &message, &v.TotalPackages, &v.NewDatasets, &v.NewResources, &v.UpdatedDatasets, &v.UpdatedResources, &v.DeletedDatasets, &v.DeletedResources)
+	err := row.Scan(&v.ID, &v.InstanceID, &name, &v.StartTime, &end, &status, &message, &v.TotalPackages, &v.NewDatasets, &v.NewResources, &v.UpdatedDatasets, &v.UpdatedResources, &v.OutdatedResources, &v.DeletedDatasets, &v.DeletedResources)
 	if err != nil {
 		return v, translateNotFound(err)
 	}

@@ -347,6 +347,7 @@ func (p *Processor) ApplyMetadataResult(ctx context.Context, message MetadataSyn
 		sync.EndTime = &now
 		sync.TotalPackages, sync.NewDatasets, sync.NewResources = message.TotalPackages, message.NewDatasets, message.NewResources
 		sync.UpdatedDatasets, sync.UpdatedResources = message.UpdatedDatasets, message.UpdatedResources
+		sync.OutdatedResources = message.OutdatedResources
 		sync.DeletedDatasets, sync.DeletedResources = message.DeletedDatasets, message.DeletedResources
 		if message.Status == "failure" {
 			sync.Status = "failure"

@@ -262,7 +262,7 @@ func TestApplyMetadataSuccessAndDuplicate(t *testing.T) {
 	store.syncs["sync-1"] = &MetadataSync{ID: "sync-1", InstanceID: "instance-1", Status: "pending"}
 	store.instances["instance-1"] = &Instance{ID: "instance-1"}
 	processor := fixedProcessor(store)
-	message := MetadataSyncResultMessage{SyncID: "sync-1", Status: "success", DatasetCount: 7, ResourceCount: 9, TotalPackages: 10, DeletedResources: 2}
+	message := MetadataSyncResultMessage{SyncID: "sync-1", Status: "success", DatasetCount: 7, ResourceCount: 9, TotalPackages: 10, OutdatedResources: 5, DeletedResources: 2}
 	if err := processor.ApplyMetadataResult(context.Background(), message); err != nil {
 		t.Fatal(err)
 	}
@@ -271,6 +271,9 @@ func TestApplyMetadataSuccessAndDuplicate(t *testing.T) {
 	}
 	if store.syncs["sync-1"].Status != "success" || store.instances["instance-1"].DatasetCount != 7 {
 		t.Fatalf("sync not applied: %#v %#v", store.syncs, store.instances)
+	}
+	if store.syncs["sync-1"].OutdatedResources != 5 {
+		t.Fatalf("outdated resources not applied: %#v", store.syncs["sync-1"])
 	}
 }
 

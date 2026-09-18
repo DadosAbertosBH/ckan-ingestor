@@ -42,6 +42,7 @@ const sampleSync = {
   new_resources: 10,
   updated_datasets: 1,
   updated_resources: 4,
+  outdated_resources: 7,
   status: "failure",
   error_message: "parsing error: true",
 };
@@ -71,7 +72,22 @@ describe("SyncsView", () => {
     expect(ths).toContain("New Resources");
     expect(ths).toContain("Updated Datasets");
     expect(ths).toContain("Updated Resources");
+    expect(ths).toContain("Outdated Resources");
     expect(ths).toContain("Status");
+  });
+
+  it("renders outdated resources count", async () => {
+    mockFetchSyncs.mockResolvedValue([sampleSync]);
+    const { wrapper } = await mountWithRouter();
+    await flushPromises();
+    const headers = wrapper.findAll("th").map((th) => th.text());
+    const index = headers.indexOf("Outdated Resources");
+    expect(index).toBeGreaterThan(-1);
+    const cells = wrapper
+      .findAll("tbody tr")[0]!
+      .findAll("td")
+      .map((td) => td.text());
+    expect(cells[index]).toBe("7");
   });
 
   it("renders sync rows", async () => {

@@ -107,11 +107,11 @@ func (s *txStore) CSVHint(ctx context.Context, resourceID string) (*string, erro
 	return &v, nil
 }
 func (s *txStore) Sync(ctx context.Context, id string) (*app.MetadataSync, error) {
-	row := s.tx.QueryRowContext(ctx, `SELECT id,instance_id,start_time,end_time,status,error_message,total_packages,new_datasets,new_resources,updated_datasets,updated_resources,deleted_datasets,deleted_resources FROM metadata_sync WHERE id=? FOR UPDATE`, id)
+	row := s.tx.QueryRowContext(ctx, `SELECT id,instance_id,start_time,end_time,status,error_message,total_packages,new_datasets,new_resources,updated_datasets,updated_resources,outdated_resources,deleted_datasets,deleted_resources FROM metadata_sync WHERE id=? FOR UPDATE`, id)
 	var v app.MetadataSync
 	var end sql.NullTime
 	var status, message sql.NullString
-	if err := row.Scan(&v.ID, &v.InstanceID, &v.StartTime, &end, &status, &message, &v.TotalPackages, &v.NewDatasets, &v.NewResources, &v.UpdatedDatasets, &v.UpdatedResources, &v.DeletedDatasets, &v.DeletedResources); err != nil {
+	if err := row.Scan(&v.ID, &v.InstanceID, &v.StartTime, &end, &status, &message, &v.TotalPackages, &v.NewDatasets, &v.NewResources, &v.UpdatedDatasets, &v.UpdatedResources, &v.OutdatedResources, &v.DeletedDatasets, &v.DeletedResources); err != nil {
 		return nil, translateNotFound(err)
 	}
 	v.EndTime, v.ErrorMessage = nullTime(end), nullString(message)
@@ -121,11 +121,11 @@ func (s *txStore) Sync(ctx context.Context, id string) (*app.MetadataSync, error
 	return &v, nil
 }
 func (s *txStore) InsertSync(ctx context.Context, v *app.MetadataSync) error {
-	_, err := s.tx.ExecContext(ctx, `INSERT INTO metadata_sync (id,instance_id,start_time,status,total_packages,new_datasets,new_resources,updated_datasets,updated_resources,deleted_datasets,deleted_resources) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, v.ID, v.InstanceID, v.StartTime, v.Status, 0, 0, 0, 0, 0, 0, 0)
+	_, err := s.tx.ExecContext(ctx, `INSERT INTO metadata_sync (id,instance_id,start_time,status,total_packages,new_datasets,new_resources,updated_datasets,updated_resources,outdated_resources,deleted_datasets,deleted_resources) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, v.ID, v.InstanceID, v.StartTime, v.Status, 0, 0, 0, 0, 0, 0, 0, 0)
 	return err
 }
 func (s *txStore) UpdateSync(ctx context.Context, v *app.MetadataSync) error {
-	_, err := s.tx.ExecContext(ctx, `UPDATE metadata_sync SET end_time=?,status=?,error_message=?,total_packages=?,new_datasets=?,new_resources=?,updated_datasets=?,updated_resources=?,deleted_datasets=?,deleted_resources=? WHERE id=?`, v.EndTime, v.Status, v.ErrorMessage, v.TotalPackages, v.NewDatasets, v.NewResources, v.UpdatedDatasets, v.UpdatedResources, v.DeletedDatasets, v.DeletedResources, v.ID)
+	_, err := s.tx.ExecContext(ctx, `UPDATE metadata_sync SET end_time=?,status=?,error_message=?,total_packages=?,new_datasets=?,new_resources=?,updated_datasets=?,updated_resources=?,outdated_resources=?,deleted_datasets=?,deleted_resources=? WHERE id=?`, v.EndTime, v.Status, v.ErrorMessage, v.TotalPackages, v.NewDatasets, v.NewResources, v.UpdatedDatasets, v.UpdatedResources, v.OutdatedResources, v.DeletedDatasets, v.DeletedResources, v.ID)
 	return err
 }
 func (s *txStore) Instance(ctx context.Context, id string) (*app.Instance, error) {
