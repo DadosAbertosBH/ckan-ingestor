@@ -82,6 +82,7 @@ fn format_from_content_type(content_type: &str) -> Option<String> {
         "text/csv" | "application/csv" | "application/x-csv" => "CSV",
         "text/tab-separated-values" => "TAB",
         "application/json" | "text/json" | "application/geo+json" | "application/ld+json" => "JSON",
+        "application/x-google-protobuf" | "application/x-protobuf" => "PROTOBUF",
         "text/html" | "application/xhtml+xml" => "HTML",
         "application/pdf" => "PDF",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => "DOCX",
@@ -106,6 +107,7 @@ fn format_from_extension(filename: &str) -> Option<String> {
         "csv" => "CSV",
         "tsv" | "tab" => "TAB",
         "json" | "geojson" => "JSON",
+        "pb" | "pbf" | "binpb" | "protobuf" => "PROTOBUF",
         "html" | "htm" => "HTML",
         "pdf" => "PDF",
         "docx" => "DOCX",
@@ -501,6 +503,14 @@ mod tests {
             .as_deref(),
             Some("DOCX")
         );
+        assert_eq!(
+            infer_format(Some("application/x-google-protobuf"), None).as_deref(),
+            Some("PROTOBUF")
+        );
+        assert_eq!(
+            infer_format(Some("application/x-protobuf"), None).as_deref(),
+            Some("PROTOBUF")
+        );
     }
 
     #[test]
@@ -516,6 +526,18 @@ mod tests {
         assert_eq!(
             infer_format(None, Some("attachment; filename=report.pdf")).as_deref(),
             Some("PDF")
+        );
+        assert_eq!(
+            infer_format(
+                Some("application/octet-stream"),
+                Some("attachment; filename=\"gtfs.binpb\"")
+            )
+            .as_deref(),
+            Some("PROTOBUF")
+        );
+        assert_eq!(
+            infer_format(None, Some("attachment; filename=feed.pbf")).as_deref(),
+            Some("PROTOBUF")
         );
     }
 

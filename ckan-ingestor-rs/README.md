@@ -5,6 +5,7 @@ Rust utilities for ingesting CKAN datasets using DuckDB.
 Features:
 - HTTP-based dataset fetcher
 - CSV and datastore readers backed by DuckDB
+- Binary protobuf reader for GTFS Realtime feeds
 - S3 PDF document ingestor
 
 ## Running tests
