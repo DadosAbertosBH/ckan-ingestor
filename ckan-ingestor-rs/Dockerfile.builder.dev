@@ -5,14 +5,23 @@ FROM rustlang/rust:nightly-slim-2026-07-01
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    ca-certificates \
     cmake \
     curl \
     libssl-dev \
     libcurl4-openssl-dev \
     pkg-config \
-    sccache \
     && rm -rf /var/lib/apt/lists/*
-    
+
+ARG KACHE_VERSION=0.24.0
+ARG KACHE_SHA256=d67c746a463f768c6b97f3d34e2c4b1fe76081a9765bd24c2adfa14bef334f05
+RUN curl --fail --location --silent --show-error \
+        --output /tmp/kache.tar.gz \
+        "https://github.com/kunobi-ninja/kache/releases/download/v${KACHE_VERSION}/kache-aarch64-unknown-linux-musl.tar.gz" \
+    && echo "${KACHE_SHA256}  /tmp/kache.tar.gz" | sha256sum --check \
+    && tar --extract --gzip --file /tmp/kache.tar.gz --directory /usr/local/bin kache \
+    && rm /tmp/kache.tar.gz \
+    && kache --version
 
 RUN rustup toolchain install nightly-2026-07-01 \
     --profile minimal \
