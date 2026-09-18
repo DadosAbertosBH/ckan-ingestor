@@ -280,13 +280,12 @@ build-worker:
       docker buildx imagetools create \
         --tag "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA" \
         --tag "$CI_REGISTRY_IMAGE/worker:latest" \
-        "$AMD64" \
         "$ARM64"
     - |
       if [ -n "$CI_COMMIT_TAG" ]; then
+        # amd64 (paused): "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA-amd64"
         docker buildx imagetools create \
           --tag "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_TAG" \
-          # "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA-amd64" \
           "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA-arm64"
       fi
   rules:
@@ -328,13 +327,12 @@ build-worker-coordinator:
       docker buildx imagetools create \
         --tag "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA" \
         --tag "$CI_REGISTRY_IMAGE/worker-coordinator:latest" \
-        "$AMD64" \
         "$ARM64"
     - |
       if [ -n "$CI_COMMIT_TAG" ]; then
+        # amd64 (paused): "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-amd64"
         docker buildx imagetools create \
           --tag "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_TAG" \
-          # "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-amd64" \
           "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-arm64"
       fi
   rules:
