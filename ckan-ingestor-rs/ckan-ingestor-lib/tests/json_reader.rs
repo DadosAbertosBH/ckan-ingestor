@@ -14,7 +14,6 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
-
 use anyhow::Result;
 use arrow::datatypes::DataType;
 use ckan_ingestor_lib::ckan_resource::CkanResource;
@@ -216,6 +215,45 @@ fn reads_remote_datapackage_json() -> Result<()> {
     download.assert();
     assert_eq!(result.rows_processed, 1);
     assert_eq!(result.number_of_columns, 6);
+    Ok(())
+}
+
+#[test]
+fn coerces_mixed_type_fields_to_string() -> Result<()> {
+    let path = std::env::temp_dir().join(format!(
+        "ckan-ingestor-mixed-types-json-reader-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"[
+          {"Id": 106097, "DataAssinatura": "01/11/2022:07:03"},
+          {"Id": "35d5bc0d-b053-4124-b314-e10c287cf1fa", "DataAssinatura": "30/11/2022:23:44"}
+        ]"#,
+    )?;
+    let resource = CkanResource {
+        id: "mixed-types-json-resource".to_string(),
+        package_id: String::new(),
+        url: path.to_string_lossy().to_string(),
+        format: "JSON".to_string(),
+        datastore_active: false,
+        last_modified: String::new(),
+    };
+
+    let result = JsonReader::new().read(&resource);
+    std::fs::remove_file(&path)?;
+    let result = result?;
+
+    assert_eq!(result.rows_processed, 2);
+    assert_eq!(
+        result.parquet.schema.field_with_name("Id")?.data_type(),
+        &DataType::Utf8
+    );
+    assert_eq!(result.preview[0]["Id"], "106097");
+    assert_eq!(
+        result.preview[1]["Id"],
+        "35d5bc0d-b053-4124-b314-e10c287cf1fa"
+    );
     Ok(())
 }
 

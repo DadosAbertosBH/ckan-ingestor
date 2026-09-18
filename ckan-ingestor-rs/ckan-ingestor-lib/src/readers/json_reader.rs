@@ -89,6 +89,7 @@ impl JsonReader {
             infer_json_schema_from_iterator(records.iter().map(Ok::<_, arrow::error::ArrowError>))?;
         let mut decoder = ReaderBuilder::new(Arc::new(normalize_null_fields(schema)))
             .with_batch_size(8192)
+            .with_coerce_primitive(true)
             .build_decoder()?;
         let mut output = None;
         for records in records.chunks(8192) {
