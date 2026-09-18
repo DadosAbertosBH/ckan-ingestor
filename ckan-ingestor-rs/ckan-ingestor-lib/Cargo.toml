@@ -33,7 +33,7 @@ flate2 = "1"
 encoding_rs = "0.8"
 encoding_rs_io = "0.1"
 regex = "1"
-ducklake = { git = "https://github.com/guitcastro/ducklake-sdk.git", branch = "fix/bounded-snapshot-cache", default-features = false, features = ["aws", "postgres", "sqlite"], optional = true }
+ducklake = { version = "0.0.19", default-features = false, features = ["aws", "postgres", "sqlite"], optional = true }
 
 [dev-dependencies]
 httpmock = "0.7"

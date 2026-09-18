@@ -74,7 +74,6 @@ test-go:
   image: golang:1.26-bookworm
   services:
     - name: mysql:8.0
-      alias: mysql
   variables:
     GOCACHE: "$CI_PROJECT_DIR/.go-cache"
     GOMODCACHE: "$CI_PROJECT_DIR/.go-mod-cache"

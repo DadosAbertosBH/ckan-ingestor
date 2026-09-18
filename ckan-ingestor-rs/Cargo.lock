@@ -2313,8 +2313,9 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "ducklake"
-version = "0.0.0"
-source = "git+https://github.com/guitcastro/ducklake-sdk.git?branch=fix%2Fbounded-snapshot-cache#4ba23ebdad66d2dcc46537a027f20184d569abb4"
+version = "0.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b71bb607e100eebd4c791393386926f2e9524cddc3e61b4b1b2d8a32764af719"
 dependencies = [
  "arrow-arith",
  "arrow-array",
@@ -2346,8 +2347,9 @@ dependencies = [
 
 [[package]]
 name = "ducklake-macros"
-version = "0.0.0"
-source = "git+https://github.com/guitcastro/ducklake-sdk.git?branch=fix%2Fbounded-snapshot-cache#4ba23ebdad66d2dcc46537a027f20184d569abb4"
+version = "0.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e85560615036c5cf792cc5674489f52b6807bdb60dd79aa4f81bfbe6d10879d6"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
