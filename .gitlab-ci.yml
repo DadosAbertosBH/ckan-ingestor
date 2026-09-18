@@ -127,17 +127,14 @@ test-rust:
     RUSTC_WRAPPER: "kache"
     KACHE_CACHE_DIR: "$CI_PROJECT_DIR/.kache"
     KACHE_RUNTIME_DIR: "$CI_PROJECT_DIR/.kache-runtime"
-    KACHE_MAX_SIZE: "2G"
-    # Force libduckdb-sys to download the prebuilt DuckDB library so that
-    # tests and builds can link against it on Linux runners.
-    DUCKDB_DOWNLOAD_LIB: "1"
+    KACHE_MAX_SIZE: "4G"
+    CACHE_COMPRESSION_LEVEL: "fastest"
+    FF_USE_PARALLEL_CACHE_TRANSFER: "true"
     CARGO_HOME: "$CI_PROJECT_DIR/.cargo-home"
     TESTCONTAINERS_HOST_OVERRIDE: "docker"
     RAYON_NUM_THREADS: "1"
   cache:
-    - key:
-        files:
-          - ckan-ingestor-rs/Cargo.lock
+    - key: ckan-rust-v1
       paths:
         - .cargo-home/
         - .kache/
