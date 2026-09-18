@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/config"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/config"
 )
 
 type fakeDriver struct {

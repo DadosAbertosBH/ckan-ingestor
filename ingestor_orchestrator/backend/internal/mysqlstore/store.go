@@ -23,7 +23,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/app"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/app"
 )
 
 type Store struct{ DB *sql.DB }

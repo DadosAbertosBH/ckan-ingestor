@@ -21,7 +21,7 @@ import (
 	"database/sql"
 
 	"github.com/google/uuid"
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/app"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/app"
 )
 
 func (s *txStore) Job(ctx context.Context, id string) (*app.Job, error) {

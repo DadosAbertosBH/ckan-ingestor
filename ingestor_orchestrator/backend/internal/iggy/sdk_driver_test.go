@@ -12,7 +12,7 @@ import (
 	"os"
 	"testing"
 
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/config"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/config"
 )
 
 func TestSDKDriverAgainstIggy(t *testing.T) {

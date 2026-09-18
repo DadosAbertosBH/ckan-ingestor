@@ -113,10 +113,14 @@ func (p *Processor) applyPending(ctx context.Context, tx Tx, message JobResultMe
 	return tx.PutLatest(ctx, latestFromJob(job, status, now))
 }
 
+// applyProcessing marks a job as processing. It also reopens a job that already
+// reached a terminal state: the coordinator derives the job id from the resource
+// version, so a resource re-queued by a later sync reuses the id of an
+// already-finished attempt, and this PROCESSING message starts that fresh
+// attempt. Reopening here (and not on PENDING) keeps the discovery announcement
+// idempotent while the terminal guards in applySuccess/applyFailed still discard
+// genuinely late results.
 func (p *Processor) applyProcessing(ctx context.Context, tx Tx, job *Job) error {
-	if job.Status == JobCompleted || job.Status == JobFailed || job.Status == JobDeleted {
-		return nil
-	}
 	now := p.now()
 	job.Status, job.StartedAt, job.CompletedAt, job.UpdatedAt = JobProcessing, &now, nil, now
 	if err := tx.UpdateJob(ctx, job); err != nil {

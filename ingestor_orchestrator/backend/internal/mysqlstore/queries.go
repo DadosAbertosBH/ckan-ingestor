@@ -14,7 +14,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/app"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/app"
 )
 
 func (s *Store) ListInstances(ctx context.Context) ([]app.Instance, error) {

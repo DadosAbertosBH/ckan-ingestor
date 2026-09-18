@@ -27,13 +27,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/app"
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/config"
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/httpapi"
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/iggy"
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/migrations"
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/mysqlstore"
-	runtimeapp "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/runtime"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/app"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/config"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/httpapi"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/iggy"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/migrations"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/mysqlstore"
+	runtimeapp "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/runtime"
 )
 
 func main() {

@@ -18,3 +18,4 @@ argocd-applications/
 
 # Helm template debug output
 .debug/
+.gocache/

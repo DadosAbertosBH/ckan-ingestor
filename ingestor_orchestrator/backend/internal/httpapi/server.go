@@ -31,7 +31,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/app"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/app"
 )
 
 type Dispatcher interface {

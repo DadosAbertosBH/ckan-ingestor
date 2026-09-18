@@ -1,4 +1,4 @@
-module gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go
+module gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend
 
 go 1.26
 

@@ -22,7 +22,7 @@ import (
 	"github.com/apache/iggy/foreign/go/client"
 	"github.com/apache/iggy/foreign/go/client/tcp"
 	iggcon "github.com/apache/iggy/foreign/go/contracts"
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/config"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/config"
 )
 
 type SDKDriver struct {

@@ -40,7 +40,7 @@ legado no head Alembic `020`.
 Pré-requisitos: Go 1.26+, Node.js 22+, MySQL 8.0 e Apache Iggy 0.8.
 
 ```bash
-cd ingestor_orchestrator/go
+cd ingestor_orchestrator/backend
 go run ./cmd/orchestrator migrate
 go run ./cmd/orchestrator
 

@@ -100,7 +100,7 @@ uv run ruff check
 ### Go (Iggy e escrita)
 
 ```bash
-cd ingestor_orchestrator/go
+cd ingestor_orchestrator/backend
 go test -race ./...
 go vet ./...
 ```

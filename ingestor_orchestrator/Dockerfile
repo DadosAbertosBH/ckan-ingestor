@@ -11,9 +11,9 @@ RUN npx vite build
 # --- Go API, Iggy consumers, and scheduler ---
 FROM golang:1.26-bookworm AS go-builder
 WORKDIR /src
-COPY ingestor_orchestrator/go/go.mod ingestor_orchestrator/go/go.sum ./
+COPY ingestor_orchestrator/backend/go.mod ingestor_orchestrator/backend/go.sum ./
 RUN go mod download
-COPY ingestor_orchestrator/go/ ./
+COPY ingestor_orchestrator/backend/ ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/orchestrator-go ./cmd/orchestrator
 
 # --- Minimal Go runtime ---

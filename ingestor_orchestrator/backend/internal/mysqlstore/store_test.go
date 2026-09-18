@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/app"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/app"
 )
 
 type interfaceTx = app.Tx

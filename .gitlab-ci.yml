@@ -86,12 +86,12 @@ test-go:
   cache:
     - key:
         files:
-          - ingestor_orchestrator/go/go.sum
+          - ingestor_orchestrator/backend/go.sum
       paths:
         - .go-cache/
         - .go-mod-cache/
   script:
-    - cd ingestor_orchestrator/go
+    - cd ingestor_orchestrator/backend
     - test -z "$(gofmt -l .)"
     - go vet ./...
     - go run ./cmd/orchestrator migrate
@@ -99,7 +99,7 @@ test-go:
   rules:
     - if: $CI_COMMIT_TAG
     - changes:
-        - "ingestor_orchestrator/go/**/*"
+        - "ingestor_orchestrator/backend/**/*"
         - "ingestor_orchestrator/Dockerfile"
 
 test-frontend:

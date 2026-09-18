@@ -357,6 +357,59 @@ func TestPendingUsesPreviousTerminalProjection(t *testing.T) {
 	}
 }
 
+func TestProcessingReopensTerminalJobForReprocessing(t *testing.T) {
+	for _, terminal := range []JobStatus{JobFailed, JobCompleted} {
+		completed := time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC)
+		store := newMemoryStore()
+		store.jobs["job"] = &Job{ID: "job", ResourceID: "resource", Status: terminal, CompletedAt: &completed}
+		store.latest["resource"] = &LatestResource{ResourceID: "resource", LatestJobID: "job", Status: string(terminal)}
+		store.terminal["resource"] = &TerminalState{ResourceID: "resource", LastTerminalJobID: "job", LastTerminalStatus: terminal}
+		processor := fixedProcessor(store)
+
+		// The discovery announcement stays idempotent: it never reopens a finished job.
+		message := JobResultMessage{JobID: "job", ResourceID: "resource", Status: "PENDING", DatasetName: ptr("dataset"), InstanceID: ptr("instance")}
+		if err := processor.ApplyJobResult(context.Background(), message); err != nil {
+			t.Fatal(err)
+		}
+		if store.jobs["job"].Status != terminal {
+			t.Fatalf("PENDING reopened a terminal job: %#v", store.jobs["job"])
+		}
+
+		// A worker starting the new attempt reopens the job for reprocessing.
+		if err := processor.ApplyJobResult(context.Background(), JobResultMessage{JobID: "job", ResourceID: "resource", Status: "PROCESSING"}); err != nil {
+			t.Fatal(err)
+		}
+		if store.jobs["job"].Status != JobProcessing || store.jobs["job"].StartedAt == nil || store.jobs["job"].CompletedAt != nil {
+			t.Fatalf("PROCESSING did not reopen the job: %#v", store.jobs["job"])
+		}
+		if store.latest["resource"].Status != string(JobProcessing) {
+			t.Fatalf("latest = %q", store.latest["resource"].Status)
+		}
+
+		// The terminal guards no longer block the reopened attempt's outcome.
+		if err := processor.ApplyJobResult(context.Background(), JobResultMessage{JobID: "job", ResourceID: "resource", Status: "SUCCESS", RowsProcessed: ptr(int64(2))}); err != nil {
+			t.Fatal(err)
+		}
+		if store.jobs["job"].Status != JobCompleted || store.latest["resource"].Status != string(JobCompleted) {
+			t.Fatalf("success did not advance: job=%#v latest=%#v", store.jobs["job"], store.latest["resource"])
+		}
+	}
+}
+
+func TestPendingKeepsExistingJobUntouched(t *testing.T) {
+	for _, status := range []JobStatus{JobPending, JobProcessing, JobFailed, JobCompleted, JobDeleted} {
+		store := newMemoryStore()
+		store.jobs["job"] = &Job{ID: "job", ResourceID: "resource", Status: status}
+		message := JobResultMessage{JobID: "job", ResourceID: "resource", Status: "PENDING", DatasetName: ptr("dataset"), InstanceID: ptr("instance")}
+		if err := fixedProcessor(store).ApplyJobResult(context.Background(), message); err != nil {
+			t.Fatal(err)
+		}
+		if store.jobs["job"].Status != status {
+			t.Fatalf("PENDING changed status %q -> %q", status, store.jobs["job"].Status)
+		}
+	}
+}
+
 func TestInvalidPendingAndPreviewAreRejected(t *testing.T) {
 	processor := fixedProcessor(newMemoryStore())
 	if err := processor.ApplyJobResult(context.Background(), JobResultMessage{JobID: "job", ResourceID: "resource", Status: "PENDING"}); !errors.Is(err, ErrInvalidMessage) {
@@ -428,17 +481,6 @@ func TestTerminalStatesAreIdempotentAndDoNotOverwriteLatestAttempt(t *testing.T)
 	}
 	if len(store.results) != 1 || store.terminal["resource"].LastTerminalStatus != JobFailed {
 		t.Fatalf("terminal = %#v results=%#v", store.terminal["resource"], store.results)
-	}
-}
-
-func TestProcessingLeavesTerminalJobUntouched(t *testing.T) {
-	store := newMemoryStore()
-	store.jobs["job"] = &Job{ID: "job", ResourceID: "resource", Status: JobCompleted}
-	if err := fixedProcessor(store).ApplyJobResult(context.Background(), JobResultMessage{JobID: "job", ResourceID: "resource", Status: "PROCESSING"}); err != nil {
-		t.Fatal(err)
-	}
-	if store.jobs["job"].Status != JobCompleted {
-		t.Fatalf("job = %#v", store.jobs["job"])
 	}
 }
 

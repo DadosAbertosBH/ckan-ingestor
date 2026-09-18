@@ -1,66 +1,107 @@
 ---
 name: ducklake-query
-description: Query DuckLake data using DuckDB CLI inside the Docker environment. Use this when the user wants to inspect, query, or explore data stored in the DuckLake catalog.
+description: Query DuckLake data using DuckDB CLI over the Tailscale connection. Use this when the user wants to inspect, query, or explore data stored in the DuckLake catalog.
 ---
 
 # DuckLake Query
 
-Query DuckLake data using the local DuckDB CLI (`/opt/homebrew/bin/duckdb`). The Docker services are exposed on localhost with mapped ports.
+Query DuckLake from the local DuckDB CLI (`/opt/homebrew/bin/duckdb`) by connecting to the
+catalog over **Tailscale** (no `kubectl port-forward` needed). The catalog is the Postgres
+cluster in the `orchestrator` namespace, exposed to the tailnet, and the data files live in
+Cloudflare R2.
+
+The host machine must be connected to the tailnet (`tailscale status` should list the
+`orchestrator-ingestor-orchestrator-postgres-tailscale` node). Commands reach the tailnet over
+raw TCP, so they need unrestricted outbound access (not just an HTTP proxy grant).
+
+## Credentials
+
+Never hard-code the cluster secrets. Read them on demand:
+
+```bash
+# Postgres catalog password (user "app", database "app")
+kubectl get secret ingestor-orchestrator-postgres-app -n orchestrator \
+  -o jsonpath='{.data.password}' | base64 -d
+
+# R2 (S3-compatible) credentials for the DuckLake data path
+kubectl get secret ingestor-orchestrator-csi -n orchestrator \
+  -o jsonpath='{.data.DUCKLAKE_DATA_PATH__ACCESS_KEY_ID}' | base64 -d
+kubectl get secret ingestor-orchestrator-csi -n orchestrator \
+  -o jsonpath='{.data.DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY}' | base64 -d
+```
+
+Substitute the three values into `<PG_PASSWORD>`, `<R2_ACCESS_KEY_ID>` and
+`<R2_SECRET_ACCESS_KEY>` below. Because the terminal forbids shell substitutions, run the
+`kubectl` lookups first and paste the literal values.
 
 ## How to Connect
 
-Use the following DuckDB CLI invocation. Replace `<QUERY>` with your SQL:
+Replace `<QUERY>` with your SQL. The S3 settings must be set **before** the `ATTACH`.
 
 ```bash
-duckdb :memory: -c "SET s3_url_style='path'; SET s3_use_ssl=false; SET s3_endpoint='localhost:9100'; SET s3_access_key_id='admin'; SET s3_secret_access_key='password'; INSTALL postgres; INSTALL httpfs; LOAD ducklake; LOAD postgres; LOAD httpfs; SET pg_debug_show_queries=false; ATTACH IF NOT EXISTS 'ducklake:postgres:dbname=ducklake_catalog host=localhost port=5433 user=postgres password=postgres' AS lake (DATA_PATH 's3://warehouse', DATA_INLINING_ROW_LIMIT 10000, AUTOMATIC_MIGRATION TRUE); USE lake; <QUERY>"
+duckdb :memory: -c "SET s3_url_style='path'; SET s3_use_ssl=true; SET s3_region='auto'; SET s3_endpoint='d8915a6c9b1e24b2ded7d9cd72318cdd.r2.cloudflarestorage.com'; SET s3_access_key_id='<R2_ACCESS_KEY_ID>'; SET s3_secret_access_key='<R2_SECRET_ACCESS_KEY>'; INSTALL postgres; INSTALL httpfs; INSTALL ducklake; LOAD postgres; LOAD httpfs; LOAD ducklake; ATTACH IF NOT EXISTS 'ducklake:postgres:dbname=app host=orchestrator-ingestor-orchestrator-postgres-tailscale.tail49b842.ts.net port=5432 user=app password=<PG_PASSWORD>' AS lake (DATA_PATH 's3://public-datasets', DATA_INLINING_ROW_LIMIT 10000); USE lake; <QUERY>"
 ```
-
-## Port Mapping
-
-The `.env` uses Docker service hostnames. When connecting locally, map as follows:
-
-| .env Value | Local Value | Docker Port Mapping |
-|------------|-------------|---------------------|
-| `rustfs:9000` | `localhost:9100` | `9100:9000` |
-| `postgres` (host) | `localhost` | `5433:5432` |
-| `mysql` (host) | `localhost` | `3306:3306` |
 
 ## Connection Parameters
 
-| Setting | Local Value | Env Var |
-|---------|-------------|---------|
-| Catalog URI | `postgres:dbname=ducklake_catalog host=localhost port=5433 user=postgres password=postgres` | `DUCKLAKE_CATALOG_URI` |
-| S3 Endpoint | `localhost:9100` | `S3_ENDPOINT` |
-| S3 Access Key | `admin` | `S3_ACCESS_KEY_ID` |
-| S3 Secret Key | `password` | `S3_SECRET_ACCESS_KEY` |
-| S3 Bucket | `warehouse` | `S3_BUCKET` |
-| S3 Use SSL | `false` | `S3_USE_SSL` |
-| S3 URL Style | `path` | `S3_URL_STYLE` |
+| Setting | Value |
+|---------|-------|
+| Catalog host | `orchestrator-ingestor-orchestrator-postgres-tailscale.tail49b842.ts.net` |
+| Catalog port | `5432` |
+| Catalog database | `app` |
+| Catalog user | `app` |
+| Catalog password | secret `ingestor-orchestrator-postgres-app` key `password` |
+| S3 (R2) endpoint | `d8915a6c9b1e24b2ded7d9cd72318cdd.r2.cloudflarestorage.com` |
+| S3 bucket | `public-datasets` |
+| S3 access key | secret `ingestor-orchestrator-csi` key `DUCKLAKE_DATA_PATH__ACCESS_KEY_ID` |
+| S3 secret key | secret `ingestor-orchestrator-csi` key `DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY` |
+| S3 use SSL | `true` |
+| S3 region | `auto` |
+| S3 URL style | `path` |
+
+These mirror the cluster ConfigMap `ingestor-orchestrator` (`DUCKLAKE_DATA_PATH__*`) and the
+`DUCKLAKE_*` env vars of the orchestrator/worker pods.
 
 ## Useful Queries
 
-List all tables:
+The catalog is large (~17k resource tables) and the bucket holds a very large number of parquet
+objects. Scope every query.
+
+Find the tables you care about instead of listing all of them:
+
 ```sql
-SHOW TABLES;
+SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'ckan_%' ORDER BY 1;
 ```
 
-Count resources:
+Count synced resources (metadata table, lives in the catalog):
+
 ```sql
 SELECT COUNT(*) FROM ckan_resource;
 ```
 
 Preview synced resources:
+
 ```sql
-SELECT id, name, format, last_modified FROM ckan_resource LIMIT 10;
+SELECT id, name, format, last_modified FROM ckan_resource WHERE id = '<resource_id>';
 ```
 
-Check outdated resources:
+Check whether a resource version was already processed (the ingestion ledger):
+
 ```sql
-SELECT id, name, format, last_modified FROM ckan_resource WHERE id IN (SELECT resource_id FROM ckan_resource_last_update);
+SELECT * FROM ckan_resource_last_update WHERE ckan_resource_id = '<resource_id>';
+```
+
+Read one resource table (a resource's table name is its resource id):
+
+```sql
+SELECT * FROM "<resource_id>" LIMIT 10;
 ```
 
 ## Tips
 
 - Run from the project root directory.
-- Use `timeout_ms` of at least 60000 for queries, as the initial extension loading takes time.
-- The first run is slower because DuckDB needs to install extensions. Subsequent runs are faster.
+- Use `timeout_ms` of at least 120000: extension loading plus a remote catalog can be slow.
+- Do **not** run unbounded `glob('s3://public-datasets/**')` or full `SHOW TABLES` — the bucket
+  and table list are huge and the command will hang. Always filter.
+- `LOAD` skips the extension download when it is already installed; keep `INSTALL` for the first
+  run only if you prefer, but it is harmless.

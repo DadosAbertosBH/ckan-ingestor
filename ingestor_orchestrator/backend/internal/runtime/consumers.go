@@ -24,8 +24,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/app"
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/go/internal/config"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/app"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/config"
 )
 
 type Consumer interface {
