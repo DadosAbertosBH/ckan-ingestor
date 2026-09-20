@@ -113,7 +113,7 @@ iggy:
         value: all
 
   ui:
-    enabled: false
+    enabled: true
 
   securityContext:
     capabilities:
