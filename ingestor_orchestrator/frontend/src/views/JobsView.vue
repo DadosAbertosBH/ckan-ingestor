@@ -2,6 +2,14 @@
     <div class="jobs-view">
         <div class="header-row">
             <h1 class="page-title">Jobs</h1>
+            <button
+                v-if="selectedJobIds.length"
+                class="btn-primary btn-bulk-retry"
+                :disabled="retrying"
+                @click="handleBulkRetry"
+            >
+                {{ retrying ? "Retrying..." : `Retry selected (${selectedJobIds.length})` }}
+            </button>
         </div>
 
         <div class="filters">
@@ -50,10 +58,23 @@
             <span>Failed to load jobs: {{ error }}</span>
             <button class="btn-retry" @click="loadJobs">Retry</button>
         </div>
+        <div v-if="bulkRetrySummary" class="success-banner">
+            {{ bulkRetrySummary }}
+        </div>
         <div v-if="loading" class="loading">Loading...</div>
         <table v-else-if="!error" class="data-table">
             <thead>
                 <tr>
+                    <th class="selection-cell">
+                        <input
+                            type="checkbox"
+                            aria-label="Select all jobs"
+                            :checked="allJobsSelected"
+                            :indeterminate="someJobsSelected"
+                            @click.stop
+                            @change="toggleAllJobs"
+                        />
+                    </th>
                     <th>Resource</th>
                     <th>Job ID</th>
                     <th>Format</th>
@@ -93,6 +114,15 @@
                     class="clickable-row"
                     @click="goToJob(job.id)"
                 >
+                    <td class="selection-cell">
+                        <input
+                            type="checkbox"
+                            :aria-label="`Select job ${job.id}`"
+                            :checked="selectedJobIds.includes(job.id)"
+                            @click.stop
+                            @change="toggleJob(job.id)"
+                        />
+                    </td>
                     <td>
                         <div class="resource-path">
                             {{
@@ -139,7 +169,7 @@
                     <td>{{ formatTime(job.created_at) }}</td>
                 </tr>
                 <tr v-if="jobs.length === 0">
-                    <td colspan="8" class="empty-state">No jobs found</td>
+                    <td colspan="9" class="empty-state">No jobs found</td>
                 </tr>
             </tbody>
         </table>
@@ -168,7 +198,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from "vue";
+import { computed, ref, onMounted, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import JobStatusBadge from "@/components/JobStatusBadge.vue";
 import ResourceLabelBadge from "@/components/ResourceLabelBadge.vue";
@@ -178,12 +208,15 @@ import type { CkanInstance, Job, JobStatus } from "@/types";
 
 const router = useRouter();
 const route = useRoute();
-const { fetchJobs, fetchInstances } = useApi();
+const { fetchJobs, fetchInstances, retryJobs } = useApi();
 
 const jobs = ref<Job[]>([]);
 const instances = ref<CkanInstance[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
+const selectedJobIds = ref<string[]>([]);
+const retrying = ref(false);
+const bulkRetrySummary = ref<string | null>(null);
 const filterStatus = ref<JobStatus | "">(
     (route.query.status as JobStatus) || "",
 );
@@ -195,6 +228,13 @@ const sortDir = ref<string>((route.query.sort_dir as string) || "");
 const limit = 50;
 const offset = ref(Number(route.query.offset) || 0);
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+const allJobsSelected = computed(
+    () => jobs.value.length > 0 && jobs.value.every((job) => selectedJobIds.value.includes(job.id)),
+);
+const someJobsSelected = computed(
+    () => selectedJobIds.value.length > 0 && !allJobsSelected.value,
+);
 
 function syncQueryParams() {
     const query: Record<string, string> = {};
@@ -227,10 +267,40 @@ async function loadJobs() {
             limit,
             offset: offset.value,
         } as any);
+        selectedJobIds.value = [];
     } catch (e: any) {
         error.value = e.message || "Unknown error";
     } finally {
         loading.value = false;
+    }
+}
+
+function toggleJob(id: string) {
+    selectedJobIds.value = selectedJobIds.value.includes(id)
+        ? selectedJobIds.value.filter((selectedId) => selectedId !== id)
+        : [...selectedJobIds.value, id];
+}
+
+function toggleAllJobs() {
+    selectedJobIds.value = allJobsSelected.value ? [] : jobs.value.map((job) => job.id);
+}
+
+async function handleBulkRetry() {
+    const jobIds = [...selectedJobIds.value];
+    if (!jobIds.length || !confirm(`Retry ${jobIds.length} selected jobs?`)) return;
+
+    retrying.value = true;
+    bulkRetrySummary.value = null;
+    try {
+        const result = await retryJobs(jobIds);
+        const messages = [`${result.jobs.length} jobs re-enqueued.`];
+        if (result.failures.length) messages.push(`${result.failures.length} failed.`);
+        bulkRetrySummary.value = messages.join(" ");
+        await loadJobs();
+    } catch (e: any) {
+        error.value = e.message || "Failed to retry selected jobs";
+    } finally {
+        retrying.value = false;
     }
 }
 
@@ -361,6 +431,21 @@ onMounted(async () => {
     cursor: pointer;
 }
 
+.btn-primary {
+    background: #ef4444;
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 .btn-secondary:hover {
     background: #3a3d47;
 }
@@ -385,6 +470,16 @@ onMounted(async () => {
     padding: 12px 16px;
     margin-bottom: 16px;
     color: #fca5a5;
+    font-size: 14px;
+}
+
+.success-banner {
+    background: #143d2a;
+    border: 1px solid #22c55e;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    color: #86efac;
     font-size: 14px;
 }
 
@@ -426,6 +521,11 @@ onMounted(async () => {
     padding: 12px 16px;
     font-size: 14px;
     border-top: 1px solid #2a2d37;
+}
+
+.selection-cell {
+    width: 1%;
+    padding-right: 0 !important;
 }
 
 .mono {

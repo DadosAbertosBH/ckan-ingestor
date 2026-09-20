@@ -152,6 +152,22 @@ describe("useApi — success cases", () => {
       },
     );
   });
+
+  it("retryJobs sends all selected IDs to the batch retry endpoint", async () => {
+    const fn = mockFetch({ ok: true, body: { jobs: [], failures: [] } });
+
+    const { retryJobs } = useApi();
+    await retryJobs(["completed-1", "failed-1"]);
+
+    expect(fn).toHaveBeenCalledWith(
+      "/api/jobs/retry",
+      {
+        method: "POST",
+        body: JSON.stringify({ job_ids: ["completed-1", "failed-1"] }),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  });
 });
 
 describe("useApi — error handling", () => {

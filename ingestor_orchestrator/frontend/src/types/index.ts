@@ -61,6 +61,11 @@ export interface JobResult {
   created_at: string;
 }
 
+export interface RetryJobsResult {
+  jobs: Array<Pick<Job, "id">>;
+  failures: Array<{ job_id: string; error: string }>;
+}
+
 export interface Resource {
   resource_id: string;
   resource_name: string | null;

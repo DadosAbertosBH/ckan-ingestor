@@ -34,11 +34,17 @@ import (
 type fakeDispatcher struct {
 	retry    *app.Job
 	retryErr error
+	retryFn  func(string) (*app.Job, error)
+	retryIDs []string
 	sync     *app.MetadataSync
 	syncErr  error
 }
 
-func (f *fakeDispatcher) RetryJob(context.Context, string) (*app.Job, error) {
+func (f *fakeDispatcher) RetryJob(_ context.Context, id string) (*app.Job, error) {
+	f.retryIDs = append(f.retryIDs, id)
+	if f.retryFn != nil {
+		return f.retryFn(id)
+	}
 	return f.retry, f.retryErr
 }
 func (f *fakeDispatcher) SyncInstance(context.Context, string) (*app.MetadataSync, error) {
@@ -157,6 +163,47 @@ func TestRetryErrorsUseDetailAndStatus(t *testing.T) {
 		if response.Code != item.status {
 			t.Fatalf("error %v: status = %d", item.err, response.Code)
 		}
+	}
+}
+
+func TestRetryBatchReturnsSuccessesAndFailures(t *testing.T) {
+	dispatcher := &fakeDispatcher{retryFn: func(id string) (*app.Job, error) {
+		if id == "missing" {
+			return nil, app.ErrNotFound
+		}
+		return &app.Job{ID: "retry-" + id}, nil
+	}}
+	handler := New(dispatcher, fakePinger{}, fakePinger{}, func() bool { return true })
+	request := httptest.NewRequest(http.MethodPost, "/api/jobs/retry", strings.NewReader(`{"job_ids":["completed","missing"]}`))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", response.Code, response.Body.String())
+	}
+	var body struct {
+		Jobs     []app.Job `json:"jobs"`
+		Failures []struct {
+			JobID string `json:"job_id"`
+			Error string `json:"error"`
+		} `json:"failures"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Jobs) != 1 || body.Jobs[0].ID != "retry-completed" || len(body.Failures) != 1 || body.Failures[0].JobID != "missing" {
+		t.Fatalf("body = %#v", body)
+	}
+	if got := strings.Join(dispatcher.retryIDs, ","); got != "completed,missing" {
+		t.Fatalf("retry IDs = %s", got)
+	}
+}
+
+func TestRetryBatchRejectsEmptySelection(t *testing.T) {
+	handler := New(&fakeDispatcher{}, fakePinger{}, fakePinger{}, func() bool { return true })
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/jobs/retry", strings.NewReader(`{"job_ids":[]}`)))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body=%s", response.Code, response.Body.String())
 	}
 }
 

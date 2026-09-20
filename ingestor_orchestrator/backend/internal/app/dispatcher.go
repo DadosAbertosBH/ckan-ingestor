@@ -56,9 +56,6 @@ func (d *Dispatcher) RetryJob(ctx context.Context, jobID string) (*Job, error) {
 		if err != nil {
 			return err
 		}
-		if job.Status != JobFailed {
-			return fmt.Errorf("%w: can only retry failed jobs", ErrConflict)
-		}
 		now := d.now()
 		created = &Job{ID: d.newID(), ResourceID: job.ResourceID, ResourceName: job.ResourceName, ResourceURL: job.ResourceURL, ResourceFormat: job.ResourceFormat, DatasetName: job.DatasetName, Status: JobPending, IdempotencyKey: job.IdempotencyKey, InstanceID: job.InstanceID, InstanceName: job.InstanceName, InstanceURL: job.InstanceURL, CKANURL: job.CKANURL, DatastoreActive: job.DatastoreActive, CreatedAt: now, UpdatedAt: now}
 		payload := map[string]any{"job_id": created.ID, "resource_id": created.ResourceID, "ckan_url": created.CKANURL, "resource_url": stringValue(created.ResourceURL), "resource_format": stringValue(created.ResourceFormat), "datastore_active": created.DatastoreActive}
@@ -75,7 +72,7 @@ func (d *Dispatcher) RetryJob(ctx context.Context, jobID string) (*Job, error) {
 		if err != nil {
 			return err
 		}
-		created.BrokerType, created.MessageStream, created.MessageTopic = ptrString(routing.BrokerType), ptrString(routing.Stream), ptrString(routing.Topic)
+		created.BrokerType, created.MessageStream, created.MessageTopic = new(routing.BrokerType), new(routing.Stream), new(routing.Topic)
 		created.MessagePartition, created.MessageOffset = &routing.Partition, routing.Offset
 		if err := tx.InsertJob(ctx, created); err != nil {
 			return err
@@ -154,5 +151,3 @@ func stringValue(value *string) string {
 	}
 	return *value
 }
-
-func ptrString(value string) *string { return &value }

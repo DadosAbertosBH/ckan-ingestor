@@ -5,12 +5,14 @@ import JobsView from "@/views/JobsView.vue";
 
 const mockFetchJobs = vi.fn().mockResolvedValue([]);
 const mockFetchInstances = vi.fn().mockResolvedValue([]);
+const mockRetryJobs = vi.fn().mockResolvedValue({ jobs: [], failures: [] });
 
 // Mock useApi so we don't need real HTTP
 vi.mock("@/composables/useApi", () => ({
   useApi: () => ({
     fetchJobs: mockFetchJobs,
     fetchInstances: mockFetchInstances,
+    retryJobs: mockRetryJobs,
   }),
 }));
 
@@ -110,6 +112,66 @@ describe("JobsView — filter URL persistence", () => {
     await flushPromises();
 
     expect(router.currentRoute.value.query.status).toBeUndefined();
+  });
+});
+
+describe("JobsView — bulk retry", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockFetchJobs.mockResolvedValue([
+      {
+        id: "completed-job",
+        resource_id: "abc-123",
+        resource_name: "Test Resource",
+        resource_url: null,
+        resource_format: "CSV",
+        dataset_name: "dataset",
+        status: "completed",
+        idempotency_key: "abc-123",
+        created_at: "2025-01-01T00:00:00Z",
+        updated_at: "2025-01-01T00:00:00Z",
+        started_at: null,
+        completed_at: null,
+        ckan_resource_url: "https://example.test/resource/abc-123",
+        labels: [],
+        instance_name: "Example",
+      },
+      {
+        id: "failed-job",
+        resource_id: "def-456",
+        resource_name: "Failed Resource",
+        resource_url: null,
+        resource_format: "CSV",
+        dataset_name: "dataset",
+        status: "failed",
+        idempotency_key: "def-456",
+        created_at: "2025-01-01T00:00:00Z",
+        updated_at: "2025-01-01T00:00:00Z",
+        started_at: null,
+        completed_at: null,
+        ckan_resource_url: "https://example.test/resource/def-456",
+        labels: [],
+        instance_name: "Example",
+      },
+    ]);
+    mockRetryJobs.mockResolvedValue({ jobs: [{ id: "retry-1" }, { id: "retry-2" }], failures: [] });
+    vi.stubGlobal("confirm", vi.fn(() => true));
+  });
+
+  it("retries all selected jobs regardless of status after confirmation", async () => {
+    const { wrapper } = await mountWithRouter();
+    await flushPromises();
+
+    const checkboxes = wrapper.findAll('input[type="checkbox"]');
+    await checkboxes[1]!.setValue(true);
+    await checkboxes[2]!.setValue(true);
+    await wrapper.find(".btn-bulk-retry").trigger("click");
+    await flushPromises();
+
+    expect(confirm).toHaveBeenCalledWith("Retry 2 selected jobs?");
+    expect(mockRetryJobs).toHaveBeenCalledWith(["completed-job", "failed-job"]);
+    expect(wrapper.text()).toContain("2 jobs re-enqueued.");
+    expect(mockFetchJobs).toHaveBeenCalledTimes(2);
   });
 });
 

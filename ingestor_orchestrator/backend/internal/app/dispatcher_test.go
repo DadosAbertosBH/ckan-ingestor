@@ -38,7 +38,7 @@ func (f *fakePublisher) Publish(_ context.Context, topic string, payload []byte,
 	return f.result, f.err
 }
 
-func TestRetryJobCreatesAttemptAndPublishesRetryMessage(t *testing.T) {
+func TestRetryJobPublishesAttemptWithoutPersistingIt(t *testing.T) {
 	store := newMemoryStore()
 	store.jobs["failed"] = &Job{ID: "failed", ResourceID: "resource", DatasetName: "dataset", InstanceID: "instance", CKANURL: "https://example.test", Status: JobFailed}
 	store.hints["resource"] = ";"
@@ -52,6 +52,9 @@ func TestRetryJobCreatesAttemptAndPublishesRetryMessage(t *testing.T) {
 	if job.ID != "retry" || job.Status != JobPending || *job.MessagePartition != 2 {
 		t.Fatalf("job = %#v", job)
 	}
+	if store.jobs["retry"] != nil || store.latest["resource"] != nil {
+		t.Fatalf("retry attempt was persisted before its PENDING message: jobs=%#v latest=%#v", store.jobs, store.latest)
+	}
 	if len(pub.messages) != 1 || pub.messages[0].topic != "jobs-retry" || pub.messages[0].key != "resource" {
 		t.Fatalf("published = %#v", pub.messages)
 	}
@@ -59,17 +62,21 @@ func TestRetryJobCreatesAttemptAndPublishesRetryMessage(t *testing.T) {
 	if err := json.Unmarshal(pub.messages[0].payload, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload["csv_delimiter"] != ";" || payload["job_id"] != "retry" {
+	if payload["csv_delimiter"] != ";" || payload["job_id"] != "retry" || payload["dataset_name"] != "dataset" || payload["instance_id"] != "instance" {
 		t.Fatalf("payload = %#v", payload)
 	}
 }
 
-func TestRetryRejectsNonFailedJob(t *testing.T) {
+func TestRetryJobRequeuesNonFailedJob(t *testing.T) {
 	store := newMemoryStore()
-	store.jobs["pending"] = &Job{ID: "pending", Status: JobPending}
-	dispatcher := &Dispatcher{Store: store, Publisher: &fakePublisher{}}
-	if _, err := dispatcher.RetryJob(context.Background(), "pending"); !errors.Is(err, ErrConflict) {
-		t.Fatalf("error = %v", err)
+	store.jobs["completed"] = &Job{ID: "completed", ResourceID: "resource", DatasetName: "dataset", InstanceID: "instance", CKANURL: "https://example.test", Status: JobCompleted}
+	dispatcher := &Dispatcher{Store: store, Publisher: &fakePublisher{}, RetryTopic: "jobs-retry", NewID: func() string { return "retry" }}
+	job, err := dispatcher.RetryJob(context.Background(), "completed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.ID != "retry" || job.Status != JobPending {
+		t.Fatalf("job = %#v", job)
 	}
 }
 

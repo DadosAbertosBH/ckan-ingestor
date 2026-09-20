@@ -69,6 +69,7 @@ func (s *Server) router() http.Handler {
 	})
 	router.Get("/ready", s.handleReady)
 	router.Post("/api/jobs/{jobID}/retry", func(w http.ResponseWriter, r *http.Request) { s.handleRetry(w, r, chi.URLParam(r, "jobID")) })
+	router.Post("/api/jobs/retry", s.handleRetryBatch)
 	router.Post("/api/metadata/sync", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, s.dispatcher.SyncAll(r.Context()))
 	})
@@ -298,6 +299,7 @@ func writeOpenAPI(w http.ResponseWriter) {
 			"/api/jobs/":                       op("get", "List jobs"),
 			"/api/jobs/{job_id}":               op("get", "Get job"),
 			"/api/jobs/{job_id}/retry":         op("post", "Retry job"),
+			"/api/jobs/retry":                  op("post", "Retry jobs in batch"),
 			"/api/resources/":                  op("get", "List resources"),
 			"/api/resources/{resource_id}":     op("get", "Get resource"),
 			"/api/datasets/":                   op("get", "List datasets"),
@@ -322,6 +324,35 @@ func (s *Server) handleRetry(w http.ResponseWriter, r *http.Request, id string) 
 	_ = json.Unmarshal(encoded, &response)
 	response["ckan_resource_url"], response["labels"], response["results"] = resourceURL, []string{}, []any{}
 	writeJSON(w, http.StatusOK, response)
+}
+
+type retryBatchRequest struct {
+	JobIDs []string `json:"job_ids"`
+}
+
+type retryBatchFailure struct {
+	JobID string `json:"job_id"`
+	Error string `json:"error"`
+}
+
+func (s *Server) handleRetryBatch(w http.ResponseWriter, r *http.Request) {
+	var request retryBatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || len(request.JobIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "job_ids must contain at least one job ID")
+		return
+	}
+
+	jobs := make([]*app.Job, 0, len(request.JobIDs))
+	failures := make([]retryBatchFailure, 0)
+	for _, id := range request.JobIDs {
+		job, err := s.dispatcher.RetryJob(r.Context(), id)
+		if err != nil {
+			failures = append(failures, retryBatchFailure{JobID: id, Error: err.Error()})
+			continue
+		}
+		jobs = append(jobs, job)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs, "failures": failures})
 }
 
 func (s *Server) handleSync(w http.ResponseWriter, r *http.Request, id string) {

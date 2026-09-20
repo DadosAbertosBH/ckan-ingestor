@@ -8,6 +8,7 @@ import type {
   MetadataSync,
   Resource,
   ResourceDetail,
+  RetryJobsResult,
 } from "@/types";
 
 const API_BASE = "/api";
@@ -65,6 +66,11 @@ export function useApi() {
   const fetchJob = (id: string) => request<Job>(`/jobs/${id}`);
   const retryJob = (id: string) =>
     request<Job>(`/jobs/${id}/retry`, { method: "POST" });
+  const retryJobs = (jobIds: string[]) =>
+    request<RetryJobsResult>("/jobs/retry", {
+      method: "POST",
+      body: JSON.stringify({ job_ids: jobIds }),
+    });
   const syncMetadata = (instanceId?: string) => {
     const path = instanceId ? `/metadata/sync/${instanceId}` : "/metadata/sync";
     return request<Record<string, unknown>>(path, { method: "POST" });
@@ -123,6 +129,7 @@ export function useApi() {
     fetchJobs,
     fetchJob,
     retryJob,
+    retryJobs,
     syncMetadata,
     fetchResources,
     fetchResource,
