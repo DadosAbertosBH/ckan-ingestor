@@ -32,7 +32,7 @@ graph TD
 | Serviço de orquestração | Go | Toda comunicação com Iggy, retry, sync de metadados, scheduler e aplicação de resultados no MySQL |
 | Frontend | Vue.js 3 + TypeScript + Vite | Dashboard para visualizar e gerenciar jobs |
 | Worker | Rust + Iggy SDK + DuckDB | Consome jobs e executa a ingestão de dados |
-| Fila | Apache Iggy 0.8.0 | Comunicação assíncrona entre o serviço Go e os workers |
+| Fila | Apache Iggy 0.9.0 | Comunicação assíncrona entre o serviço Go e os workers |
 | Estado | MySQL 8.0 | Persistência do estado dos jobs |
 | Lakehouse | DuckLake | DuckDB + catálogo Postgres + dados em S3/RustFS |
 

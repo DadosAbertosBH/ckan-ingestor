@@ -129,7 +129,7 @@ test-rust:
     KACHE_RUNTIME_DIR: "$CI_PROJECT_DIR/.kache-runtime"
     KACHE_MAX_SIZE: "4G"
     CACHE_COMPRESSION_LEVEL: "fastest"
-    FF_USE_PARALLEL_CACHE_TRANSFER: "true"
+    FF_USE_PARALLEL_CACHE_TRANSFER: "false" # Breaks in R2
     CARGO_HOME: "$CI_PROJECT_DIR/.cargo-home"
     TESTCONTAINERS_HOST_OVERRIDE: "docker"
     RAYON_NUM_THREADS: "1"

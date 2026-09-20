@@ -17,6 +17,7 @@
 package iggy
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/apache/iggy/foreign/go/client"
@@ -30,37 +31,40 @@ type SDKDriver struct {
 	stream string
 }
 
-func NewSDKDriver(cfg config.Config) (*SDKDriver, error) {
-	cli, err := client.NewIggyClient(client.WithTcp(tcp.WithServerAddress(cfg.IggyAddress)))
+func NewSDKDriver(ctx context.Context, cfg config.Config) (*SDKDriver, error) {
+	cli, err := client.NewIggyClient(client.WithTcp(
+		tcp.WithServerAddress(cfg.IggyAddress),
+		tcp.WithAutoLogin(tcp.NewUsernamePasswordCredentials(cfg.IggyUsername, cfg.IggyPassword)),
+	))
 	if err != nil {
 		return nil, err
 	}
-	if _, err := cli.LoginUser(cfg.IggyUsername, cfg.IggyPassword); err != nil {
+	if err := cli.Connect(ctx); err != nil {
 		_ = cli.Close()
-		return nil, fmt.Errorf("login to Iggy: %w", err)
+		return nil, fmt.Errorf("connect to Iggy: %w", err)
 	}
 	return &SDKDriver{client: cli, stream: cfg.Stream}, nil
 }
 
 func identifier(value string) (iggcon.Identifier, error) { return iggcon.NewIdentifier(value) }
 
-func (d *SDKDriver) EnsureStream(name string) error {
+func (d *SDKDriver) EnsureStream(ctx context.Context, name string) error {
 	id, err := identifier(name)
 	if err != nil {
 		return err
 	}
-	if _, err := d.client.GetStream(id); err == nil {
+	if _, err := d.client.GetStream(ctx, id); err == nil {
 		return nil
 	}
-	if _, err := d.client.CreateStream(name); err != nil {
-		if _, getErr := d.client.GetStream(id); getErr != nil {
+	if _, err := d.client.CreateStream(ctx, name); err != nil {
+		if _, getErr := d.client.GetStream(ctx, id); getErr != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (d *SDKDriver) EnsureTopic(name string, partitions int) error {
+func (d *SDKDriver) EnsureTopic(ctx context.Context, name string, partitions int) error {
 	stream, err := identifier(d.stream)
 	if err != nil {
 		return err
@@ -69,19 +73,18 @@ func (d *SDKDriver) EnsureTopic(name string, partitions int) error {
 	if err != nil {
 		return err
 	}
-	if _, err := d.client.GetTopic(stream, topic); err == nil {
+	if _, err := d.client.GetTopic(ctx, stream, topic); err == nil {
 		return nil
 	}
-	replication := uint8(1)
-	if _, err := d.client.CreateTopic(stream, name, uint32(partitions), 0, iggcon.IggyExpiryServerDefault, 0, &replication); err != nil {
-		if _, getErr := d.client.GetTopic(stream, topic); getErr != nil {
+	if _, err := d.client.CreateTopic(ctx, stream, name, uint32(partitions), 0, iggcon.IggyExpiryServerDefault, 0); err != nil {
+		if _, getErr := d.client.GetTopic(ctx, stream, topic); getErr != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (d *SDKDriver) Send(topicName string, partition int, payload []byte) error {
+func (d *SDKDriver) Send(ctx context.Context, topicName string, partition int, payload []byte) error {
 	stream, err := identifier(d.stream)
 	if err != nil {
 		return err
@@ -94,10 +97,11 @@ func (d *SDKDriver) Send(topicName string, partition int, payload []byte) error 
 	if err != nil {
 		return err
 	}
-	return d.client.SendMessages(stream, topic, iggcon.PartitionId(uint32(partition)), []iggcon.IggyMessage{message})
+	_, err = d.client.SendMessages(ctx, stream, topic, iggcon.PartitionId(uint32(partition)), []iggcon.IggyMessage{message})
+	return err
 }
 
-func (d *SDKDriver) Join(topicName, groupName string) error {
+func (d *SDKDriver) Join(ctx context.Context, topicName, groupName string) error {
 	stream, err := identifier(d.stream)
 	if err != nil {
 		return err
@@ -110,17 +114,33 @@ func (d *SDKDriver) Join(topicName, groupName string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := d.client.GetConsumerGroup(stream, topic, group); err != nil {
-		if _, createErr := d.client.CreateConsumerGroup(stream, topic, groupName); createErr != nil {
-			if _, getErr := d.client.GetConsumerGroup(stream, topic, group); getErr != nil {
+	if _, err := d.client.GetConsumerGroup(ctx, stream, topic, group); err != nil {
+		if _, createErr := d.client.CreateConsumerGroup(ctx, stream, topic, groupName); createErr != nil {
+			if _, getErr := d.client.GetConsumerGroup(ctx, stream, topic, group); getErr != nil {
 				return createErr
 			}
 		}
 	}
-	return d.client.JoinConsumerGroup(stream, topic, group)
+	return d.client.JoinConsumerGroup(ctx, stream, topic, group)
 }
 
-func (d *SDKDriver) Poll(topicName, groupName string, count int) ([]Message, error) {
+func (d *SDKDriver) Leave(ctx context.Context, topicName, groupName string) error {
+	stream, err := identifier(d.stream)
+	if err != nil {
+		return err
+	}
+	topic, err := identifier(topicName)
+	if err != nil {
+		return err
+	}
+	group, err := identifier(groupName)
+	if err != nil {
+		return err
+	}
+	return d.client.LeaveConsumerGroup(ctx, stream, topic, group)
+}
+
+func (d *SDKDriver) Poll(ctx context.Context, topicName, groupName string, count int) ([]Message, error) {
 	stream, err := identifier(d.stream)
 	if err != nil {
 		return nil, err
@@ -133,7 +153,7 @@ func (d *SDKDriver) Poll(topicName, groupName string, count int) ([]Message, err
 	if err != nil {
 		return nil, err
 	}
-	polled, err := d.client.PollMessages(stream, topic, iggcon.NewGroupConsumer(group), iggcon.NextPollingStrategy(), uint32(count), false, nil)
+	polled, err := d.client.PollMessages(ctx, stream, topic, iggcon.NewGroupConsumer(group), iggcon.NextPollingStrategy(), uint32(count), false, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +167,7 @@ func (d *SDKDriver) Poll(topicName, groupName string, count int) ([]Message, err
 	return messages, nil
 }
 
-func (d *SDKDriver) Commit(topicName, groupName string, partition uint32, offset uint64) error {
+func (d *SDKDriver) Commit(ctx context.Context, topicName, groupName string, partition uint32, offset uint64) error {
 	stream, err := identifier(d.stream)
 	if err != nil {
 		return err
@@ -160,10 +180,10 @@ func (d *SDKDriver) Commit(topicName, groupName string, partition uint32, offset
 	if err != nil {
 		return err
 	}
-	return d.client.StoreConsumerOffset(iggcon.NewGroupConsumer(group), stream, topic, offset, &partition)
+	return d.client.StoreConsumerOffset(ctx, iggcon.NewGroupConsumer(group), stream, topic, offset, &partition)
 }
 
-func (d *SDKDriver) Ping() error  { return d.client.Ping() }
-func (d *SDKDriver) Close() error { return d.client.Close() }
+func (d *SDKDriver) Ping(ctx context.Context) error { return d.client.Ping(ctx) }
+func (d *SDKDriver) Close() error                   { return d.client.Close() }
 
 var _ Driver = (*SDKDriver)(nil)

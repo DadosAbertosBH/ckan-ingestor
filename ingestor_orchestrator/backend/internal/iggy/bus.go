@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/app"
@@ -33,13 +34,14 @@ type Message struct {
 	Partition uint32
 }
 type Driver interface {
-	EnsureStream(string) error
-	EnsureTopic(string, int) error
-	Send(string, int, []byte) error
-	Join(string, string) error
-	Poll(string, string, int) ([]Message, error)
-	Commit(string, string, uint32, uint64) error
-	Ping() error
+	EnsureStream(context.Context, string) error
+	EnsureTopic(context.Context, string, int) error
+	Send(context.Context, string, int, []byte) error
+	Join(context.Context, string, string) error
+	Leave(context.Context, string, string) error
+	Poll(context.Context, string, string, int) ([]Message, error)
+	Commit(context.Context, string, string, uint32, uint64) error
+	Ping(context.Context) error
 	Close() error
 }
 
@@ -53,7 +55,7 @@ func (b *Bus) EnsureTopology(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := b.driver.EnsureStream(b.cfg.Stream); err != nil {
+	if err := b.driver.EnsureStream(ctx, b.cfg.Stream); err != nil {
 		return err
 	}
 	for _, topic := range []struct {
@@ -63,7 +65,7 @@ func (b *Bus) EnsureTopology(ctx context.Context) error {
 		{b.cfg.JobTopic, b.cfg.JobPartitions}, {b.cfg.RetryTopic, b.cfg.RetryPartitions},
 		{b.cfg.ResultTopic, b.cfg.ResultPartitions}, {b.cfg.MetadataTopic, 1}, {b.cfg.MetadataResultTopic, 1},
 	} {
-		if err := b.driver.EnsureTopic(topic.name, topic.partitions); err != nil {
+		if err := b.driver.EnsureTopic(ctx, topic.name, topic.partitions); err != nil {
 			return err
 		}
 	}
@@ -82,7 +84,7 @@ func (b *Bus) Publish(ctx context.Context, topic string, payload []byte, key str
 		digest := sha256.Sum256([]byte(key))
 		partition = int(binary.BigEndian.Uint32(digest[:4]) % uint32(partitions))
 	}
-	if err := b.driver.Send(topic, partition, payload); err != nil {
+	if err := b.driver.Send(ctx, topic, partition, payload); err != nil {
 		return app.Routing{}, err
 	}
 	return app.Routing{BrokerType: "iggy", Stream: b.cfg.Stream, Topic: topic, Partition: partition}, nil
@@ -102,14 +104,21 @@ func (b *Bus) partitionCount(topic string) (int, error) {
 	}
 }
 func (b *Bus) Consume(ctx context.Context, topic, group string, handler func([]byte) error) error {
-	if err := b.driver.Join(topic, group); err != nil {
+	if err := b.driver.Join(ctx, topic, group); err != nil {
 		return err
 	}
+	defer func() {
+		leaveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if err := b.driver.Leave(leaveCtx, topic, group); err != nil {
+			slog.Warn("failed to leave Iggy consumer group", "topic", topic, "group", group, "error", err)
+		}
+	}()
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
-		messages, err := b.driver.Poll(topic, group, 10)
+		messages, err := b.driver.Poll(ctx, topic, group, 10)
 		if err != nil {
 			return err
 		}
@@ -127,11 +136,11 @@ func (b *Bus) Consume(ctx context.Context, topic, group string, handler func([]b
 			if err := handler(message.Payload); err != nil {
 				return err
 			}
-			if err := b.driver.Commit(topic, group, message.Partition, message.Offset); err != nil {
+			if err := b.driver.Commit(ctx, topic, group, message.Partition, message.Offset); err != nil {
 				return err
 			}
 		}
 	}
 }
-func (b *Bus) Ping(context.Context) error { return b.driver.Ping() }
-func (b *Bus) Close() error               { return b.driver.Close() }
+func (b *Bus) Ping(ctx context.Context) error { return b.driver.Ping(ctx) }
+func (b *Bus) Close() error                   { return b.driver.Close() }

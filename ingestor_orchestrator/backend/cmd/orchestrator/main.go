@@ -72,7 +72,7 @@ func run() error {
 
 	var driver *iggy.SDKDriver
 	err = retryUntil(ctx, cfg.StartupTimeout, func(context.Context) error {
-		created, createErr := iggy.NewSDKDriver(cfg)
+		created, createErr := iggy.NewSDKDriver(ctx, cfg)
 		if createErr == nil {
 			driver = created
 		}
@@ -90,7 +90,12 @@ func run() error {
 	processor := &app.Processor{Store: store, NewID: uuid.NewString}
 	dispatcher := &app.Dispatcher{Store: store, Publisher: bus, RetryTopic: cfg.RetryTopic, MetadataTopic: cfg.MetadataTopic, NewID: uuid.NewString}
 	consumers := runtimeapp.NewConsumers(bus, processor, cfg)
-	consumers.Start(ctx)
+	consumerCtx, stopConsumers := context.WithCancel(ctx)
+	consumers.Start(consumerCtx)
+	defer func() {
+		stopConsumers()
+		consumers.Wait()
+	}()
 	scheduler := &runtimeapp.Scheduler{Locker: store, Dispatcher: dispatcher, Interval: cfg.SchedulerInterval}
 	go scheduler.Run(ctx)
 

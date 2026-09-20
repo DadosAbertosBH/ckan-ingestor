@@ -9,6 +9,7 @@
 package iggy
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -20,16 +21,17 @@ func TestSDKDriverAgainstIggy(t *testing.T) {
 	if address == "" {
 		t.Skip("set IGGY_INTEGRATION_ADDRESS to run against Iggy")
 	}
-	driver, err := NewSDKDriver(config.Config{IggyAddress: address, IggyUsername: "iggy", IggyPassword: "iggy", Stream: "ckan-ingestor"})
+	ctx := context.Background()
+	driver, err := NewSDKDriver(ctx, config.Config{IggyAddress: address, IggyUsername: "iggy", IggyPassword: "iggy", Stream: "ckan-ingestor"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer driver.Close()
-	if err := driver.EnsureStream("ckan-ingestor"); err != nil {
+	if err := driver.EnsureStream(ctx, "ckan-ingestor"); err != nil {
 		t.Fatalf("stream: %v", err)
 	}
 	for _, topic := range []string{"jobs", "jobs-retry", "job-results", "ckan_metadata_sync", "ckan_metadata_sync_result"} {
-		if err := driver.EnsureTopic(topic, 1); err != nil {
+		if err := driver.EnsureTopic(ctx, topic, 1); err != nil {
 			t.Fatalf("topic %s: %v", topic, err)
 		}
 	}

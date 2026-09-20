@@ -16,9 +16,9 @@ use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 use tokio::time::{Duration, timeout};
 
 async fn start_iggy() -> anyhow::Result<ContainerAsync<GenericImage>> {
-    Ok(GenericImage::new("apache/iggy", "0.8.0")
+    Ok(GenericImage::new("apache/iggy", "0.9.0")
         .with_wait_for(WaitFor::message_on_stdout(
-            "Iggy TCP server has started on: 0.0.0.0:8090",
+            "server client listeners started",
         ))
         .with_mapped_port(0, 8090.tcp())
         .with_security_opt("seccomp=unconfined")
@@ -28,6 +28,8 @@ async fn start_iggy() -> anyhow::Result<ContainerAsync<GenericImage>> {
         .with_env_var("IGGY_ROOT_USERNAME", "iggy")
         .with_env_var("IGGY_ROOT_PASSWORD", "iggy")
         .with_env_var("IGGY_TCP_ADDRESS", "0.0.0.0:8090")
+        .with_env_var("IGGY_NODE_ADVERTISED_ADDRESS", "127.0.0.1")
+        .with_env_var("IGGY_SHARDING_CPU_ALLOCATION", "all")
         .start()
         .await?)
 }

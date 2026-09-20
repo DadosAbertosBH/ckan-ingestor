@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -40,6 +41,7 @@ type Consumers struct {
 	processor ResultProcessor
 	cfg       config.Config
 	active    atomic.Int32
+	wg        sync.WaitGroup
 }
 
 func NewConsumers(bus Consumer, processor ResultProcessor, cfg config.Config) *Consumers {
@@ -47,9 +49,17 @@ func NewConsumers(bus Consumer, processor ResultProcessor, cfg config.Config) *C
 }
 func (c *Consumers) Ready() bool { return c.active.Load() == 2 }
 func (c *Consumers) Start(ctx context.Context) {
-	go c.run(ctx, c.cfg.ResultTopic, c.cfg.ResultGroup, c.handleJob)
-	go c.run(ctx, c.cfg.MetadataResultTopic, c.cfg.MetadataResultGroup, c.handleMetadata)
+	c.wg.Add(2)
+	go func() {
+		defer c.wg.Done()
+		c.run(ctx, c.cfg.ResultTopic, c.cfg.ResultGroup, c.handleJob)
+	}()
+	go func() {
+		defer c.wg.Done()
+		c.run(ctx, c.cfg.MetadataResultTopic, c.cfg.MetadataResultGroup, c.handleMetadata)
+	}()
 }
+func (c *Consumers) Wait() { c.wg.Wait() }
 func (c *Consumers) run(ctx context.Context, topic, group string, handler func(context.Context, []byte) error) {
 	delay := time.Second
 	for ctx.Err() == nil {

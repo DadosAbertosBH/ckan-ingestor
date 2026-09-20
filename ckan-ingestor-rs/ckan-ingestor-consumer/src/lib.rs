@@ -16,7 +16,7 @@ use ckan_ingestor_lib::config::S3Settings;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
 use iggy_processor::iggy::prelude::{
     AutoCommit, Client, CompressionAlgorithm, DirectConfig, IggyClient, IggyDuration, IggyExpiry,
-    MaxTopicSize, PollingStrategy, StreamClient, TopicClient,
+    MaxTopicSize, PollingStrategy, StreamClient, TopicClient, TopicCreateOptions,
 };
 use log::{info, warn};
 use std::env;
@@ -195,11 +195,13 @@ pub async fn ensure_topology(client: &IggyClient, settings: &IggySettings) -> Re
                 .create_topic(
                     &stream,
                     topic_name,
-                    partitions,
-                    CompressionAlgorithm::None,
-                    Some(1),
-                    IggyExpiry::NeverExpire,
-                    MaxTopicSize::ServerDefault,
+                    &TopicCreateOptions {
+                        partitions_count: Some(partitions),
+                        compression_algorithm: Some(CompressionAlgorithm::None),
+                        message_expiry: Some(IggyExpiry::NeverExpire),
+                        max_topic_size: Some(MaxTopicSize::ServerDefault),
+                        ..TopicCreateOptions::default()
+                    },
                 )
                 .await
         {

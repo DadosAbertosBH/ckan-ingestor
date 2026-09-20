@@ -24,12 +24,21 @@ import (
 	"time"
 
 	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/app"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/config"
 )
 
 type fakeProcessor struct {
 	jobs     []app.JobResultMessage
 	metadata []app.MetadataSyncResultMessage
 	err      error
+}
+
+type blockingConsumer struct{ calls atomic.Int32 }
+
+func (c *blockingConsumer) Consume(ctx context.Context, _ string, _ string, _ func([]byte) error) error {
+	c.calls.Add(1)
+	<-ctx.Done()
+	return nil
 }
 
 func (f *fakeProcessor) ApplyJobResult(_ context.Context, value app.JobResultMessage) error {
@@ -79,6 +88,34 @@ func TestJobHandlerRetriesNotFoundAndStopsWhenContextIsCancelled(t *testing.T) {
 	processor.remaining = 5
 	if err := consumers.handleJob(ctx, []byte(`{"job_id":"job","resource_id":"resource","status":"SUCCESS"}`)); !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestWaitBlocksUntilConsumerGoroutinesStop(t *testing.T) {
+	bus := &blockingConsumer{}
+	consumers := &Consumers{bus: bus, processor: &fakeProcessor{}, cfg: config.Config{
+		ResultTopic: "job-results", ResultGroup: "job-results-consumer",
+		MetadataResultTopic: "metadata-results", MetadataResultGroup: "metadata-results-consumer",
+	}}
+	waiter, ok := any(consumers).(interface{ Wait() })
+	if !ok {
+		t.Fatal("Consumers must expose Wait")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	consumers.Start(ctx)
+	deadline := time.After(time.Second)
+	for bus.calls.Load() != 2 {
+		select {
+		case <-deadline:
+			t.Fatal("consumers did not start")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	cancel()
+	waiter.Wait()
+	if consumers.Ready() {
+		t.Fatal("consumers remained active after Wait")
 	}
 }
 

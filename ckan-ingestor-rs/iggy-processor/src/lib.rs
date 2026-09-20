@@ -89,6 +89,7 @@ impl MessagePublisher for IggyPublisher {
             })?
             .send_with_partitioning(vec![iggy_message], Some(partitioning))
             .await
+            .map(|_| ())
             .map_err(|error| {
                 anyhow::anyhow!(
                     "Failed Iggy publish message {} with error {}",

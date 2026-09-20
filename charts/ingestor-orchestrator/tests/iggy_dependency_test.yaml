@@ -11,7 +11,7 @@ tests:
           value: iggy
       - equal:
           path: spec.template.spec.containers[0].image
-          value: apache/iggy:0.8.0
+          value: apache/iggy:0.9.0
       - contains:
           path: spec.template.spec.containers[0].env
           content:
@@ -28,7 +28,21 @@ tests:
               secretKeyRef:
                 name: ingestor-orchestrator-csi
                 key: IGGY_PASSWORD
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: IGGY_PATH
+            value: /app/local_data
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: IGGY_SHARDING_CPU_ALLOCATION
+            value: all
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: IGGY_SYSTEM_PATH
+            value: /app/local_data
       - equal:
           path: spec.template.spec.volumes[0].persistentVolumeClaim.claimName
-          value: iggy-data
-
+          value: iggy-data-v090

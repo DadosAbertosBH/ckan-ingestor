@@ -21,11 +21,12 @@ services:
       - orchestrator_net
 
   iggy:
-    image: apache/iggy:0.8.0
+    image: apache/iggy:0.9.0
     ports:
       - "8090:8090"
       - "3000:3000"
     cap_add:
+      - IPC_LOCK
       - SYS_NICE
     security_opt:
       - seccomp:unconfined
@@ -38,8 +39,11 @@ services:
       IGGY_ROOT_PASSWORD: iggy
       IGGY_TCP_ADDRESS: 0.0.0.0:8090
       IGGY_HTTP_ADDRESS: 0.0.0.0:3000
+      IGGY_NODE_ADVERTISED_ADDRESS: 127.0.0.1
+      IGGY_PATH: /app/local_data
+      IGGY_SHARDING_CPU_ALLOCATION: all
     volumes:
-      - iggy_data:/iggy/local_data
+      - iggy_data:/app/local_data
     healthcheck:
       test: ["CMD", "/usr/local/bin/iggy", "-u", "iggy", "-p", "iggy", "ping"]
       interval: 5s
