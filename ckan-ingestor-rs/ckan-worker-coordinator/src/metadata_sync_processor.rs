@@ -68,19 +68,31 @@ impl std::ops::Deref for ProcessedMetadataSync {
 }
 
 #[derive(Clone)]
-pub struct RealMetadataProcessor<T: DataWriter = DucklakeDataWriter> {
+pub struct MetadataSyncProcessor<T: DataWriter = DucklakeDataWriter> {
     factory: DucklakeFactory,
     writer: T,
 }
 
-impl<T: DataWriter> RealMetadataProcessor<T> {
+impl<T: DataWriter> MetadataSyncProcessor<T> {
     pub fn new(factory: DucklakeFactory, writer: T) -> Self {
         Self { factory, writer }
     }
 
     pub async fn process(&self, command: MetadataSyncCommand) -> ProcessedMetadataSync {
+        log::info!(
+            "metadata sync {} for {} started",
+            command.sync_id,
+            command.instance_name
+        );
         match self.sync(&command).await {
-            Ok(result) => result,
+            Ok(result) => {
+                log::info!(
+                    "metadata sync {} for {}",
+                    command.sync_id,
+                    command.instance_name,
+                );
+                result
+            }
             Err(error) => {
                 log::error!(
                     "metadata sync {} for {} failed: {error:#}",
@@ -692,7 +704,7 @@ fn boolean_value(batch: &RecordBatch, column: &str, row: usize) -> Result<Option
 
 #[cfg(test)]
 mod tests {
-    use super::{RealMetadataProcessor, query_outdated_resources};
+    use super::{MetadataSyncProcessor, query_outdated_resources};
     use crate::data_writer::DataWriter;
     use crate::ducklake_data_writer::{
         DucklakeDataWriter, append_last_update, initialize_last_update_table,
@@ -802,7 +814,7 @@ mod tests {
         );
         factory.initialize().await.unwrap();
         let processor =
-            RealMetadataProcessor::new(factory.clone(), ducklake_writer(&factory).await);
+            MetadataSyncProcessor::new(factory.clone(), ducklake_writer(&factory).await);
 
         let first = StructuredIpc::from_packages([package("2024-01-01", "2024-01-01")]).unwrap();
         let first = processor.ingest_ipc(&command(), &first).await.unwrap();
@@ -849,7 +861,7 @@ mod tests {
         );
         factory.initialize().await.unwrap();
         let processor =
-            RealMetadataProcessor::new(factory.clone(), ducklake_writer(&factory).await);
+            MetadataSyncProcessor::new(factory.clone(), ducklake_writer(&factory).await);
 
         let first_command = command();
         let mut second_command = command();
@@ -915,7 +927,7 @@ mod tests {
         );
         factory.initialize().await.unwrap();
         let processor =
-            RealMetadataProcessor::new(factory.clone(), ducklake_writer(&factory).await);
+            MetadataSyncProcessor::new(factory.clone(), ducklake_writer(&factory).await);
 
         let mut test_command = command();
         test_command.instance_url.clear();
@@ -952,7 +964,7 @@ mod tests {
         );
         factory.initialize().await.unwrap();
         let processor =
-            RealMetadataProcessor::new(factory.clone(), ducklake_writer(&factory).await);
+            MetadataSyncProcessor::new(factory.clone(), ducklake_writer(&factory).await);
         let ipc = StructuredIpc::from_packages([package("2025-01-01", "2025-01-02")]).unwrap();
         processor.ingest_ipc(&command(), &ipc).await.unwrap();
 
@@ -979,7 +991,7 @@ mod tests {
         );
         factory.initialize().await.unwrap();
         let processor =
-            RealMetadataProcessor::new(factory.clone(), ducklake_writer(&factory).await);
+            MetadataSyncProcessor::new(factory.clone(), ducklake_writer(&factory).await);
         processor
             .ingest_ipc(
                 &command(),
@@ -1011,7 +1023,7 @@ mod tests {
         factory.initialize().await.unwrap();
         let writer = RecordingWriter::default();
         let calls = Arc::clone(&writer.calls);
-        let processor = RealMetadataProcessor::new(factory, writer);
+        let processor = MetadataSyncProcessor::new(factory, writer);
         let ipc = StructuredIpc::from_packages([package("2025-01-01", "2025-01-02")]).unwrap();
 
         processor.ingest_ipc(&command(), &ipc).await.unwrap();
@@ -1035,7 +1047,7 @@ mod tests {
             &temp.path().join("data"),
         );
         factory.initialize().await.unwrap();
-        let processor = RealMetadataProcessor::new(factory, FailingWriter);
+        let processor = MetadataSyncProcessor::new(factory, FailingWriter);
         let ipc = StructuredIpc::from_packages([package("2025-01-01", "2025-01-02")]).unwrap();
 
         let error = processor.ingest_ipc(&command(), &ipc).await.unwrap_err();

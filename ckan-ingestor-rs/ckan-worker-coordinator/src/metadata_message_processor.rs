@@ -15,7 +15,7 @@ use message_processor::{MessageProcessor, OutgoingMessage};
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::metadata_processor::{DeletedResource, RealMetadataProcessor, ResourceCandidate};
+use crate::metadata_sync_processor::{DeletedResource, MetadataSyncProcessor, ResourceCandidate};
 
 #[derive(Serialize)]
 #[serde(untagged)]
@@ -32,7 +32,7 @@ pub struct MetadataProcessor {
     retry_destination: String,
     job_result_destination: String,
     sync_destination: String,
-    processor: RealMetadataProcessor,
+    processor: MetadataSyncProcessor,
 }
 
 impl MetadataProcessor {
@@ -41,7 +41,7 @@ impl MetadataProcessor {
         retry_destination: String,
         job_result_destination: String,
         sync_destination: String,
-        processor: RealMetadataProcessor,
+        processor: MetadataSyncProcessor,
     ) -> Self {
         Self {
             job_destination,
@@ -214,7 +214,7 @@ mod tests {
 
     use super::*;
     use crate::ducklake_data_writer::DucklakeDataWriter;
-    use crate::metadata_processor::ResourceCandidate;
+    use crate::metadata_sync_processor::ResourceCandidate;
 
     fn candidate(resource_id: &str, version: &str) -> ResourceCandidate {
         ResourceCandidate {
@@ -325,7 +325,7 @@ mod tests {
             "retries".into(),
             "job-results".into(),
             "sync-results".into(),
-            RealMetadataProcessor::new(factory, writer),
+            MetadataSyncProcessor::new(factory, writer),
         );
         let command = MetadataSyncCommand {
             sync_id: "sync-1".into(),

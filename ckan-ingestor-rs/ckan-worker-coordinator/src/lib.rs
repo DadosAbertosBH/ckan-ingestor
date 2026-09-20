@@ -10,7 +10,7 @@
 pub mod data_writer;
 pub mod ducklake_data_writer;
 pub mod metadata_message_processor;
-pub mod metadata_processor;
+pub mod metadata_sync_processor;
 pub mod parquet_message_processor;
 pub mod parquet_registrar;
 
@@ -27,7 +27,7 @@ use tokio::sync::Notify;
 
 use crate::ducklake_data_writer::DucklakeDataWriter;
 use crate::metadata_message_processor::MetadataProcessor;
-use crate::metadata_processor::RealMetadataProcessor;
+use crate::metadata_sync_processor::MetadataSyncProcessor;
 use crate::parquet_message_processor::ParquetProcessor;
 use crate::parquet_registrar::ParquetRegistrar;
 use ckan_ingestor_lib::ducklake_factory::DucklakeFactory;
@@ -182,7 +182,7 @@ pub async fn run() -> Result<()> {
     registrar.initialize().await?;
     let metadata_writer =
         DucklakeDataWriter::new(factory.client().await?, factory.storage_options().to_vec());
-    let processor = RealMetadataProcessor::new(factory.clone(), metadata_writer);
+    let processor = MetadataSyncProcessor::new(factory.clone(), metadata_writer);
     let publisher = create_publisher(admin, &settings).await?;
     let mut metadata_consumer = WorkerHandler::new(
         IggySource::new(consumer),
