@@ -68,6 +68,7 @@ export interface RetryJobsResult {
 
 export interface Resource {
   resource_id: string;
+  latest_job_id: string;
   resource_name: string | null;
   resource_url: string | null;
   resource_format: string | null;

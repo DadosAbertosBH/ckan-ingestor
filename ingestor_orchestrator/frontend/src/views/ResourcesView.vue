@@ -2,6 +2,14 @@
     <div class="resources-view">
         <div class="header-row">
             <h1 class="page-title">Resources</h1>
+            <button
+                v-if="selectedResourceIds.length"
+                class="btn-primary btn-bulk-retry"
+                :disabled="retrying"
+                @click="handleBulkRetry"
+            >
+                {{ retrying ? "Retrying..." : `Retry selected (${selectedResourceIds.length})` }}
+            </button>
         </div>
 
         <div class="filters">
@@ -45,10 +53,23 @@
             <span>Failed to load resources: {{ error }}</span>
             <button class="btn-retry" @click="loadResources">Retry</button>
         </div>
+        <div v-if="bulkRetrySummary" class="success-banner">
+            {{ bulkRetrySummary }}
+        </div>
         <div v-if="loading" class="loading">Loading...</div>
         <table v-else-if="!error" class="data-table">
             <thead>
                 <tr>
+                    <th class="selection-cell">
+                        <input
+                            type="checkbox"
+                            aria-label="Select all resources"
+                            :checked="allResourcesSelected"
+                            :indeterminate="someResourcesSelected"
+                            @click.stop
+                            @change="toggleAllResources"
+                        />
+                    </th>
                     <th>Resource</th>
                     <th>Format</th>
                     <th>Labels</th>
@@ -64,6 +85,15 @@
                     class="clickable-row"
                     @click="goToResource(resource.resource_id)"
                 >
+                    <td class="selection-cell">
+                        <input
+                            type="checkbox"
+                            :aria-label="`Select resource ${resource.resource_id}`"
+                            :checked="selectedResourceIds.includes(resource.resource_id)"
+                            @click.stop
+                            @change="toggleResource(resource.resource_id)"
+                        />
+                    </td>
                     <td>
                         {{
                             [resource.dataset_name, resource.resource_name]
@@ -80,7 +110,7 @@
                     <td>{{ formatTime(resource.updated_at) }}</td>
                 </tr>
                 <tr v-if="resources.length === 0">
-                    <td colspan="6" class="empty-state">No resources found</td>
+                    <td colspan="7" class="empty-state">No resources found</td>
                 </tr>
             </tbody>
         </table>
@@ -110,7 +140,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from "vue";
+import { computed, ref, onMounted, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import JobStatusBadge from "@/components/JobStatusBadge.vue";
 import ResourceLabelBadge from "@/components/ResourceLabelBadge.vue";
@@ -119,12 +149,15 @@ import type { CkanInstance, ResourceStatus, Resource } from "@/types";
 
 const router = useRouter();
 const route = useRoute();
-const { fetchResources, fetchInstances } = useApi();
+const { fetchResources, fetchInstances, retryJobs } = useApi();
 
 const resources = ref<Resource[]>([]);
 const instances = ref<CkanInstance[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
+const selectedResourceIds = ref<string[]>([]);
+const retrying = ref(false);
+const bulkRetrySummary = ref<string | null>(null);
 const filterStatus = ref<ResourceStatus | "">(
     (route.query.status as ResourceStatus) || "",
 );
@@ -133,6 +166,17 @@ const filterSearch = ref((route.query.search as string) || "");
 const limit = 50;
 const offset = ref(Number(route.query.offset) || 0);
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+const allResourcesSelected = computed(
+    () =>
+        resources.value.length > 0 &&
+        resources.value.every((resource) =>
+            selectedResourceIds.value.includes(resource.resource_id),
+        ),
+);
+const someResourcesSelected = computed(
+    () => selectedResourceIds.value.length > 0 && !allResourcesSelected.value,
+);
 
 function syncQueryParams() {
     const query: Record<string, string> = {};
@@ -159,10 +203,51 @@ async function loadResources() {
             limit,
             offset: offset.value,
         } as any);
+        selectedResourceIds.value = [];
     } catch (e: any) {
         error.value = e.message || "Unknown error";
     } finally {
         loading.value = false;
+    }
+}
+
+function toggleResource(resourceId: string) {
+    selectedResourceIds.value = selectedResourceIds.value.includes(resourceId)
+        ? selectedResourceIds.value.filter((id) => id !== resourceId)
+        : [...selectedResourceIds.value, resourceId];
+}
+
+function toggleAllResources() {
+    selectedResourceIds.value = allResourcesSelected.value
+        ? []
+        : resources.value.map((resource) => resource.resource_id);
+}
+
+async function handleBulkRetry() {
+    const selectedResources = resources.value.filter((resource) =>
+        selectedResourceIds.value.includes(resource.resource_id),
+    );
+    if (
+        !selectedResources.length ||
+        !confirm(`Retry ${selectedResources.length} selected resources?`)
+    ) {
+        return;
+    }
+
+    retrying.value = true;
+    bulkRetrySummary.value = null;
+    try {
+        const result = await retryJobs(
+            selectedResources.map((resource) => resource.latest_job_id),
+        );
+        const messages = [`${result.jobs.length} jobs re-enqueued.`];
+        if (result.failures.length) messages.push(`${result.failures.length} failed.`);
+        bulkRetrySummary.value = messages.join(" ");
+        await loadResources();
+    } catch (e: any) {
+        error.value = e.message || "Failed to retry selected resources";
+    } finally {
+        retrying.value = false;
     }
 }
 
@@ -220,6 +305,21 @@ onMounted(async () => {
     font-weight: 700;
 }
 
+.btn-primary {
+    background: #ef4444;
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.btn-primary:disabled {
+    opacity: 0.4;
+    cursor: pointer;
+}
+
 .filters {
     display: flex;
     gap: 12px;
@@ -269,6 +369,16 @@ onMounted(async () => {
     font-size: 14px;
 }
 
+.success-banner {
+    background: #143d2a;
+    border: 1px solid #22c55e;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    color: #86efac;
+    font-size: 14px;
+}
+
 .btn-retry {
     background: #ef4444;
     color: #fff;
@@ -307,6 +417,11 @@ onMounted(async () => {
     padding: 12px 16px;
     font-size: 14px;
     border-top: 1px solid #2a2d37;
+}
+
+.selection-cell {
+    width: 1%;
+    padding-right: 0 !important;
 }
 
 .mono {

@@ -195,6 +195,7 @@ type JobView struct {
 
 type ResourceView struct {
 	ResourceID      string    `json:"resource_id"`
+	LatestJobID     string    `json:"latest_job_id"`
 	DatasetName     string    `json:"dataset_name"`
 	Status          string    `json:"status"`
 	InstanceID      string    `json:"instance_id"`

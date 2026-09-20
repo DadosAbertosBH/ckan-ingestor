@@ -213,12 +213,12 @@ func (s *Store) results(ctx context.Context, jobID string) ([]app.JobResult, err
 	return out, rows.Err()
 }
 
-const resourceColumns = `l.resource_id,l.resource_name,l.resource_url,l.resource_format,l.dataset_name,l.status,l.instance_id,i.url,l.created_at,l.updated_at,(SELECT COUNT(*) FROM ckan_data_job c WHERE c.resource_id=l.resource_id)`
+const resourceColumns = `l.resource_id,l.latest_job_id,l.resource_name,l.resource_url,l.resource_format,l.dataset_name,l.status,l.instance_id,i.url,l.created_at,l.updated_at,(SELECT COUNT(*) FROM ckan_data_job c WHERE c.resource_id=l.resource_id)`
 
 func scanResource(row scanner) (app.ResourceView, error) {
 	var v app.ResourceView
 	var name, url, format, instanceURL sql.NullString
-	err := row.Scan(&v.ResourceID, &name, &url, &format, &v.DatasetName, &v.Status, &v.InstanceID, &instanceURL, &v.CreatedAt, &v.UpdatedAt, &v.JobCount)
+	err := row.Scan(&v.ResourceID, &v.LatestJobID, &name, &url, &format, &v.DatasetName, &v.Status, &v.InstanceID, &instanceURL, &v.CreatedAt, &v.UpdatedAt, &v.JobCount)
 	if err != nil {
 		return v, translateNotFound(err)
 	}

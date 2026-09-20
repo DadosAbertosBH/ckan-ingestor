@@ -5,11 +5,13 @@ import ResourcesView from "@/views/ResourcesView.vue";
 
 const mockFetchResources = vi.fn().mockResolvedValue([]);
 const mockFetchInstances = vi.fn().mockResolvedValue([]);
+const mockRetryJobs = vi.fn().mockResolvedValue({ jobs: [], failures: [] });
 
 vi.mock("@/composables/useApi", () => ({
   useApi: () => ({
     fetchResources: mockFetchResources,
     fetchInstances: mockFetchInstances,
+    retryJobs: mockRetryJobs,
   }),
 }));
 
@@ -61,6 +63,7 @@ const sampleResource = {
     "https://dados.pbh.gov.br/dataset/my-dataset/resource/abc-123",
   labels: ["empty"],
   job_count: 3,
+  latest_job_id: "latest-job-1",
   created_at: "2025-01-01T00:00:00Z",
   updated_at: "2025-06-01T00:00:00Z",
 };
@@ -70,6 +73,7 @@ describe("ResourcesView", () => {
     vi.restoreAllMocks();
     mockFetchResources.mockResolvedValue([]);
     mockFetchInstances.mockResolvedValue([]);
+    mockRetryJobs.mockResolvedValue({ jobs: [], failures: [] });
   });
 
   it("renders page title", async () => {
@@ -183,5 +187,35 @@ describe("ResourcesView", () => {
     await flushPromises();
 
     expect(wrapper.find(".pagination").exists()).toBe(true);
+  });
+
+  it("retries the latest jobs for selected resources after confirmation", async () => {
+    mockFetchResources.mockResolvedValue([
+      sampleResource,
+      {
+        ...sampleResource,
+        resource_id: "def-456",
+        latest_job_id: "latest-job-2",
+      },
+    ]);
+    mockRetryJobs.mockResolvedValue({
+      jobs: [{ id: "retry-1" }, { id: "retry-2" }],
+      failures: [],
+    });
+    vi.stubGlobal("confirm", vi.fn(() => true));
+
+    const { wrapper } = await mountWithRouter();
+    await flushPromises();
+
+    const checkboxes = wrapper.findAll('input[type="checkbox"]');
+    await checkboxes[1]!.setValue(true);
+    await checkboxes[2]!.setValue(true);
+    await wrapper.find(".btn-bulk-retry").trigger("click");
+    await flushPromises();
+
+    expect(confirm).toHaveBeenCalledWith("Retry 2 selected resources?");
+    expect(mockRetryJobs).toHaveBeenCalledWith(["latest-job-1", "latest-job-2"]);
+    expect(wrapper.text()).toContain("2 jobs re-enqueued.");
+    expect(mockFetchResources).toHaveBeenCalledTimes(2);
   });
 });
