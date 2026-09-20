@@ -19,9 +19,7 @@ use std::sync::Arc;
 use crate::{
     ckan_resource::CkanResource,
     parquet_output::ParquetOutput,
-    readers::ckan_reader::{
-        format_contains, CkanReader, FailedResult, HttpStatusError, ReadResult, SuccessResult,
-    },
+    readers::ckan_reader::{format_contains, CkanReader, FailedResult, ReadResult, SuccessResult},
 };
 use anyhow::{Context, Result};
 use arrow::{
@@ -97,8 +95,14 @@ impl DatastoreReader {
         let response = self.client.get(url).send()?;
         let status = response.status();
         if !status.is_success() {
-            let message = format!("datastore request failed with HTTP status {status}: {url}");
-            return Err(anyhow::Error::new(HttpStatusError::new(status, message)));
+            // A datastore error (including 404 Not Found) only means the data is
+            // unavailable in the datastore; it does not mean the CKAN resource
+            // was deleted. Returning a plain error instead of an
+            // `HttpStatusError` keeps the `MultipleReader` fallback alive so the
+            // resource can still be read from its download URL.
+            return Err(anyhow::anyhow!(
+                "datastore request failed with HTTP status {status}: {url}"
+            ));
         }
         let body = response.text()?;
         decode_json_body(body, url)

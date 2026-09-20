@@ -223,6 +223,7 @@ mod tests {
     use std::sync::Arc;
 
     use crate::parquet_output::ParquetOutput;
+    use crate::readers::datastore_reader::DatastoreReader;
     use arrow::{
         array::{ArrayRef, StringArray},
         datatypes::{DataType, Field, Schema},
@@ -454,6 +455,39 @@ mod tests {
         match result {
             Err(error) => assert!(error.is_deleted()),
             Ok(_) => panic!("a 404 failure must be returned as a deleted result"),
+        }
+    }
+
+    #[test]
+    fn tries_the_next_reader_when_the_datastore_api_returns_not_found() {
+        // A 404 from the datastore API means the data is not available in the
+        // datastore, not that the CKAN resource was deleted. The next reader
+        // must still be tried so a downloadable resource is not reported as
+        // deleted.
+        let server = httpmock::MockServer::start();
+        let _missing_datastore = server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/api/3/action/datastore_search");
+            then.status(404).body("Not Found");
+        });
+        let reader = MultipleReader::new(vec![
+            Box::new(DatastoreReader::new(
+                server.base_url(),
+                reqwest::blocking::Client::new(),
+            )),
+            Box::new(TestReader::with_data(&["CSV"])),
+        ]);
+        let mut resource = resource("CSV");
+        resource.datastore_active = true;
+
+        let result = reader.read(&resource);
+
+        match result {
+            Ok(_) => {}
+            Err(error) => panic!(
+                "a datastore 404 must fall back to the next reader, got deleted={}: {error}",
+                error.is_deleted()
+            ),
         }
     }
 

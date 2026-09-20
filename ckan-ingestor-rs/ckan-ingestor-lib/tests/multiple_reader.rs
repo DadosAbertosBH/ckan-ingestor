@@ -17,6 +17,7 @@
 use ckan_ingestor_lib::ckan_resource::CkanResource;
 use ckan_ingestor_lib::readers::ckan_reader::CkanReader;
 use ckan_ingestor_lib::readers::csv_reader::CsvReader;
+use ckan_ingestor_lib::readers::datastore_reader::DatastoreReader;
 use ckan_ingestor_lib::readers::multiple_reader::{
     FormatResolver, HttpFormatResolver, MultipleReader,
 };
@@ -43,6 +44,36 @@ fn resource(url: &str, format: &str) -> CkanResource {
         datastore_active: false,
         last_modified: String::new(),
     }
+}
+
+#[test]
+fn reads_the_download_when_the_datastore_is_not_available() {
+    // Regression: a resource whose metadata claims `datastore_active` but whose
+    // datastore data is gone (404) must still be read from its download URL
+    // instead of being reported as deleted.
+    let server = MockServer::start();
+    server.mock(|when, then| {
+        when.method(GET).path("/api/3/action/datastore_search");
+        then.status(404).body("Not Found");
+    });
+    server.mock(|when, then| {
+        when.method(GET).path("/data.csv");
+        then.status(200)
+            .header("Content-Type", "text/csv")
+            .body("name,value\nAna,1\nBia,2\n");
+    });
+    let reader = MultipleReader::new(vec![
+        Box::new(DatastoreReader::new(server.base_url(), test_client())),
+        Box::new(CsvReader::new(test_client())),
+    ]);
+    let mut resource = resource(&format!("{}/data.csv", server.url("")), "CSV");
+    resource.datastore_active = true;
+
+    let result = reader
+        .read(&resource)
+        .expect("a datastore 404 must fall back to the CSV download");
+
+    assert_eq!(result.rows_processed, 2);
 }
 
 #[test]
