@@ -18,9 +18,6 @@ package iggy
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -36,7 +33,7 @@ type Message struct {
 type Driver interface {
 	EnsureStream(context.Context, string) error
 	EnsureTopic(context.Context, string, int) error
-	Send(context.Context, string, int, []byte) error
+	Send(context.Context, string, string, []byte) (int, error)
 	Join(context.Context, string, string) error
 	Leave(context.Context, string, string) error
 	Poll(context.Context, string, string, int) ([]Message, error)
@@ -62,7 +59,7 @@ func (b *Bus) EnsureTopology(ctx context.Context) error {
 		name       string
 		partitions int
 	}{
-		{b.cfg.JobTopic, b.cfg.JobPartitions}, {b.cfg.RetryTopic, b.cfg.RetryPartitions},
+		{b.cfg.JobTopic, b.cfg.JobPartitions},
 		{b.cfg.ResultTopic, b.cfg.ResultPartitions}, {b.cfg.MetadataTopic, 1}, {b.cfg.MetadataResultTopic, 1},
 	} {
 		if err := b.driver.EnsureTopic(ctx, topic.name, topic.partitions); err != nil {
@@ -75,33 +72,11 @@ func (b *Bus) Publish(ctx context.Context, topic string, payload []byte, key str
 	if err := ctx.Err(); err != nil {
 		return app.Routing{}, err
 	}
-	partitions, err := b.partitionCount(topic)
+	partition, err := b.driver.Send(ctx, topic, key, payload)
 	if err != nil {
 		return app.Routing{}, err
 	}
-	partition := 0
-	if partitions > 1 {
-		digest := sha256.Sum256([]byte(key))
-		partition = int(binary.BigEndian.Uint32(digest[:4]) % uint32(partitions))
-	}
-	if err := b.driver.Send(ctx, topic, partition, payload); err != nil {
-		return app.Routing{}, err
-	}
 	return app.Routing{BrokerType: "iggy", Stream: b.cfg.Stream, Topic: topic, Partition: partition}, nil
-}
-func (b *Bus) partitionCount(topic string) (int, error) {
-	switch topic {
-	case b.cfg.JobTopic:
-		return b.cfg.JobPartitions, nil
-	case b.cfg.RetryTopic:
-		return b.cfg.RetryPartitions, nil
-	case b.cfg.ResultTopic:
-		return b.cfg.ResultPartitions, nil
-	case b.cfg.MetadataTopic, b.cfg.MetadataResultTopic:
-		return 1, nil
-	default:
-		return 0, fmt.Errorf("unknown Iggy topic %q", topic)
-	}
 }
 func (b *Bus) Consume(ctx context.Context, topic, group string, handler func([]byte) error) error {
 	if err := b.driver.Join(ctx, topic, group); err != nil {

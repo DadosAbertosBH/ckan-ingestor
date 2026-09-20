@@ -29,14 +29,15 @@ type fakeDriver struct {
 	streams []string
 	topics  map[string]int
 	sends   []struct {
-		topic     string
-		partition int
-		payload   []byte
+		topic   string
+		key     string
+		payload []byte
 	}
-	messages   []Message
-	commits    []Message
-	leaves     []struct{ topic, group string }
-	handlerErr error
+	sendPartition int
+	messages      []Message
+	commits       []Message
+	leaves        []struct{ topic, group string }
+	handlerErr    error
 }
 
 func (f *fakeDriver) EnsureStream(_ context.Context, value string) error {
@@ -50,13 +51,13 @@ func (f *fakeDriver) EnsureTopic(_ context.Context, value string, count int) err
 	f.topics[value] = count
 	return nil
 }
-func (f *fakeDriver) Send(_ context.Context, topic string, partition int, payload []byte) error {
+func (f *fakeDriver) Send(_ context.Context, topic, key string, payload []byte) (int, error) {
 	f.sends = append(f.sends, struct {
-		topic     string
-		partition int
-		payload   []byte
-	}{topic, partition, payload})
-	return nil
+		topic   string
+		key     string
+		payload []byte
+	}{topic, key, payload})
+	return f.sendPartition, nil
 }
 func (f *fakeDriver) Join(context.Context, string, string) error { return nil }
 func (f *fakeDriver) Leave(_ context.Context, topic, group string) error {
@@ -76,7 +77,7 @@ func (f *fakeDriver) Ping(context.Context) error { return nil }
 func (f *fakeDriver) Close() error               { return nil }
 
 func busConfig() config.Config {
-	return config.Config{Stream: "ckan-ingestor", JobTopic: "jobs", RetryTopic: "jobs-retry", ResultTopic: "job-results", MetadataTopic: "metadata", MetadataResultTopic: "metadata-results", JobPartitions: 10, RetryPartitions: 4, ResultPartitions: 3, PollInterval: time.Millisecond}
+	return config.Config{Stream: "ckan-ingestor", JobTopic: "jobs", RetryTopic: "jobs-retry", ResultTopic: "job-results", MetadataTopic: "metadata", MetadataResultTopic: "metadata-results", JobPartitions: 10, ResultPartitions: 3, PollInterval: time.Millisecond}
 }
 
 func TestEnsureTopologyCreatesAllTopics(t *testing.T) {
@@ -85,25 +86,27 @@ func TestEnsureTopologyCreatesAllTopics(t *testing.T) {
 	if err := bus.EnsureTopology(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(driver.streams) != 1 || len(driver.topics) != 5 {
+	if len(driver.streams) != 1 || len(driver.topics) != 4 {
 		t.Fatalf("topology = %#v %#v", driver.streams, driver.topics)
 	}
-	if driver.topics["jobs-retry"] != 4 || driver.topics["metadata"] != 1 {
+	if _, exists := driver.topics["jobs-retry"]; exists {
+		t.Fatalf("retry topic must be managed by the Iggy workers: %#v", driver.topics)
+	}
+	if driver.topics["metadata"] != 1 {
 		t.Fatalf("topics = %#v", driver.topics)
 	}
 }
 
-func TestPublishRoutesDeterministicallyByDestinationCount(t *testing.T) {
-	driver := &fakeDriver{}
+func TestPublishUsesIggySelectedPartitionAndMessageKey(t *testing.T) {
+	driver := &fakeDriver{sendPartition: 2}
 	bus := NewBus(busConfig(), driver)
-	first, err := bus.Publish(context.Background(), "jobs-retry", []byte("one"), "stable")
+	key := "550e8400-e29b-41d4-a716-446655440000"
+	first, err := bus.Publish(context.Background(), "jobs-retry", []byte("one"), key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, _ := bus.Publish(context.Background(), "jobs-retry", []byte("two"), "stable")
-	metadata, _ := bus.Publish(context.Background(), "metadata", []byte("three"), "stable")
-	if first.Partition != second.Partition || first.Partition >= 4 || metadata.Partition != 0 {
-		t.Fatalf("routing = %#v %#v %#v", first, second, metadata)
+	if first.Partition != 2 || len(driver.sends) != 1 || driver.sends[0].key != key {
+		t.Fatalf("routing = %#v sends = %#v", first, driver.sends)
 	}
 }
 

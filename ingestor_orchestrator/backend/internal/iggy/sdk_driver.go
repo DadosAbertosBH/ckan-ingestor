@@ -23,6 +23,7 @@ import (
 	"github.com/apache/iggy/foreign/go/client"
 	"github.com/apache/iggy/foreign/go/client/tcp"
 	iggcon "github.com/apache/iggy/foreign/go/contracts"
+	"github.com/google/uuid"
 	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/config"
 )
 
@@ -84,21 +85,31 @@ func (d *SDKDriver) EnsureTopic(ctx context.Context, name string, partitions int
 	return nil
 }
 
-func (d *SDKDriver) Send(ctx context.Context, topicName string, partition int, payload []byte) error {
+func (d *SDKDriver) Send(ctx context.Context, topicName, key string, payload []byte) (int, error) {
 	stream, err := identifier(d.stream)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	topic, err := identifier(topicName)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	message, err := iggcon.NewIggyMessage(payload)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	_, err = d.client.SendMessages(ctx, stream, topic, iggcon.PartitionId(uint32(partition)), []iggcon.IggyMessage{message})
-	return err
+	entityID, err := uuid.Parse(key)
+	if err != nil {
+		return 0, fmt.Errorf("parse Iggy message key as UUID: %w", err)
+	}
+	response, err := d.client.SendMessages(ctx, stream, topic, iggcon.EntityIdGuid(entityID), []iggcon.IggyMessage{message})
+	if err != nil {
+		return 0, err
+	}
+	if len(response.Confirmations) == 0 {
+		return 0, fmt.Errorf("Iggy did not confirm message routing")
+	}
+	return int(response.Confirmations[0].PartitionId), nil
 }
 
 func (d *SDKDriver) Join(ctx context.Context, topicName, groupName string) error {

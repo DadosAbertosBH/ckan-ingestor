@@ -148,7 +148,6 @@ O `.gitlab-ci.yml` constrói e publica as imagens no registry do GitLab:
 | `INGEST_ORCH_IGGY_RESULT_GROUP_ID` | `ckan-result-consumer` | Consumer group de resultados |
 | `INGEST_ORCH_IGGY_METADATA_SYNC_RESULT_GROUP_ID` | `ckan-metadata-sync-result-consumer` | Consumer group dos resultados de metadados |
 | `INGEST_ORCH_IGGY_JOB_PARTITIONS` | `10` | Partições do tópico principal |
-| `INGEST_ORCH_IGGY_RETRY_PARTITIONS` | `10` | Partições do tópico de retry |
 | `INGEST_ORCH_IGGY_RESULT_PARTITIONS` | `1` | Partições do tópico de resultados |
 | `INGEST_ORCH_SCHEDULER_INTERVAL_MINUTES` | `480` | Intervalo do scheduler Go (minutos) |
 | `INGEST_ORCH_DEBUG` | `false` | Modo debug |

@@ -17,6 +17,7 @@
 package config
 
 import (
+	"reflect"
 	"testing"
 	"time"
 )
@@ -79,5 +80,11 @@ func TestLoadEnvironment(t *testing.T) {
 	}
 	if cfg.MySQLDSN != "app:p@ss@tcp(mysql:3307)/ckan?parseTime=true&loc=UTC" {
 		t.Fatalf("MySQLDSN = %q", cfg.MySQLDSN)
+	}
+}
+
+func TestConfigDoesNotExposeRetryPartitionCount(t *testing.T) {
+	if _, exists := reflect.TypeOf(Config{}).FieldByName("RetryPartitions"); exists {
+		t.Fatal("RetryPartitions must be selected by Iggy through the message key")
 	}
 }

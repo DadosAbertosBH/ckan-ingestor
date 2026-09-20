@@ -39,7 +39,6 @@ type Config struct {
 	ResultGroup         string
 	MetadataResultGroup string
 	JobPartitions       int
-	RetryPartitions     int
 	ResultPartitions    int
 	PollInterval        time.Duration
 	SchedulerInterval   time.Duration
@@ -69,7 +68,6 @@ func Load() Config {
 		ResultGroup:         env("INGEST_ORCH_IGGY_RESULT_GROUP_ID", "ckan-result-consumer"),
 		MetadataResultGroup: env("INGEST_ORCH_IGGY_METADATA_SYNC_RESULT_GROUP_ID", "ckan-metadata-sync-result-consumer"),
 		JobPartitions:       envInt("INGEST_ORCH_IGGY_JOB_PARTITIONS", 10),
-		RetryPartitions:     envInt("INGEST_ORCH_IGGY_RETRY_PARTITIONS", 10),
 		ResultPartitions:    envInt("INGEST_ORCH_IGGY_RESULT_PARTITIONS", 1),
 		PollInterval:        time.Duration(envInt("INGEST_ORCH_IGGY_CONSUMER_POLL_INTERVAL_MS", 500)) * time.Millisecond,
 		SchedulerInterval:   time.Duration(envInt("INGEST_ORCH_SCHEDULER_INTERVAL_MINUTES", 480)) * time.Minute,
