@@ -21,6 +21,7 @@ pub mod dataset_fetcher;
 #[cfg(feature = "ducklake-backend")]
 pub mod ducklake_factory;
 pub mod ingestor_outcome;
+pub mod jev_csv_sniffer;
 pub mod parquet_output;
 pub mod readers;
 pub mod s3_document_ingestor;

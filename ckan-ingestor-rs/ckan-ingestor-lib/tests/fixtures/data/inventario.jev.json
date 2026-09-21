@@ -1,0 +1,158 @@
+{
+  "model": "jev-latest",
+  "questions": {
+    "fields_to_merge": {
+      "criteria": {
+        "merge_1_2": {
+          "action": "Merge these two adjacent parsed fields.",
+          "id": "merge_1_2",
+          "left_field": "problematic_line.parsed_fields[0]",
+          "merged_value": "Regularização Fundiária de Vilas e Conjuntos em Zeis;Descrição de Dados de Domicílios Regularizados em ZEIS      O conjunto de dados apresenta o número de domicílios regularizados em vilas ou favelas (ocupações urbanas desordenadas e espontâneas), caracterizadas no Plano Diretor do Município como ZEIS-1",
+          "right_field": "problematic_line.parsed_fields[1]"
+        },
+        "merge_2_3": {
+          "action": "Merge these two adjacent parsed fields.",
+          "id": "merge_2_3",
+          "left_field": "problematic_line.parsed_fields[1]",
+          "merged_value": "Descrição de Dados de Domicílios Regularizados em ZEIS      O conjunto de dados apresenta o número de domicílios regularizados em vilas ou favelas (ocupações urbanas desordenadas e espontâneas), caracterizadas no Plano Diretor do Município como ZEIS-1; assim  como nos conjuntos ZEIS (loteamentos populares implantados pelo poder público para população de baixa renda), caracterizados no Plano Diretor do Município como ZEIS-2.   Essa publicação tem periodicidade de atualização anual.    ZEIS - Zona de Especial Interesse Social    ",
+          "right_field": "problematic_line.parsed_fields[2]"
+        },
+        "merge_3_4": {
+          "action": "Merge these two adjacent parsed fields.",
+          "id": "merge_3_4",
+          "left_field": "problematic_line.parsed_fields[2]",
+          "merged_value": " assim  como nos conjuntos ZEIS (loteamentos populares implantados pelo poder público para população de baixa renda), caracterizados no Plano Diretor do Município como ZEIS-2.   Essa publicação tem periodicidade de atualização anual.    ZEIS - Zona de Especial Interesse Social    ;Regularização Fundiária, Vilas, ZEIS",
+          "right_field": "problematic_line.parsed_fields[3]"
+        },
+        "merge_4_5": {
+          "action": "Merge these two adjacent parsed fields.",
+          "id": "merge_4_5",
+          "left_field": "problematic_line.parsed_fields[3]",
+          "merged_value": "Regularização Fundiária, Vilas, ZEIS;Cia. Urbanizadora e de Habitação de Belo Horizonte",
+          "right_field": "problematic_line.parsed_fields[4]"
+        },
+        "merge_5_6": {
+          "action": "Merge these two adjacent parsed fields.",
+          "id": "merge_5_6",
+          "left_field": "problematic_line.parsed_fields[4]",
+          "merged_value": "Cia. Urbanizadora e de Habitação de Belo Horizonte;Assessória de Comunicação e Imprensa / ACI-UB ",
+          "right_field": "problematic_line.parsed_fields[5]"
+        },
+        "merge_6_7": {
+          "action": "Merge these two adjacent parsed fields.",
+          "id": "merge_6_7",
+          "left_field": "problematic_line.parsed_fields[5]",
+          "merged_value": "Assessória de Comunicação e Imprensa / ACI-UB ;nucsurbel@pbh.gov.br",
+          "right_field": "problematic_line.parsed_fields[6]"
+        }
+      },
+      "instructions": {
+        "actual_column_count": "problematic_line.actual_fields",
+        "expected_column_count": "problematic_line.expected_fields",
+        "parsed_fields": "problematic_line.parsed_fields",
+        "question": "Which adjacent fields were incorrectly split by an unquoted delimiter and must be merged to restore the CSV schema?"
+      },
+      "type": "choice"
+    },
+    "is_delimiter_correct": {
+      "criteria": {
+        "false": "A different delimiter would better separate the CSV fields.",
+        "true": "The inferred delimiter correctly separates the CSV fields."
+      },
+      "instructions": "Is inferred_metadata.dialect.delimiter correct?",
+      "type": "noul"
+    },
+    "is_has_header_correct": {
+      "criteria": {
+        "false": "The inferred header-row setting is incorrect.",
+        "true": "The inferred header-row setting is correct."
+      },
+      "instructions": "Is inferred_metadata.dialect.has_header correct?",
+      "type": "noul"
+    },
+    "is_num_fields_correct": {
+      "criteria": {
+        "false": "The inferred number of fields does not match the intended CSV schema.",
+        "true": "The inferred number of fields matches the intended CSV schema."
+      },
+      "instructions": "Is inferred_metadata.num_fields correct?",
+      "type": "noul"
+    }
+  },
+  "state": {
+    "first_ten_lines": [
+      "Conjunto de dados;Descricao;Tags;organizacao;Mantenedor;Email Mantenedor",
+      "Centro de Referência Especializado de Assistência Social - CREAR;Localização de equipamento público de atendimento mais ágil e próximo às famílias que moram em áreas de risco e que necessitam de abrigamento emergencial no município de Belo Horizonte.    Periodicidade prevista para publicação: mensal.    Para visualização em mapa utilize o EPSG: 31983.;Assistência, Centro, Habitação, Referência, Social;Cia. Urbanizadora e de Habitação de Belo Horizonte;;",
+      "Conjunto Habitacionais Regularizados;Conjunto de dados do número de unidades habitacionais e domicílios beneficiados, situados nos Conjuntos Habitacionais regularizados, implantados pelo poder público para a população de baixa renda, caracterizados no Plano Diretor do Município como AEIS-1 ou inseridos em ZEIS- 1, aprovados e registradas nos respectivos cartórios de registro de imóveis. Esse Conjunto de Dados tem a periodicidade anual.  AEIS – Área de Especial Interesse Social  ZEIS – Zona de Especial Interesse Social;AEIS, Conjunto Habitacional, Habitação, Regularização Fundiária, ZEIS;Cia. Urbanizadora e de Habitação de Belo Horizonte;Assessoria de Comunicação e Imprensa - ACI;nucsurbel@pbh.gov.br",
+      "Conjunto Habitacional;Delimitação espacial dos conjuntos de condomínios de prédios ou casas originados de produção habitacional de interesse social, por iniciativa pública ou em parceria, viabilizados após a implementação da Política Municipal de Habitação (1993). Podem estar situados dentro das Vilas e Favelas ou na cidade formal no município de Belo Horizonte.    Periodicidade prevista para publicação: mensal.    Para visualização em mapa utilize o EPSG: 31983.  ;conjunto, habitacao, habitacional, URBEL;Cia. Urbanizadora e de Habitação de Belo Horizonte;;",
+      "Conjuntos Habitacionais;A Companhia Urbanizadora e de Habitação de Belo Horizonte (Urbel) é a empresa pública, criada em 1983, responsável pela implementação da Política Municipal de Habitação Popular. Os conjuntos habitacionais, construídos pelo poder público, atendem as famílias moradoras de vilas e favelas ou reassentadas por obras públicas. O arquivo apresenta os conjuntos habitacionais construídos pela Prefeitura e suas localidades. Esse conjunto de dados tem a periodicidade de publicação eventual.;AEIS, Empreendimento, Favelas, Habitação, Intervenção, Planejamento, Popular, Regularização, Social, Urbanização, Vilas, ZEIS;Cia. Urbanizadora e de Habitação de Belo Horizonte;Assessória de Comunicação e Imprensa / ACI-UB;nucsurbel@pbh.gov.br",
+      "Plano de Dados Abertos URBEL;Plano de Dados Abertos URBEL - 2020-2022;Assistência  Social, moradia, planejamento, urbanização;Cia. Urbanizadora e de Habitação de Belo Horizonte;URBEL;",
+      "Regularização Fundiária de Vilas e Conjuntos em Zeis;Descrição de Dados de Domicílios Regularizados em ZEIS      O conjunto de dados apresenta o número de domicílios regularizados em vilas ou favelas (ocupações urbanas desordenadas e espontâneas), caracterizadas no Plano Diretor do Município como ZEIS-1; assim  como nos conjuntos ZEIS (loteamentos populares implantados pelo poder público para população de baixa renda), caracterizados no Plano Diretor do Município como ZEIS-2.   Essa publicação tem periodicidade de atualização anual.    ZEIS - Zona de Especial Interesse Social    ;Regularização Fundiária, Vilas, ZEIS;Cia. Urbanizadora e de Habitação de Belo Horizonte;Assessória de Comunicação e Imprensa / ACI-UB ;nucsurbel@pbh.gov.br",
+      "Vila e Favela;Porções do território municipal ocupadas de forma espontânea, predominantemente por população de baixa renda. Estão também inseridos nesta camada conjuntos habitacionais/loteamentos públicos de interesse social, implantados pelo poder público para população de baixa renda e que foram descaracterizados de sua conformação original.    Periodicidade prevista para publicação: mensal.    Para visualização em mapa utilize o EPSG: 31983.;Favela, Habitação, Periferia, Vila;Cia. Urbanizadora e de Habitação de Belo Horizonte;;",
+      "Vilas e Favelas;A Companhia Urbanizadora e de Habitação de Belo Horizonte (Urbel) é a empresa pública, criada em 1983, responsável pela implementação da Política Municipal de Habitação Popular. Atualmente, a cidade de Belo Horizonte possui assentamentos (ZEIS e AEIS 2) que abrigam em torno de 480 mil habitantes e representam aproximadamente 20% da população.  O conjunto de dados apresenta as informações dos assentamentos, sua população e localização.   Essa publicação tem periodicidade prevista eventual.;AEIS, Empreendimento, Favelas, Habitação, Intervenção, planejamento, População, Regularização, Social, urbanização, Vilas, ZEIS;Cia. Urbanizadora e de Habitação de Belo Horizonte;Assessória de Comunicação e Imprensa / ACI-UB;nucsurbel@pbh.gov.br",
+      "Vistorias realizadas em assentamentos de interesse social com classificação de risco;O Programa Estrutural em Área de Risco (PEAR) atua em vilas e favelas com objetivo de evitar acidentes graves e preservar vidas, assegurando proteção para as famílias que residem em áreas de risco geológico e inundação.  O trabalho é executado por de meio de vistorias, obras de manutenção, intervenções com mão de obra do morador e atividades de prevenção ao risco geológico. As vistorias são solicitadas pelo morador pelos canais de atendimento da Urbel ou Defesa Civil.   Quando o local apresenta grau de risco alto ou muito alto, o qual não pode ser eliminado ou controlado por uma obra tecnicamente viável, a família é removida, sendo encaminhada para o Abrigo Municipal Granja de Freitas. Ela também pode acessar o programa Bolsa Moradia até o seu reassentamento definitivo em uma unidade habitacional construída pela Prefeitura. Os dados aqui apresentados se referem ao número de vistorias realizadas nas vilas e o nível de risco identificado.   A periodicidade de publicação é semestral.;AEIS, Empreendimento, Favelas, Habitação, Intervenção, Planejamento, População, Regularização, Social, Urbanização, Vilas, ZEIS;Cia. Urbanizadora e de Habitação de Belo Horizonte;Assessoria de Comunicação e Imprensa - ACI-UB;nucsurbel@pbh.gov.br"
+    ],
+    "inferred_metadata": {
+      "avg_record_len": 467,
+      "dialect": {
+        "delimiter": ";",
+        "flexible": true,
+        "has_header": true,
+        "is_utf8": true,
+        "preamble_rows": 0,
+        "quote": "\""
+      },
+      "encoding": {
+        "has_bom": false,
+        "is_utf8": true,
+        "name": "UTF-8"
+      },
+      "fields": [
+        "Conjunto de dados",
+        "Descricao",
+        "Tags",
+        "organizacao",
+        "Mantenedor",
+        "Email Mantenedor"
+      ],
+      "num_fields": 6,
+      "types": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "last_ten_lines": [
+      "Coleta Seletiva Locais de Entrega Voluntária;Relação de endereços onde estão instalados equipamentos para coleta seletiva de resíduos secos (papel, metal, plástico e vidro).;coleta seletiva, Limpeza Urbana, Superintendência de Limpeza Urbana;Superintendência de Limpeza Urbana;Superintendência de Limpeza Urbana - SLU;slu@pbh.gov.br",
+      "Coleta Seletiva Porta a Porta;Trecho de Logradouro correspondente ao atendimento regular porta a porta com serviço de coleta de materiais recicláveis (papel, metal, plástico e vidro).    Periodicidade prevista para publicação: mensal.    Para visualização em mapa utilize o EPSG: 31983.;coleta, reciclagem, seletiva, sustentabilidade;Superintendência de Limpeza Urbana;;",
+      "Dados georreferenciados coleta resíduos;Dados georreferenciados da frequência e abrangência do serviço de  coleta resíduos sólidos.  A periodicidade prevista para atualização é para ser eventual.  Observe que os recursos serão substituídos quando houver alteração dos mesmos. Não há série histórica.;abrangência da coleta, Coleta de resíduos, frequência da coleta, georreferenciamento;Superintendência de Limpeza Urbana;Superintendência de Limpeza Urbana - SLU;slu@pbh.gov.br",
+      "Destinação de resíduos sólidos;Dados relativos a destinação de resíduos sólidos urbanos coletados em Belo Horizonte;aterragem, coleta seletiva, Destinação de resíduos, reciclagem;Superintendência de Limpeza Urbana;Superintendência de Limpeza Urbana - SLU;slu@pbh.gov.br",
+      "Local de Entrega Voluntária - LEV;Localização de Pontos de Entrega Voluntária (LEV), posto público para descarte de resíduos (papel, plástico, metal e/ou vidro) em Belo Horizonte. Estão sendo gradativamente substituídos por novos equipamentos denominados Ponto Verde.    Periodicidade prevista para publicação: mensal.    Para visualização em mapa utilize o EPSG: 31983.;entrega, LEV, limpeza urbana, lixo, local, voluntaria;Superintendência de Limpeza Urbana;;",
+      "Plano de Dados Abertos;Plano de Dados Abertos.;estrutura, limpeza, municipal, organização, planejamento;Superintendência de Limpeza Urbana;;",
+      "Ponto Verde;Posto público para descarte de resíduos (papel, plástico, metal e/ou vidro) no município de Belo Horizonte. Também conhecido como Local de Entrega Voluntária.    Periodicidade prevista para publicação: mensal.    Para visualização em mapa utilize o EPSG: 31983.;coleta, limpeza, seletiva, urbana;Superintendência de Limpeza Urbana;;",
+      "Serviços complementares de limpeza urbana;Dados relativos aos serviços complementares de limpeza urbana.  A periodicidade prevista para atualização é anual.;boca de lobo, capina, roçada, serviços complementares, varrição;Superintendência de Limpeza Urbana;Superintendência de Limpeza Urbana - SLU;slu@pbh.gov.br",
+      "Unidadade de Recebimento de Pequenos Volumes - URPV;Localização dos equipamentos públicos destinados a receber gratuitamente materiais que não são recolhidos pela coleta convencional, como entulho, resíduos de poda e terra, assim como pneus, colchões e móveis velho, no município de Belo Horizonte.    Periodicidade prevista para publicação: mensal.    Para visualização em mapa utilize o EPSG: 31983.;limpeza, pequeno, recebimento, unidade, urbana, URPV, volume;Superintendência de Limpeza Urbana;;",
+      "URPV - Unidades de Recebimento de Pequenos Volumes;Informaçõe sobre localização e equipamentos em Unidades de Recebimento de Pequenos Volumes;RCC, RCCV, Resíduos da Construção Civil e Volumosos, Superintendência de Limpeza Urbana;Superintendência de Limpeza Urbana;Superintendência de Limpeza Urbana - SLU;slu@pbh.gov.br"
+    ],
+    "problematic_line": {
+      "actual_fields": 7,
+      "error": "Csv error: incorrect number of fields for line 7, expected 6 got 7",
+      "expected_fields": 6,
+      "line_number": 7,
+      "parsed_fields": [
+        "Regularização Fundiária de Vilas e Conjuntos em Zeis",
+        "Descrição de Dados de Domicílios Regularizados em ZEIS      O conjunto de dados apresenta o número de domicílios regularizados em vilas ou favelas (ocupações urbanas desordenadas e espontâneas), caracterizadas no Plano Diretor do Município como ZEIS-1",
+        " assim  como nos conjuntos ZEIS (loteamentos populares implantados pelo poder público para população de baixa renda), caracterizados no Plano Diretor do Município como ZEIS-2.   Essa publicação tem periodicidade de atualização anual.    ZEIS - Zona de Especial Interesse Social    ",
+        "Regularização Fundiária, Vilas, ZEIS",
+        "Cia. Urbanizadora e de Habitação de Belo Horizonte",
+        "Assessória de Comunicação e Imprensa / ACI-UB ",
+        "nucsurbel@pbh.gov.br"
+      ],
+      "raw": "Regularização Fundiária de Vilas e Conjuntos em Zeis;Descrição de Dados de Domicílios Regularizados em ZEIS      O conjunto de dados apresenta o número de domicílios regularizados em vilas ou favelas (ocupações urbanas desordenadas e espontâneas), caracterizadas no Plano Diretor do Município como ZEIS-1; assim  como nos conjuntos ZEIS (loteamentos populares implantados pelo poder público para população de baixa renda), caracterizados no Plano Diretor do Município como ZEIS-2.   Essa publicação tem periodicidade de atualização anual.    ZEIS - Zona de Especial Interesse Social    ;Regularização Fundiária, Vilas, ZEIS;Cia. Urbanizadora e de Habitação de Belo Horizonte;Assessória de Comunicação e Imprensa / ACI-UB ;nucsurbel@pbh.gov.br"
+    },
+    "raw_first_line": "Conjunto de dados;Descricao;Tags;organizacao;Mantenedor;Email Mantenedor"
+  }
+}

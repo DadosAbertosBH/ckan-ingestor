@@ -16,6 +16,7 @@ use crate::parquet_output::ParquetOutput;
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 use crate::ckan_resource::CkanResource;
+use crate::jev_csv_sniffer::JevCsvRepairer;
 use crate::readers::ckan_reader::{download_to_temp, CkanReader, ReadResult, SuccessResult};
 use crate::readers::temp_file_cleanup::TempFileCleanup;
 use anyhow::Result;
@@ -35,22 +36,29 @@ static COLUMN_PARSE_ERROR: LazyLock<Regex> = LazyLock::new(|| {
         .expect("valid column parse error regex")
 });
 
+static CSV_FIELD_COUNT_ERROR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"line\s+(\d+)").expect("valid CSV line-number regex"));
+
 const CSV_BATCH_SIZE: usize = 32_768;
 const MAX_CSV_BATCH_CELLS: usize = 4 * 1024 * 1024;
+const MAX_JEV_CSV_REPAIRS: usize = 20;
 pub const CSV_READER_INITIAL_SAMPLE_RECORDS: usize = 25_000;
 
 pub struct CsvReader {
     client: reqwest::blocking::Client,
     supported_formats: Vec<String>,
     csv_delimiter: Option<String>,
+    jev_repairer: Option<JevCsvRepairer>,
 }
 
 impl CsvReader {
     pub fn new(client: reqwest::blocking::Client) -> Self {
+        let jev_repairer = JevCsvRepairer::from_env(client.clone());
         Self {
             client,
             supported_formats: vec!["CSV".to_string()],
             csv_delimiter: None,
+            jev_repairer,
         }
     }
 
@@ -58,11 +66,18 @@ impl CsvReader {
         client: reqwest::blocking::Client,
         csv_delimiter: Option<String>,
     ) -> Self {
+        let jev_repairer = JevCsvRepairer::from_env(client.clone());
         Self {
             client,
             supported_formats: vec!["CSV".to_string()],
             csv_delimiter,
+            jev_repairer,
         }
+    }
+
+    pub fn with_jev_repairer(mut self, jev_repairer: JevCsvRepairer) -> Self {
+        self.jev_repairer = Some(jev_repairer);
+        self
     }
 
     /// Detect the CSV metadata once, then read it with the detected settings.
@@ -106,11 +121,16 @@ impl CsvReader {
                     ));
                 }
                 Err(error) => {
+                    if sample_size == SampleSize::All && csv_error_line(&error).is_some() {
+                        if let Some(result) = self.try_jev_repair(&csv_path, &metadata, &error)? {
+                            return Ok(result);
+                        }
+                    }
                     if !is_retryable_csv_parse_error(&error) {
                         return Err(error.into());
                     }
 
-                    match try_read_csv_with_promotions(&csv_path, metadata, false) {
+                    match try_read_csv_with_promotions(&csv_path, metadata.clone(), false) {
                         Ok(parquet) => {
                             return Ok(SuccessResult::from_csv(
                                 parquet,
@@ -128,7 +148,16 @@ impl CsvReader {
                             log_csv_retry(sample_size, &error);
                             continue;
                         }
-                        Err(error) => return Err(error.into()),
+                        Err(error) => {
+                            if sample_size == SampleSize::All {
+                                if let Some(result) =
+                                    self.try_jev_repair(&csv_path, &metadata, &error)?
+                                {
+                                    return Ok(result);
+                                }
+                            }
+                            return Err(error.into());
+                        }
                     }
                 }
             }
@@ -136,6 +165,84 @@ impl CsvReader {
 
         unreachable!("the final CSV sample-size attempt returns or fails")
     }
+
+    fn try_jev_repair(
+        &self,
+        csv_path: &str,
+        metadata: &Metadata,
+        error: &anyhow::Error,
+    ) -> Result<Option<SuccessResult>> {
+        let Some(repairer) = &self.jev_repairer else {
+            return Ok(None);
+        };
+        let Some(mut line_number) = csv_error_line(error) else {
+            return Ok(None);
+        };
+        let mut current_path = PathBuf::from(csv_path);
+        let mut current_error = error.to_string();
+        let mut cleanups = Vec::new();
+
+        for repair_number in 1..=MAX_JEV_CSV_REPAIRS {
+            log::info!("Attempting JEV CSV repair {repair_number} for line {line_number}");
+            let repaired_path = match repairer.repair_csv_with_metadata(
+                &current_path,
+                metadata,
+                line_number,
+                &current_error,
+            ) {
+                Ok(path) => path,
+                Err(repair_error) => {
+                    log::info!("JEV CSV repair did not produce a usable file: {repair_error}");
+                    return Err(anyhow::anyhow!(current_error));
+                }
+            };
+            cleanups.push(TempFileCleanup::from_path(repaired_path.clone()));
+            let repaired_path_str = repaired_path.to_string_lossy();
+            match try_read_csv_with_promotions(&repaired_path_str, metadata.clone(), true) {
+                Ok(parquet) => {
+                    log::info!(
+                        "JEV-repaired CSV parsed successfully after {repair_number} repair(s)"
+                    );
+                    return Ok(Some(SuccessResult::from_csv(
+                        parquet,
+                        metadata.encoding.name.to_string(),
+                        true,
+                        char::from(metadata.dialect.delimiter).to_string(),
+                        "jev-repaired".to_string(),
+                        self.reader_name().to_string(),
+                    )));
+                }
+                Err(parse_error) => {
+                    let Some(next_line_number) = csv_error_line(&parse_error) else {
+                        return Err(parse_error);
+                    };
+                    log::info!(
+                        "JEV-repaired CSV found next structural error at line {next_line_number}"
+                    );
+                    current_path = repaired_path;
+                    current_error = parse_error.to_string();
+                    line_number = next_line_number;
+                }
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "JEV CSV repair limit reached after {MAX_JEV_CSV_REPAIRS} repairs"
+        ))
+    }
+}
+
+fn csv_error_line(error: &anyhow::Error) -> Option<usize> {
+    std::iter::once(error.to_string())
+        .chain(error.chain().map(ToString::to_string))
+        .find_map(|message| {
+            CSV_FIELD_COUNT_ERROR
+                .captures(&message)?
+                .get(1)?
+                .as_str()
+                .parse()
+                .ok()
+        })
 }
 
 fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<ParquetOutput> {
