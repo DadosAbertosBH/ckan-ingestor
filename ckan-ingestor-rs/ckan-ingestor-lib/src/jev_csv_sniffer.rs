@@ -249,7 +249,7 @@ pub fn build_jev_csv_sniffer_request_with_metadata(
     Ok(json!({
         "model": "jev-latest",
         "state": {
-            "inferred_metadata": metadata_json(&metadata),
+            "inferred_metadata": metadata_json(metadata),
             "raw_first_line": lines.first(),
             "first_ten_lines": &lines[..lines.len().min(10)],
             "last_ten_lines": &lines[lines.len().saturating_sub(10)..],
