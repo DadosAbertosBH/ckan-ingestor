@@ -148,7 +148,7 @@ pub async fn run() -> Result<()> {
                 .batch_length(1)
                 .build();
             consumer.init().await?;
-            let source = IggySource::new(consumer);
+            let source = IggySource::new(client, consumer);
             let mut worker = WorkerHandler::new(source, publisher.clone(), processor.clone());
             worker.run();
             workers.push(worker);

@@ -13,26 +13,43 @@ use anyhow::{Result, anyhow};
 use futures::StreamExt;
 use iggy::{
     clients::producer::IggyProducer,
-    prelude::{IggyConsumer, IggyMessage, Partitioning},
+    prelude::{IggyClient, IggyConsumer, IggyMessage, Partitioning},
 };
 use message_processor::{BrokerMessage, MessagePublisher, MessageSource, OutgoingMessage};
 
 pub use iggy;
 use serde::Serialize;
 
+struct OwnedConsumer<Client, Consumer> {
+    _client: Client,
+    consumer: Consumer,
+}
+
+impl<Client, Consumer> OwnedConsumer<Client, Consumer> {
+    fn new(client: Client, consumer: Consumer) -> Self {
+        Self {
+            _client: client,
+            consumer,
+        }
+    }
+}
+
 pub struct IggySource {
-    consumer: IggyConsumer,
+    connection: OwnedConsumer<IggyClient, IggyConsumer>,
 }
 
 impl IggySource {
-    pub fn new(consumer: IggyConsumer) -> Self {
-        Self { consumer }
+    pub fn new(client: IggyClient, consumer: IggyConsumer) -> Self {
+        Self {
+            connection: OwnedConsumer::new(client, consumer),
+        }
     }
 }
 
 impl MessageSource for IggySource {
     async fn recv(&mut self) -> Result<BrokerMessage> {
         let received = self
+            .connection
             .consumer
             .next()
             .await
@@ -45,7 +62,10 @@ impl MessageSource for IggySource {
     }
 
     async fn commit(&mut self, partition: u32, offset: u64) -> Result<()> {
-        self.consumer.store_offset(offset, Some(partition)).await?;
+        self.connection
+            .consumer
+            .store_offset(offset, Some(partition))
+            .await?;
         Ok(())
     }
 }
@@ -102,9 +122,32 @@ impl MessagePublisher for IggyPublisher {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+
     use message_processor::{MessagePublisher, OutgoingMessage};
 
-    use super::IggyPublisher;
+    use super::{IggyPublisher, OwnedConsumer};
+
+    struct DropProbe(Arc<AtomicBool>);
+
+    impl Drop for DropProbe {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn owned_consumer_keeps_the_client_alive() {
+        let dropped = Arc::new(AtomicBool::new(false));
+        let connection = OwnedConsumer::new(DropProbe(Arc::clone(&dropped)), ());
+
+        assert!(!dropped.load(Ordering::SeqCst));
+        drop(connection);
+        assert!(dropped.load(Ordering::SeqCst));
+    }
 
     #[test]
     fn publishing_to_an_unconfigured_topic_returns_an_error() {
