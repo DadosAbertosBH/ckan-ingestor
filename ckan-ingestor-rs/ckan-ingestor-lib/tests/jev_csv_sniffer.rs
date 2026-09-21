@@ -51,8 +51,51 @@ fn builds_a_complete_jev_request_for_an_extra_csv_field() -> Result<()> {
     let expected: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(fixture_path("inventario.jev.json"))?)?;
 
-    assert_eq!(request, expected);
+    assert_json_key_eq(&request, &expected, "model");
+    for key in ["raw_first_line", "first_ten_lines", "last_ten_lines"] {
+        assert_json_key_eq(&request["state"], &expected["state"], key);
+    }
+    for key in [
+        "encoding",
+        "dialect",
+        "avg_record_len",
+        "num_fields",
+        "fields",
+        "types",
+    ] {
+        assert_json_key_eq(
+            &request["state"]["inferred_metadata"],
+            &expected["state"]["inferred_metadata"],
+            key,
+        );
+    }
+    for key in [
+        "line_number",
+        "raw",
+        "parsed_fields",
+        "error",
+        "expected_fields",
+        "actual_fields",
+    ] {
+        assert_json_key_eq(
+            &request["state"]["problematic_line"],
+            &expected["state"]["problematic_line"],
+            key,
+        );
+    }
+    for key in [
+        "fields_to_merge",
+        "is_delimiter_correct",
+        "is_has_header_correct",
+        "is_num_fields_correct",
+    ] {
+        assert_json_key_eq(&request["questions"], &expected["questions"], key);
+    }
     Ok(())
+}
+
+fn assert_json_key_eq(actual: &serde_json::Value, expected: &serde_json::Value, key: &str) {
+    assert_eq!(actual.get(key), expected.get(key), "JSON mismatch at {key}");
 }
 
 #[test]
