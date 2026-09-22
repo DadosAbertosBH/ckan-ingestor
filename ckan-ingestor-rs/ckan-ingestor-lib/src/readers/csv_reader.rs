@@ -41,7 +41,7 @@ static CSV_FIELD_COUNT_ERROR: LazyLock<Regex> =
 
 const CSV_BATCH_SIZE: usize = 32_768;
 const MAX_CSV_BATCH_CELLS: usize = 4 * 1024 * 1024;
-const MAX_JEV_CSV_REPAIRS: usize = 20;
+const MAX_JEV_CSV_REPAIRS: usize = 2000;
 pub const CSV_READER_INITIAL_SAMPLE_RECORDS: usize = 25_000;
 
 pub struct CsvReader {
