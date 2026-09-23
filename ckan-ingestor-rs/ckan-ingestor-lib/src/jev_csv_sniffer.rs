@@ -277,7 +277,7 @@ pub fn build_jev_csv_sniffer_request_with_metadata(
     )?;
     let questions = questions_json(&parsed_fields, metadata.dialect.delimiter);
 
-    Ok(json!({
+    let request = json!({
         "model": "jev-latest",
         "state": {
             "inferred_metadata": metadata_json(metadata),
@@ -294,7 +294,27 @@ pub fn build_jev_csv_sniffer_request_with_metadata(
             }
         },
         "questions": questions
-    }))
+    });
+
+    #[cfg(test)]
+    persist_last_jev_test_request(&request)?;
+
+    Ok(request)
+}
+
+#[cfg(test)]
+fn persist_last_jev_test_request(request: &Value) -> Result<()> {
+    use std::io::Write;
+
+    let directory = std::env::temp_dir().join("jev-csv-sniffer-tests");
+    fs::create_dir_all(&directory)?;
+    let output = directory.join("last-request.json");
+    let mut temporary = tempfile::NamedTempFile::new_in(&directory)?;
+    serde_json::to_writer_pretty(temporary.as_file_mut(), request)?;
+    temporary.write_all(b"\n")?;
+    temporary.as_file_mut().sync_all()?;
+    temporary.persist(output).map_err(|error| error.error)?;
+    Ok(())
 }
 
 fn read_lines(csv_path: &Path, encoding_name: &str) -> Result<Vec<String>> {
@@ -648,6 +668,39 @@ mod migrated_tests {
 
     fn assert_json_key_eq(actual: &serde_json::Value, expected: &serde_json::Value, key: &str) {
         assert_eq!(actual.get(key), expected.get(key), "JSON mismatch at {key}");
+    }
+
+    #[test]
+    fn writes_and_replaces_the_last_jev_test_request() -> Result<()> {
+        let csv_path = fixture_path("inventario.csv");
+        let metadata = sniff_metadata(&csv_path)?;
+        let request_path = std::env::temp_dir()
+            .join("jev-csv-sniffer-tests")
+            .join("last-request.json");
+
+        let first_request = build_jev_csv_sniffer_request_with_metadata(
+            &csv_path,
+            &metadata,
+            7,
+            6,
+            7,
+            "first request".to_string(),
+        )?;
+        let persisted_first: Value = serde_json::from_slice(&fs::read(&request_path)?)?;
+        assert_eq!(persisted_first, first_request);
+
+        let last_request = build_jev_csv_sniffer_request_with_metadata(
+            &csv_path,
+            &metadata,
+            8,
+            6,
+            7,
+            "last request".to_string(),
+        )?;
+        let persisted_last: Value = serde_json::from_slice(&fs::read(request_path)?)?;
+        assert_eq!(persisted_last, last_request);
+        assert_ne!(persisted_first, persisted_last);
+        Ok(())
     }
 
     #[test]
@@ -1276,8 +1329,8 @@ mod migrated_tests {
     }
 
     #[test]
-    fn logs_jev_request_for_relatorio_nominal_metadata_inference_error() -> Result<()> {
-        let csv_path = fixture_path("relatorio_nominal_servidores_adm_direta_10-2025.csv");
+    fn logs_jev_request_for_wrong_metadata() -> Result<()> {
+        let csv_path = fixture_path("wrong_metadata_inference.csv");
         let metadata = sniff_metadata(&csv_path)?;
         let request = build_jev_csv_sniffer_request_with_metadata(
             &csv_path,
@@ -1287,11 +1340,6 @@ mod migrated_tests {
             10,
             "Csv error: incorrect number of fields for line 225, expected 9 got 10".to_string(),
         )?;
-
-        println!(
-            "Relatorio nominal JEV request:\n{}",
-            serde_json::to_string_pretty(&request)?
-        );
 
         assert_eq!(request["state"]["problematic_line"]["line_number"], 225);
         assert_eq!(request["state"]["problematic_line"]["expected_fields"], 9);

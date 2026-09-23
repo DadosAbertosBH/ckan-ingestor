@@ -288,6 +288,7 @@ impl CsvReader {
             &csv_path,
             self.csv_delimiter.as_deref(),
             SampleSize::Records(CSV_READER_INITIAL_SAMPLE_RECORDS),
+            false,
         )?;
 
         self.try_read_csv(
@@ -459,6 +460,7 @@ impl CsvReader {
             path,
             Some(&char::from(metadata.dialect.delimiter).to_string()),
             sample_size.next(),
+            false,
         )?;
         return self.try_read_csv(
             path,
@@ -501,14 +503,21 @@ impl CsvReader {
         );
         match repair_result {
             Ok(action) => match action {
-                FixInput(path_buf) => self.try_read_csv(
-                    &path_buf.to_string_lossy(),
-                    metadata,
-                    false,
-                    SampleSize::All,
-                    jev_repair_count + 1,
-                ),
-                FixMetadata(_metadata) => todo!(),
+                FixInput(path_buf) => {
+                    self.try_read_csv_with_repaired_input(path_buf, metadata, jev_repair_count + 1)
+                }
+                FixMetadata(fixed_metadata) => {
+                    let delimiter_hint = char::from(fixed_metadata.dialect.delimiter).to_string();
+                    let mut metadata =
+                        sniff_metadata(csv_path, Some(&delimiter_hint), SampleSize::All, true)?;
+                    self.try_read_csv(
+                        csv_path,
+                        &mut metadata,
+                        false,
+                        SampleSize::All,
+                        jev_repair_count + 1,
+                    )
+                }
             },
             Err(repair_error) => {
                 log::info!("JEV CSV repair did not produce a usable file: {repair_error}");
@@ -520,6 +529,22 @@ impl CsvReader {
                 });
             }
         }
+    }
+
+    fn try_read_csv_with_repaired_input(
+        &self,
+        repaired_path: PathBuf,
+        metadata: &mut Metadata,
+        jev_repair_count: usize,
+    ) -> Result<SuccessResult, CsvParserError> {
+        let _cleanup = TempFileCleanup::from_path(repaired_path.clone());
+        self.try_read_csv(
+            &repaired_path.to_string_lossy(),
+            metadata,
+            false,
+            SampleSize::All,
+            jev_repair_count,
+        )
     }
 }
 
@@ -566,9 +591,13 @@ fn sniff_metadata(
     path: &str,
     delimiter_hint: Option<&str>,
     sample_size: SampleSize,
+    force_header: bool,
 ) -> Result<Metadata> {
     let mut sniffer = Sniffer::new();
     sniffer.sample_size(sample_size);
+    if force_header {
+        sniffer.force_header(true);
+    }
     if let Some(delimiter_hint) = delimiter_hint {
         let &[delimiter] = delimiter_hint.as_bytes() else {
             anyhow::bail!("CSV delimiter hint must contain exactly one byte");
@@ -646,7 +675,10 @@ mod tests {
     use arrow::datatypes::DataType;
     use flate2::write::GzEncoder;
     use flate2::Compression;
-    use httpmock::{Method::GET, MockServer};
+    use httpmock::{
+        Method::{GET, POST},
+        MockServer,
+    };
     use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
     use std::cell::Cell;
     use std::fs;
@@ -746,9 +778,82 @@ mod tests {
             path.to_str().expect("valid temporary path"),
             Some(";"),
             SampleSize::Records(50_000),
+            false,
         )?;
 
         assert_eq!(metadata.dialect.delimiter, b';');
+        Ok(())
+    }
+
+    #[test]
+    fn jev_header_correction_resniffs_with_forced_header() -> Result<()> {
+        let server = MockServer::start();
+        let response = serde_json::json!({
+            "model": "jev-latest",
+            "answers": {
+                "fields_to_merge": {"type": "choice", "choice": "merge_1_2"},
+                "is_delimiter_correct": {"type": "noul", "noul": 1.0},
+                "is_has_header_correct": {"type": "noul", "noul": 0.0},
+                "is_num_fields_correct": {"type": "noul", "noul": 1.0}
+            }
+        });
+        let mock = server.mock(|when, then| {
+            when.method(POST).path("/v1/systemone");
+            then.status(200).json_body(response);
+        });
+        let repairer = JevCsvRepairer::new(
+            test_client(),
+            format!("{}/v1/systemone", server.base_url()),
+            "test-key".to_string(),
+        );
+        let reader = CsvReader::new(test_client()).with_jev_repairer(repairer);
+        let directory = tempdir()?;
+        let path = directory.path().join("header.csv");
+        fs::write(&path, "name,age\nAlice,30\nBob,40\n")?;
+        let mut metadata = sniff_metadata(
+            path.to_str().expect("temporary path is valid UTF-8"),
+            None,
+            SampleSize::All,
+            false,
+        )?;
+        metadata.dialect.header.has_header_row = false;
+
+        let result = reader.try_read_csv_reapairing_with_jev(
+            path.to_str().expect("temporary path is valid UTF-8"),
+            &mut metadata,
+            2,
+            2,
+            3,
+            "line 2, expected 2 got 3".to_string(),
+            0,
+        );
+
+        let result = result.map_err(|error| anyhow!(error.error_message()))?;
+        assert_eq!(result.number_of_columns, 2);
+        mock.assert();
+        Ok(())
+    }
+
+    #[test]
+    fn removes_repaired_input_after_retry() -> Result<()> {
+        let directory = tempdir()?;
+        let repaired_path = directory.path().join("jev-csv-repair.csv");
+        fs::write(&repaired_path, "name,age\nAlice,30\nBob,40\n")?;
+        let mut metadata = sniff_metadata(
+            repaired_path
+                .to_str()
+                .expect("temporary path is valid UTF-8"),
+            None,
+            SampleSize::All,
+            false,
+        )?;
+        let reader = CsvReader::new(test_client());
+
+        let result =
+            reader.try_read_csv_with_repaired_input(repaired_path.clone(), &mut metadata, 1);
+
+        result.map_err(|error| anyhow!(error.error_message()))?;
+        assert!(!repaired_path.exists());
         Ok(())
     }
 

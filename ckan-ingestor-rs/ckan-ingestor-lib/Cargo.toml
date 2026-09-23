@@ -28,7 +28,7 @@ bytes = "1.10"
 object_store = { version = "=0.13.2", default-features = false, features = ["aws", "fs"] }
 tokio = { version = "1.0", features = ["fs", "io-util", "macros", "rt", "sync"] }
 url = "2"
-csv-nose = { git = "https://github.com/guitcastro/csv-nose.git", branch = "fix/reduce-dialect-scoring-memory" }
+csv-nose = { git = "https://github.com/guitcastro/csv-nose.git", branch = "feat/force-header-preamble" }
 flate2 = "1"
 encoding_rs = "0.8"
 encoding_rs_io = "0.1"

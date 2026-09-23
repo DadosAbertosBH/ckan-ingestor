@@ -1687,8 +1687,8 @@ dependencies = [
 
 [[package]]
 name = "csv-nose"
-version = "1.2.0"
-source = "git+https://github.com/guitcastro/csv-nose.git?branch=fix%2Freduce-dialect-scoring-memory#a0b80850406a4ec7219ec6832083a68e596e970b"
+version = "1.3.0"
+source = "git+https://github.com/guitcastro/csv-nose.git?branch=feat%2Fforce-header-preamble#ff07156c530a28c24cec00f280332aa569161338"
 dependencies = [
  "bytecount",
  "chardetng",
@@ -4645,7 +4645,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.5",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5253,7 +5253,7 @@ dependencies = [
  "security-framework 3.7.0",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5429,7 +5429,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b55fb86dfd3a2f5f76ea78310a88f96c4ea21a3031f8d212443d56123fd0521"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6128,7 +6128,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
