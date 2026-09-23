@@ -35,8 +35,10 @@ use std::io::{self, BufRead, BufReader, Read};
 use std::path::PathBuf;
 use std::sync::LazyLock;
 static COLUMN_PARSE_ERROR: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"Error while parsing value '[^']+' as type '[^']+' for column (\d+) at line (\d+)")
-        .expect("valid column parse error regex")
+    Regex::new(
+        r"Error while parsing value '([^']+)' as type '([^']+)' for column (\d+) at line (\d+)",
+    )
+    .expect("valid column parse error regex")
 });
 
 static CSV_FIELD_COUNT_ERROR: LazyLock<Regex> = LazyLock::new(|| {
@@ -100,7 +102,7 @@ impl CsvParserError {
         let captures = CSV_FIELD_COUNT_ERROR.captures(&message)?;
         let line: Option<usize> = captures.get(1)?.as_str().parse().ok();
         let expected: Option<usize> = captures.get(2)?.as_str().parse().ok();
-        let found: Option<usize> = captures.get(1)?.as_str().parse().ok();
+        let found: Option<usize> = captures.get(3)?.as_str().parse().ok();
         match (line, expected, found) {
             (Some(line), Some(expected), Some(found)) => {
                 Some(CsvParserError::ColumnCountMissmatch {
@@ -220,7 +222,7 @@ impl NextSize for SampleSize {
     fn next(&self) -> SampleSize {
         match self {
             SampleSize::Records(records) if records < &CSV_READER_MAX_SAMPLE_RECORDS => {
-                SampleSize::Records(CSV_READER_INITIAL_SAMPLE_RECORDS * 2)
+                SampleSize::Records(records * 2)
             }
             _ => SampleSize::All,
         }
@@ -334,33 +336,8 @@ impl CsvReader {
         for batch_result in csv_reader {
             let batch = match batch_result.map_err(CsvParserError::from) {
                 Err(error) => match error {
-                    // Then try to increase sample_size
-                    CsvParserError::ColumnCountMissmatch {
-                        line: _,
-                        expect_number_of_columns: _,
-                        actual_number_of_columns: _,
-                        message: _,
-                    }
-                    | CsvParserError::ColumnTypeMissmatch {
-                        value: _,
-                        column_index: _,
-                        line: _,
-                        expected_type: _,
-                        message: _,
-                    }
-                    | CsvParserError::ParserError { message: _ }
-                        if sample_size != SampleSize::All =>
-                    {
-                        return self.try_read_csv_increasing_metadata_sample(
-                            path,
-                            metadata,
-                            strict_mode,
-                            sample_size,
-                            jev_repair_count,
-                            error,
-                        )
-                    }
-                    // First just try to fix by promoting the column type to string
+                    // Type inference already identified the column; preserve the
+                    // current sample and promote only that column to text.
                     CsvParserError::ColumnTypeMissmatch {
                         value: _,
                         column_index,
@@ -376,6 +353,26 @@ impl CsvReader {
                             jev_repair_count,
                             message,
                             column_index,
+                        )
+                    }
+                    // Field-count and unclassified parser errors may be caused
+                    // by incomplete metadata, so retry with a larger sample.
+                    CsvParserError::ColumnCountMissmatch {
+                        line: _,
+                        expect_number_of_columns: _,
+                        actual_number_of_columns: _,
+                        message: _,
+                    }
+                    | CsvParserError::ParserError { message: _ }
+                        if sample_size != SampleSize::All =>
+                    {
+                        return self.try_read_csv_increasing_metadata_sample(
+                            path,
+                            metadata,
+                            strict_mode,
+                            sample_size,
+                            jev_repair_count,
+                            error,
                         )
                     }
                     // After exaust sample_size try to repair with Jev
@@ -417,7 +414,7 @@ impl CsvReader {
             parquet,
             metadata.encoding.name.to_string(),
             strict_mode,
-            metadata.dialect.delimiter.to_string(),
+            char::from(metadata.dialect.delimiter).to_string(),
             csv_sample_size_label(sample_size),
             self.reader_name().to_string(),
         ))
@@ -460,7 +457,7 @@ impl CsvReader {
         );
         let mut metadata = sniff_metadata(
             path,
-            Some(&metadata.dialect.delimiter.to_string().as_str()),
+            Some(&char::from(metadata.dialect.delimiter).to_string()),
             sample_size.next(),
         )?;
         return self.try_read_csv(
@@ -500,7 +497,7 @@ impl CsvReader {
             line_number,
             expect_number_of_columns,
             actual_number_of_columns,
-            error_message,
+            error_message.clone(),
         );
         match repair_result {
             Ok(action) => match action {
@@ -515,8 +512,11 @@ impl CsvReader {
             },
             Err(repair_error) => {
                 log::info!("JEV CSV repair did not produce a usable file: {repair_error}");
-                return Err(CsvParserError::UnknownError {
-                    error: anyhow!(repair_error.to_string()),
+                return Err(CsvParserError::ColumnCountMissmatch {
+                    line: line_number,
+                    expect_number_of_columns,
+                    actual_number_of_columns,
+                    message: error_message,
                 });
             }
         }
@@ -644,11 +644,17 @@ impl CkanReader for CsvReader {
 mod tests {
     use super::*;
     use arrow::datatypes::DataType;
+    use flate2::write::GzEncoder;
+    use flate2::Compression;
+    use httpmock::{Method::GET, MockServer};
+    use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
     use std::cell::Cell;
+    use std::fs;
     use std::io::{BufWriter, Read, Write};
     use std::path::PathBuf;
     use std::rc::Rc;
     use std::time::Duration;
+    use tempfile::tempdir;
 
     struct WriteAwareReader {
         write_started: Rc<Cell<bool>>,
@@ -747,34 +753,31 @@ mod tests {
     }
 
     #[test]
-    fn retries_arrow_parse_and_csv_errors_only() {
-        let parse_error = anyhow::Error::new(arrow::error::ArrowError::ParseError(
+    fn classifies_arrow_parse_and_csv_errors_as_parser_errors() {
+        let parse_error = CsvParserError::from(arrow::error::ArrowError::ParseError(
             "invalid value".to_string(),
         ));
-        let csv_error = anyhow::Error::new(arrow::error::ArrowError::CsvError(
+        let csv_error = CsvParserError::from(arrow::error::ArrowError::CsvError(
             "incorrect number of fields".to_string(),
         ));
-        let io_error = anyhow::Error::new(std::io::Error::other("disk error"));
+        let io_error = CsvParserError::from(arrow::error::ArrowError::IoError(
+            "disk error".to_string(),
+            std::io::Error::other("disk error"),
+        ));
 
-        assert!(is_retryable_csv_parse_error(&parse_error));
-        assert!(is_retryable_csv_parse_error(&csv_error));
-        assert!(!is_retryable_csv_parse_error(&io_error));
+        assert!(matches!(parse_error, CsvParserError::ParserError { .. }));
+        assert!(matches!(csv_error, CsvParserError::ParserError { .. }));
+        assert!(matches!(io_error, CsvParserError::UnknownError { .. }));
     }
 
     #[test]
     fn grows_csv_sample_sizes_before_reading_the_full_file() {
-        assert_eq!(
-            csv_sample_sizes(),
-            [
-                SampleSize::Records(CSV_READER_INITIAL_SAMPLE_RECORDS),
-                SampleSize::Records(50_000),
-                SampleSize::Records(100_000),
-                SampleSize::Records(200_000),
-                SampleSize::Records(400_000),
-                SampleSize::Records(800_000),
-                SampleSize::All,
-            ]
-        );
+        let mut sample_size = SampleSize::Records(CSV_READER_INITIAL_SAMPLE_RECORDS);
+        for expected in [50_000, 100_000, 200_000, 400_000, 800_000] {
+            sample_size = sample_size.next();
+            assert_eq!(sample_size, SampleSize::Records(expected));
+        }
+        assert_eq!(sample_size.next(), SampleSize::All);
     }
 
     #[test]
@@ -877,16 +880,6 @@ mod tests {
     }
 
     #[test]
-    fn retry_log_includes_the_sample_size_and_parse_error() {
-        let error = anyhow::anyhow!("incorrect number of fields");
-
-        let message = csv_retry_log_message(SampleSize::Records(100_000), &error);
-
-        assert!(message.contains("100000"));
-        assert!(message.contains("incorrect number of fields"));
-    }
-
-    #[test]
     fn decodes_windows_1252_as_utf8_while_streaming() -> Result<()> {
         let bytes = b"name\nCaf\xe9\n";
         let mut reader = decode_reader(bytes.as_slice(), "windows-1252")?;
@@ -917,6 +910,20 @@ mod tests {
 
     #[test]
     fn csv_reader_api_stays_within_a_bounded_memory_amplification() -> Result<()> {
+        const ISOLATED_MEMORY_TEST: &str = "CKAN_INGESTOR_CSV_MEMORY_TEST_CHILD";
+        if std::env::var_os(ISOLATED_MEMORY_TEST).is_none() {
+            let status = std::process::Command::new(std::env::current_exe()?)
+                .args([
+                    "--exact",
+                    "readers::csv_reader::tests::csv_reader_api_stays_within_a_bounded_memory_amplification",
+                    "--nocapture",
+                ])
+                .env(ISOLATED_MEMORY_TEST, "1")
+                .status()?;
+            assert!(status.success(), "isolated CSV memory test failed");
+            return Ok(());
+        }
+
         let _memory_guard = crate::test_alloc::memory_intensive_test_guard();
         let path = std::env::temp_dir().join(format!(
             "csv-sniff-memory-test-{}.csv",
@@ -998,16 +1005,6 @@ mod tests {
         assert_eq!(result.rows_processed, 31, "should read all 31 data records");
 
         Ok(())
-    }
-
-    fn test_client() -> reqwest::blocking::Client {
-        reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(600))
-            .user_agent(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0",
-            )
-            .build()
-            .unwrap()
     }
 
     #[test]
@@ -1186,7 +1183,7 @@ mod tests {
 
         assert_eq!(result.rows_processed, 2);
         assert_eq!(result.number_of_columns, 10);
-        assert_eq!(result.csv_strict_mode, Some(false));
+        assert_eq!(result.csv_strict_mode, Some(true));
         Ok(())
     }
 
