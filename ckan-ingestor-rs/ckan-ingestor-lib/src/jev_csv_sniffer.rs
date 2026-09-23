@@ -15,8 +15,13 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::readers::csv_reader::CSV_READER_INITIAL_SAMPLE_RECORDS;
-use anyhow::{Context, Result};
+use crate::jev_csv_sniffer::CsvNoulQuestion::{
+    IsDelimiterCorrect, IsHasHeaderCorrect, IsNumFieldsCorrect,
+};
+use crate::readers::csv_reader::{
+    ColumnCountMissmatchError, CsvParserError, CSV_READER_INITIAL_SAMPLE_RECORDS,
+};
+use anyhow::{anyhow, Context, Result};
 use csv_nose::{Metadata, Quote, SampleSize, Sniffer};
 use encoding_rs::Encoding;
 use regex::Regex;
@@ -27,6 +32,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const JEV_SYSTEM_ONE_URL: &str = "https://api.typesafe.ai/v1/systemone";
+
+pub enum RepairAction {
+    FixInput(PathBuf),
+    FixMetadata(Metadata),
+}
 
 pub struct JevCsvRepairer {
     client: reqwest::blocking::Client,
@@ -49,29 +59,18 @@ impl JevCsvRepairer {
         Some(Self::new(client, endpoint, api_key))
     }
 
-    pub fn repair_csv(
-        &self,
-        csv_path: &Path,
-        problematic_line_number: usize,
-        parse_error: &str,
-    ) -> Result<PathBuf> {
-        let metadata = sniff_metadata(csv_path)?;
-        self.repair_csv_with_metadata(csv_path, &metadata, problematic_line_number, parse_error)
-    }
-
     pub fn repair_csv_with_metadata(
         &self,
         csv_path: &Path,
         metadata: &Metadata,
-        problematic_line_number: usize,
-        parse_error: &str,
-    ) -> Result<PathBuf> {
-        log::info!("Requesting JEV CSV repair decision for line {problematic_line_number}");
+        error: ColumnCountMissmatchError,
+    ) -> Result<RepairAction> {
+        log::info!("Requesting JEV CSV repair decision for line {}", error.line);
         let request = build_jev_csv_sniffer_request_with_metadata(
             csv_path,
             metadata,
-            problematic_line_number,
-            parse_error,
+            error.line,
+            error.error,
         )?;
         let response: JevResponse = self
             .client
@@ -86,12 +85,30 @@ impl JevCsvRepairer {
             .get("fields_to_merge")
             .and_then(|answer| answer.choice.as_deref())
             .context("JEV response has no fields_to_merge choice")?;
-        ensure_metadata_answers_are_true(&response.answers)?;
-        let (left, right) = merge_choice(choice)?;
-        log::info!("JEV approved CSV repair for line {problematic_line_number}: choice={choice}");
-        let repaired_path = repair_line(csv_path, metadata, problematic_line_number, left, right)?;
-        log::info!("Created temporary JEV-repaired CSV for line {problematic_line_number}");
-        Ok(repaired_path)
+
+        return match ensure_metadata_answers_are_true(&response) {
+            Ok(_) => {
+                let (left, right) = merge_choice(choice)?;
+                log::info!(
+                    "JEV approved CSV repair for line {problematic_line_number}: choice={choice}"
+                );
+                let repaired_path =
+                    repair_line(csv_path, metadata, problematic_line_number, left, right)?;
+                log::info!("Created temporary JEV-repaired CSV for line {problematic_line_number}");
+                Ok(RepairAction::FixInput(repaired_path))
+            }
+            Err(error) => {
+                let is_has_header_correct =
+                    response.getNoulAnswerAsBool(&CsvNoulQuestion::IsHasHeaderCorrect)?;
+                if !(is_has_header_correct) {
+                    let mut new_metadata = metadata.clone();
+                    new_metadata.dialect.header.has_header_row = true;
+                    Ok(RepairAction::FixMetadata(new_metadata))
+                } else {
+                    Err(error)
+                }
+            }
+        };
     }
 }
 
@@ -106,18 +123,43 @@ struct JevAnswer {
     noul: Option<f64>,
 }
 
-fn ensure_metadata_answers_are_true(answers: &HashMap<String, JevAnswer>) -> Result<()> {
-    for question in [
-        "is_delimiter_correct",
-        "is_has_header_correct",
-        "is_num_fields_correct",
-    ] {
-        let noul = answers
-            .get(question)
-            .and_then(|answer| answer.noul)
-            .with_context(|| format!("JEV response has no {question} noul answer"))?;
-        log::info!("JEV metadata validation {question}={noul:.3}");
-        anyhow::ensure!(noul >= 0.5, "JEV did not confirm {question}");
+impl JevResponse {
+    fn getNoulAnswerAsBool(&self, question: &CsvNoulQuestion) -> Result<bool> {
+        let answer = self.answers.get(question.as_str()).ok_or(anyhow!(
+            "JEV response has no question: {}",
+            question.as_str()
+        ))?;
+        answer.getNoulAsBoolean()
+    }
+}
+
+enum CsvNoulQuestion {
+    IsDelimiterCorrect,
+    IsHasHeaderCorrect,
+    IsNumFieldsCorrect,
+}
+
+impl CsvNoulQuestion {
+    fn as_str(&self) -> &'static str {
+        match self {
+            CsvNoulQuestion::IsDelimiterCorrect => "is_delimiter_correct",
+            CsvNoulQuestion::IsHasHeaderCorrect => "is_has_header_correct",
+            CsvNoulQuestion::IsNumFieldsCorrect => "is_num_fields_correct",
+        }
+    }
+}
+
+impl JevAnswer {
+    fn getNoulAsBoolean(&self) -> Result<bool> {
+        let value = self.noul.ok_or(anyhow!("JEV response has no noul"))?;
+        Ok(value > 0.5)
+    }
+}
+
+fn ensure_metadata_answers_are_true(answers: &JevResponse) -> Result<()> {
+    for question in [IsDelimiterCorrect, IsHasHeaderCorrect, IsNumFieldsCorrect] {
+        let answer = answers.getNoulAnswerAsBool(&question);
+        anyhow::ensure!(answer?, "JEV did not confirm {}", question.as_str());
     }
     Ok(())
 }
@@ -214,25 +256,11 @@ fn escape_csv_field(field: &str, delimiter: char, quote: char) -> String {
     }
 }
 
-pub fn build_jev_csv_sniffer_request(
-    csv_path: &Path,
-    problematic_line_number: usize,
-    parse_error: &str,
-) -> Result<Value> {
-    let metadata = sniff_metadata(csv_path)?;
-    build_jev_csv_sniffer_request_with_metadata(
-        csv_path,
-        &metadata,
-        problematic_line_number,
-        parse_error,
-    )
-}
-
 pub fn build_jev_csv_sniffer_request_with_metadata(
     csv_path: &Path,
     metadata: &Metadata,
     problematic_line_number: usize,
-    parse_error: &str,
+    error: String,
 ) -> Result<Value> {
     let lines = read_lines(csv_path, metadata.encoding.name)?;
     let problematic_line = lines
@@ -257,7 +285,7 @@ pub fn build_jev_csv_sniffer_request_with_metadata(
                 "line_number": problematic_line_number,
                 "raw": problematic_line,
                 "parsed_fields": parsed_fields,
-                "error": parse_error,
+                "error": error,
                 "expected_fields": metadata.num_fields,
                 "actual_fields": actual_fields
             }
@@ -318,9 +346,27 @@ fn questions_json(parsed_fields: &[String], delimiter: u8) -> Value {
             },
             "criteria": merge_criteria_json(parsed_fields, delimiter)
         },
+        "error_source": {
+            "type": "choice",
+            "instructions": {
+                "question": "Is the field-count mismatch caused by an unquoted delimiter in problematic_line or by incorrect inferred metadata?",
+                "expected_column_count": "problematic_line.expected_fields",
+                "observed_column_count": "problematic_line.actual_fields"
+            },
+            "criteria": {
+                "malformed_line": {
+                    "id": "malformed_line",
+                    "description": "The inferred metadata is correct, and an unquoted delimiter in problematic_line caused the field-count mismatch."
+                },
+                "incorrect_metadata": {
+                    "id": "incorrect_metadata",
+                    "description": "The inferred delimiter, header setting, or expected field count is incorrect for this CSV."
+                }
+            }
+        },
         "is_delimiter_correct": {
             "type": "noul",
-            "instructions": "Is inferred_metadata.dialect.delimiter correct?",
+            "instructions": "Is inferred_metadata.dialect.delimiter correct? Consider raw_first_line, first_ten_lines, and last_ten_lines.",
             "criteria": {
                 "true": "The inferred delimiter correctly separates the CSV fields.",
                 "false": "A different delimiter would better separate the CSV fields."
@@ -328,10 +374,10 @@ fn questions_json(parsed_fields: &[String], delimiter: u8) -> Value {
         },
         "is_has_header_correct": {
             "type": "noul",
-            "instructions": "Is inferred_metadata.dialect.has_header correct?",
+            "instructions": "Is inferred_metadata.dialect.has_header correct? Base your answer on raw_first_line.",
             "criteria": {
-                "true": "The inferred header-row setting is correct.",
-                "false": "The inferred header-row setting is incorrect."
+                "true": "The inferred_metadata.dialect.has_header setting is correct.",
+                "false": "The inferred_metadata.dialect.has_header setting is incorrect."
             }
         },
         "is_num_fields_correct": {

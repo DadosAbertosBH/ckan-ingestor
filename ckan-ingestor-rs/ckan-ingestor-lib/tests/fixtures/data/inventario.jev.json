@@ -54,20 +54,38 @@
       },
       "type": "choice"
     },
+    "error_source": {
+      "criteria": {
+        "incorrect_metadata": {
+          "description": "The inferred delimiter, header setting, or expected field count is incorrect for this CSV.",
+          "id": "incorrect_metadata"
+        },
+        "malformed_line": {
+          "description": "The inferred metadata is correct, and an unquoted delimiter in problematic_line caused the field-count mismatch.",
+          "id": "malformed_line"
+        }
+      },
+      "instructions": {
+        "expected_column_count": "problematic_line.expected_fields",
+        "observed_column_count": "problematic_line.actual_fields",
+        "question": "Is the field-count mismatch caused by an unquoted delimiter in problematic_line or by incorrect inferred metadata?"
+      },
+      "type": "choice"
+    },
     "is_delimiter_correct": {
       "criteria": {
         "false": "A different delimiter would better separate the CSV fields.",
         "true": "The inferred delimiter correctly separates the CSV fields."
       },
-      "instructions": "Is inferred_metadata.dialect.delimiter correct?",
+      "instructions": "Is inferred_metadata.dialect.delimiter correct? Consider raw_first_line, first_ten_lines, and last_ten_lines.",
       "type": "noul"
     },
     "is_has_header_correct": {
       "criteria": {
-        "false": "The inferred header-row setting is incorrect.",
-        "true": "The inferred header-row setting is correct."
+        "false": "The inferred_metadata.dialect.has_header setting is incorrect.",
+        "true": "The inferred_metadata.dialect.has_header setting is correct."
       },
-      "instructions": "Is inferred_metadata.dialect.has_header correct?",
+      "instructions": "Is inferred_metadata.dialect.has_header correct? Base your answer on raw_first_line.",
       "type": "noul"
     },
     "is_num_fields_correct": {

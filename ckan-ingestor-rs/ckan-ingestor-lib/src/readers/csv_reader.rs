@@ -1,3 +1,4 @@
+use crate::jev_csv_sniffer::RepairAction::{FixInput, FixMetadata};
 use crate::parquet_output::ParquetOutput;
 // ckan-ingestor-rs
 //
@@ -19,7 +20,8 @@ use crate::ckan_resource::CkanResource;
 use crate::jev_csv_sniffer::JevCsvRepairer;
 use crate::readers::ckan_reader::{download_to_temp, CkanReader, ReadResult, SuccessResult};
 use crate::readers::temp_file_cleanup::TempFileCleanup;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use arrow::error::ArrowError;
 use arrow_csv::reader::{Format, ReaderBuilder};
 use csv_nose::{Metadata, Quote, SampleSize, Sniffer, Type};
 use encoding_rs::Encoding;
@@ -29,6 +31,7 @@ use regex::Regex;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read};
 use std::path::PathBuf;
+use std::ptr::metadata;
 use std::sync::LazyLock;
 
 static COLUMN_PARSE_ERROR: LazyLock<Regex> = LazyLock::new(|| {
@@ -36,13 +39,118 @@ static COLUMN_PARSE_ERROR: LazyLock<Regex> = LazyLock::new(|| {
         .expect("valid column parse error regex")
 });
 
-static CSV_FIELD_COUNT_ERROR: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"line\s+(\d+)").expect("valid CSV line-number regex"));
+static CSV_FIELD_COUNT_ERROR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"line\s+(\d+), expected\s+(\d+) got\s+(\d+)").expect("valid CSV line-number regex")
+});
 
 const CSV_BATCH_SIZE: usize = 32_768;
 const MAX_CSV_BATCH_CELLS: usize = 4 * 1024 * 1024;
 const MAX_JEV_CSV_REPAIRS: usize = 2000;
 pub const CSV_READER_INITIAL_SAMPLE_RECORDS: usize = 25_000;
+pub const CSV_READER_MAX_SAMPLE_RECORDS: usize = 800_000;
+
+pub struct ColumnCountMissmatchError {
+    pub line: usize,
+    pub expected: usize,
+    pub found: usize,
+    pub error: String,
+}
+
+pub struct ColumnTypeMissmatchError {
+    pub column_index: usize,
+    pub line: usize,
+    pub error: String,
+}
+
+pub enum CsvParserError {
+    ColumnCountMissmatch(ColumnCountMissmatchError),
+    ColumnTypeMissmatch(ColumnTypeMissmatchError),
+    ParserError(String),
+    UnknownError(anyhow::Error),
+}
+
+impl CsvParserError {
+    fn line(&self) -> Option<usize> {
+        match self {
+            CsvParserError::ColumnCountMissmatch(field_count_error) => Some(field_count_error.line),
+            CsvParserError::ColumnTypeMissmatch(column_parser_error) => {
+                Some(column_parser_error.line)
+            }
+            CsvParserError::UnknownError(_) => None,
+            CsvParserError::ParserError(_) => None,
+        }
+    }
+
+    pub fn unknown_error(error: anyhow::Error) -> Self {
+        Self::UnknownError(error)
+    }
+
+    pub fn error_message(&self) -> String {
+        match self {
+            CsvParserError::ColumnCountMissmatch(column_count_missmatch_error) => {
+                column_count_missmatch_error.error
+            }
+            CsvParserError::ColumnTypeMissmatch(column_type_missmatch_error) => {
+                column_type_missmatch_error.error
+            }
+            CsvParserError::ParserError(message) => message.to_string(),
+            CsvParserError::UnknownError(error) => error.to_string(),
+        }
+    }
+}
+
+impl From<anyhow::Error> for CsvParserError {
+    fn from(value: anyhow::Error) -> Self {
+        CsvParserError::UnknownError(value)
+    }
+}
+
+impl From<ArrowError> for CsvParserError {
+    // let column = error.chain().find_map(|source| {
+    //     let message = source.to_string();
+    //     let captures = COLUMN_PARSE_ERROR.captures(&message)?;
+    //     captures.get(1)?.as_str().parse::<usize>().ok()
+    // })?;
+    fn from(value: ArrowError) -> Self {
+        match value {
+            ArrowError::NotYetImplemented(_) => todo!(),
+            ArrowError::ExternalError(_error) => todo!(),
+            ArrowError::CastError(_) => todo!(),
+            ArrowError::MemoryError(_) => todo!(),
+            ArrowError::ParseError(_) => todo!(),
+            ArrowError::SchemaError(_) => todo!(),
+            ArrowError::ComputeError(_) => todo!(),
+            ArrowError::DivideByZero => todo!(),
+            ArrowError::ArithmeticOverflow(_) => todo!(),
+            ArrowError::CsvError(_) => todo!(),
+            ArrowError::JsonError(_) => todo!(),
+            ArrowError::AvroError(_) => todo!(),
+            ArrowError::IoError(_, error) => todo!(),
+            ArrowError::IpcError(_) => todo!(),
+            ArrowError::InvalidArgumentError(_) => todo!(),
+            ArrowError::ParquetError(_) => todo!(),
+            ArrowError::CDataInterface(_) => todo!(),
+            ArrowError::DictionaryKeyOverflowError => todo!(),
+            ArrowError::RunEndIndexOverflowError => todo!(),
+            ArrowError::OffsetOverflowError(_) => todo!(),
+        }
+    }
+}
+
+trait NextSize {
+    fn next(&self) -> SampleSize;
+}
+
+impl NextSize for SampleSize {
+    fn next(&self) -> SampleSize {
+        match self {
+            SampleSize::Records(records) if records < &CSV_READER_MAX_SAMPLE_RECORDS => {
+                SampleSize::Records(CSV_READER_INITIAL_SAMPLE_RECORDS * 2)
+            }
+            _ => SampleSize::All,
+        }
+    }
+}
 
 pub struct CsvReader {
     client: reqwest::blocking::Client,
@@ -99,215 +207,192 @@ impl CsvReader {
             cleanup.commit();
         }
 
-        for sample_size in csv_sample_sizes() {
-            let metadata = sniff_metadata(&csv_path, self.csv_delimiter.as_deref(), sample_size)?;
-            let encoding = metadata.encoding.name.to_string();
-            let csv_delimiter = char::from(metadata.dialect.delimiter).to_string();
-            let has_mixed_line_endings = has_mixed_line_endings(
-                &csv_path,
-                metadata.encoding.name,
-                metadata.dialect.header.num_preamble_rows,
-            )?;
+        let metadata = sniff_metadata(&csv_path, self.csv_delimiter.as_deref(), sample_size)?;
+        let encoding = metadata.encoding.name.to_string();
+        let csv_delimiter = char::from(metadata.dialect.delimiter).to_string();
+        let has_mixed_line_endings = has_mixed_line_endings(
+            &csv_path,
+            metadata.encoding.name,
+            metadata.dialect.header.num_preamble_rows,
+        )?;
 
-            match try_read_csv_with_promotions(&csv_path, metadata.clone(), true) {
-                Ok(parquet) => {
-                    return Ok(SuccessResult::from_csv(
-                        parquet,
-                        encoding,
-                        !has_mixed_line_endings,
-                        csv_delimiter,
-                        csv_sample_size_label(sample_size),
-                        self.reader_name().to_string(),
-                    ));
-                }
-                Err(error) => {
-                    if sample_size == SampleSize::All && csv_error_line(&error).is_some() {
-                        if let Some(result) = self.try_jev_repair(&csv_path, &metadata, &error)? {
-                            return Ok(result);
-                        }
-                    }
-                    if !is_retryable_csv_parse_error(&error) {
-                        return Err(error.into());
-                    }
+        self.try_read_csv(
+            &csv_path,
+            &metadata,
+            true,
+            SampleSize::Records(CSV_READER_INITIAL_SAMPLE_RECORDS),
+        )
+        .map_err(|error| anyhow!(error.error_message()))
+    }
 
-                    match try_read_csv_with_promotions(&csv_path, metadata.clone(), false) {
-                        Ok(parquet) => {
-                            return Ok(SuccessResult::from_csv(
-                                parquet,
-                                encoding,
-                                false,
-                                csv_delimiter,
-                                csv_sample_size_label(sample_size),
-                                self.reader_name().to_string(),
-                            ));
-                        }
-                        Err(error)
-                            if is_retryable_csv_parse_error(&error)
-                                && sample_size != SampleSize::All =>
-                        {
-                            log_csv_retry(sample_size, &error);
-                            continue;
-                        }
-                        Err(error) => {
-                            if sample_size == SampleSize::All {
-                                if let Some(result) =
-                                    self.try_jev_repair(&csv_path, &metadata, &error)?
-                                {
-                                    return Ok(result);
-                                }
-                            }
-                            return Err(error.into());
-                        }
+    fn try_read_csv(
+        &self,
+        path: &str,
+        metadata: &Metadata,
+        strict_mode: bool,
+        sample_size: SampleSize,
+    ) -> Result<SuccessResult, CsvParserError> {
+        let dialect = &metadata.dialect;
+        let format = Format::default()
+            .with_header(dialect.header.has_header_row)
+            .with_delimiter(dialect.delimiter)
+            .with_truncated_rows(!strict_mode)
+            .with_null_regex(Regex::new(r"^(|\s*|\s*-\s*)$")?);
+
+        let format = match dialect.quote {
+            Quote::None => format.with_quote(0),
+            Quote::Some(quote) => format.with_quote(quote),
+        };
+
+        let schema = schema_from_metadata(metadata);
+        let reader = decoded_reader(
+            path,
+            metadata.encoding.name,
+            dialect.header.num_preamble_rows,
+        )?;
+        let csv_reader = ReaderBuilder::new(std::sync::Arc::new(schema))
+            .with_format(format)
+            .with_batch_size(csv_batch_size(metadata.fields.len()))
+            .build(reader)?;
+
+        let mut parquet = None;
+        for batch_result in csv_reader {
+            let batch = match batch_result {
+                Err(arrow_error) => match CsvParserError::from(arrow_error) {
+                    // First just try to fix by promoting the column type to string
+                    CsvParserError::ColumnTypeMissmatch(column_parser_error) => {
+                        log::info!(
+                            "CSV parse failed for column {}; treating the column as text: {}",
+                            column_parser_error.column_index,
+                            column_parser_error.error
+                        );
+                        *metadata.types.get_mut(column_parser_error.column_index)? = Type::Text;
+                        return self.try_read_csv(path, &metadata, strict_mode, sample_size);
                     }
-                }
+                    // Then try to increase sample_size
+                    error @ (CsvParserError::ColumnCountMissmatch(_)
+                    | CsvParserError::ColumnTypeMissmatch(_)
+                    | CsvParserError::ParserError(_))
+                        if sample_size != SampleSize::All =>
+                    {
+                        let error_message = error.error_message();
+                        log::info!("CSV parse failed with sample size {}; retrying with a larger sample: {error_message}", csv_sample_size_label(sample_size));
+                        return self.try_read_csv(path, &metadata, false, sample_size.next());
+                    }
+                    // After exaust sample_size try to repair with Jev
+                    CsvParserError::ColumnCountMissmatch(field_count_error)
+                        if sample_size == SampleSize::All =>
+                    {
+                        return self.try_jev_repair(&csv_path, &metadata, field_count_error, 0)
+                    }
+                    CsvParserError::UnknownError(_) => return Err(error),
+                    parser_error => return Err(parser_error),
+                },
+                Ok(batch) => batch,
+            };
+            if parquet.is_none() {
+                parquet = Some(ParquetOutput::try_new(&batch)?);
             }
-        }
 
-        unreachable!("the final CSV sample-size attempt returns or fails")
+            parquet
+                .as_mut()
+                .expect("Parquet output initialized")
+                .write(&batch)?;
+        }
+        let mut parquet = parquet.ok_or_else(|| anyhow::anyhow!("No data"))?;
+        parquet.finish()?;
+
+        Ok(SuccessResult::from_csv(
+            parquet,
+            metadata.encoding.name.to_string(),
+            strict_mode,
+            metadata.dialect.delimiter.to_string(),
+            csv_sample_size_label(sample_size),
+            self.reader_name().to_string(),
+        ))
     }
 
     fn try_jev_repair(
         &self,
         csv_path: &str,
         metadata: &Metadata,
-        error: &anyhow::Error,
-    ) -> Result<Option<SuccessResult>> {
+        error: ColumnCountMissmatchError,
+        repair_number: usize,
+    ) -> Result<SuccessResult, CsvParserError> {
         let Some(repairer) = &self.jev_repairer else {
-            return Ok(None);
+            return Err(anyhow!("Jev is disable").into());
         };
-        let Some(mut line_number) = csv_error_line(error) else {
-            return Ok(None);
-        };
+        if (repair_number > MAX_JEV_CSV_REPAIRS) {
+            return Err(CsvParserError::UnknownError(anyhow::anyhow!(
+                "JEV CSV repair limit reached after {MAX_JEV_CSV_REPAIRS} repairs"
+            )));
+        }
         let mut current_path = PathBuf::from(csv_path);
-        let mut current_error = error.to_string();
         let mut cleanups = Vec::new();
-
-        for repair_number in 1..=MAX_JEV_CSV_REPAIRS {
-            log::info!("Attempting JEV CSV repair {repair_number} for line {line_number}");
-            let repaired_path = match repairer.repair_csv_with_metadata(
-                &current_path,
-                metadata,
-                line_number,
-                &current_error,
-            ) {
-                Ok(path) => path,
+        let line_number = error.line;
+        log::info!("Attempting JEV CSV repair {repair_number} for line {line_number}");
+        let repaired_action =
+            match repairer.repair_csv_with_metadata(&current_path, metadata, error) {
+                Ok(action) => match action {
+                    FixInput(path_buf) => todo!(),
+                    FixMetadata(metadata) => todo!(),
+                },
                 Err(repair_error) => {
                     log::info!("JEV CSV repair did not produce a usable file: {repair_error}");
-                    return Err(anyhow::anyhow!(current_error));
+                    return Err(CsvParserError::UnknownError(repair_error));
                 }
             };
-            cleanups.push(TempFileCleanup::from_path(repaired_path.clone()));
-            let repaired_path_str = repaired_path.to_string_lossy();
-            match try_read_csv_with_promotions(&repaired_path_str, metadata.clone(), true) {
-                Ok(parquet) => {
-                    log::info!(
-                        "JEV-repaired CSV parsed successfully after {repair_number} repair(s)"
-                    );
-                    return Ok(Some(SuccessResult::from_csv(
-                        parquet,
-                        metadata.encoding.name.to_string(),
-                        true,
-                        char::from(metadata.dialect.delimiter).to_string(),
-                        "jev-repaired".to_string(),
-                        self.reader_name().to_string(),
-                    )));
-                }
-                Err(parse_error) => {
-                    let Some(next_line_number) = csv_error_line(&parse_error) else {
-                        return Err(parse_error);
-                    };
-                    log::info!(
-                        "JEV-repaired CSV found next structural error at line {next_line_number}"
-                    );
-                    current_path = repaired_path;
-                    current_error = parse_error.to_string();
-                    line_number = next_line_number;
-                }
+        cleanups.push(TempFileCleanup::from_path(repaired_path.clone()));
+        let repaired_path_str = repaired_path.to_string_lossy();
+        match try_read_csv_with_promotions(&repaired_path_str, metadata.clone(), true) {
+            Ok(parquet) => {
+                log::info!("JEV-repaired CSV parsed successfully after {repair_number} repair(s)");
+                return Ok(Some(SuccessResult::from_csv(
+                    parquet,
+                    metadata.encoding.name.to_string(),
+                    true,
+                    char::from(metadata.dialect.delimiter).to_string(),
+                    "jev-repaired".to_string(),
+                    self.reader_name().to_string(),
+                )));
+            }
+            Err(parse_error) => {
+                let Some(next_line_number) = csv_error_line(&parse_error) else {
+                    return Err(parse_error);
+                };
+                log::info!(
+                    "JEV-repaired CSV found next structural error at line {next_line_number}"
+                );
+                current_path = repaired_path;
+                current_error = parse_error.to_string();
+                line_number = next_line_number;
             }
         }
-
-        Err(anyhow::anyhow!(
-            "JEV CSV repair limit reached after {MAX_JEV_CSV_REPAIRS} repairs"
-        ))
     }
 }
 
-fn csv_error_line(error: &anyhow::Error) -> Option<usize> {
+fn csv_error_line(error: &anyhow::Error) -> Option<ColumnCountMissmatchError> {
     std::iter::once(error.to_string())
         .chain(error.chain().map(ToString::to_string))
         .find_map(|message| {
-            CSV_FIELD_COUNT_ERROR
-                .captures(&message)?
-                .get(1)?
-                .as_str()
-                .parse()
-                .ok()
+            let captures = CSV_FIELD_COUNT_ERROR.captures(&message)?;
+            let line: Option<usize> = captures.get(1)?.as_str().parse().ok();
+            let expected: Option<usize> = captures.get(1)?.as_str().parse().ok();
+            let found: Option<usize> = captures.get(1)?.as_str().parse().ok();
+            match (line, expected, found) {
+                (Some(line), Some(expected), Some(found)) => Some(ColumnCountMissmatchError {
+                    line,
+                    expected,
+                    found,
+                }),
+                _ => None,
+            }
         })
-}
-
-fn try_read_csv(path: &str, metadata: &Metadata, strict_mode: bool) -> Result<ParquetOutput> {
-    let dialect = &metadata.dialect;
-    let format = Format::default()
-        .with_header(dialect.header.has_header_row)
-        .with_delimiter(dialect.delimiter)
-        .with_truncated_rows(!strict_mode)
-        .with_null_regex(Regex::new(r"^(|\s*|\s*-\s*)$")?);
-    let format = match dialect.quote {
-        Quote::None => format.with_quote(0),
-        Quote::Some(quote) => format.with_quote(quote),
-    };
-
-    let schema = schema_from_metadata(metadata);
-    let reader = decoded_reader(
-        path,
-        metadata.encoding.name,
-        dialect.header.num_preamble_rows,
-    )?;
-    let csv_reader = ReaderBuilder::new(std::sync::Arc::new(schema))
-        .with_format(format)
-        .with_batch_size(csv_batch_size(metadata.fields.len()))
-        .build(reader)?;
-
-    let mut parquet = None;
-    for batch_result in csv_reader {
-        let batch = batch_result?;
-        if parquet.is_none() {
-            parquet = Some(ParquetOutput::try_new(&batch)?);
-        }
-
-        parquet
-            .as_mut()
-            .expect("Parquet output initialized")
-            .write(&batch)?;
-    }
-    let mut parquet = parquet.ok_or_else(|| anyhow::anyhow!("No data"))?;
-    parquet.finish()?;
-    Ok(parquet)
 }
 
 fn csv_batch_size(number_of_columns: usize) -> usize {
     let rows_for_cell_limit = MAX_CSV_BATCH_CELLS / number_of_columns.max(1);
     CSV_BATCH_SIZE.min(rows_for_cell_limit.max(1))
-}
-
-fn try_read_csv_with_promotions(
-    path: &str,
-    mut metadata: Metadata,
-    strict_mode: bool,
-) -> Result<ParquetOutput> {
-    match try_read_csv(path, &metadata, strict_mode) {
-        Ok(parquet) => Ok(parquet),
-        Err(error) => {
-            let Some(column) = promote_column_to_text(&mut metadata, &error) else {
-                return Err(error);
-            };
-            log::info!(
-                "CSV parse failed for column {column}; treating the column as text: {error}"
-            );
-            drop(error);
-            try_read_csv_with_promotions(path, metadata, strict_mode)
-        }
-    }
 }
 
 fn schema_from_metadata(metadata: &Metadata) -> arrow::datatypes::Schema {
@@ -336,56 +421,12 @@ fn arrow_data_type(field_type: Type) -> arrow::datatypes::DataType {
     }
 }
 
-fn csv_sample_sizes() -> [SampleSize; 7] {
-    [
-        SampleSize::Records(CSV_READER_INITIAL_SAMPLE_RECORDS),
-        SampleSize::Records(50_000),
-        SampleSize::Records(100_000),
-        SampleSize::Records(200_000),
-        SampleSize::Records(400_000),
-        SampleSize::Records(800_000),
-        SampleSize::All,
-    ]
-}
-
 fn csv_sample_size_label(sample_size: SampleSize) -> String {
     match sample_size {
         SampleSize::Records(records) => records.to_string(),
         SampleSize::All => "all".to_string(),
         SampleSize::Bytes(bytes) => format!("bytes:{bytes}"),
     }
-}
-
-fn log_csv_retry(sample_size: SampleSize, error: &anyhow::Error) -> String {
-    let message = csv_retry_log_message(sample_size, error);
-    log::info!("{message}");
-    message
-}
-
-fn csv_retry_log_message(sample_size: SampleSize, error: &anyhow::Error) -> String {
-    format!(
-        "CSV parse failed with sample size {}; retrying with a larger sample: {error}",
-        csv_sample_size_label(sample_size)
-    )
-}
-
-fn promote_column_to_text(metadata: &mut Metadata, error: &anyhow::Error) -> Option<usize> {
-    let column = error.chain().find_map(|source| {
-        let message = source.to_string();
-        let captures = COLUMN_PARSE_ERROR.captures(&message)?;
-        captures.get(1)?.as_str().parse::<usize>().ok()
-    })?;
-    *metadata.types.get_mut(column)? = Type::Text;
-    Some(column)
-}
-
-fn is_retryable_csv_parse_error(error: &anyhow::Error) -> bool {
-    error.chain().any(|source| {
-        matches!(
-            source.downcast_ref::<arrow::error::ArrowError>(),
-            Some(arrow::error::ArrowError::ParseError(_) | arrow::error::ArrowError::CsvError(_))
-        )
-    })
 }
 
 fn sniff_metadata(
@@ -843,6 +884,532 @@ mod tests {
         let result = reader.do_read(&resource)?;
         assert_eq!(result.rows_processed, 31, "should read all 31 data records");
 
+        Ok(())
+    }
+
+    fn test_client() -> reqwest::blocking::Client {
+        reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(600))
+            .user_agent(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0",
+            )
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn processes_funcionalismo_csv_without_excessive_batch_memory() -> Result<()> {
+        let reader = CsvReader::new(test_client());
+        let resource = CkanResource {
+            id: "8f8f1a40-63dd-4900-aabe-f95195a87092".to_string(),
+            package_id: String::new(),
+            url: fixture_path("funcionalismo-publico-adm-indireta-05-2026.csv")
+                .to_str()
+                .unwrap()
+                .to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = reader.read(&resource)?;
+
+        assert!(result.number_of_columns > 40_000);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_latin_encoded_csv() -> Result<()> {
+        let reader = CsvReader::new(test_client());
+
+        let resource = CkanResource {
+            id: "00000000-0000-0000-0000-ffff00000000".to_string(),
+            package_id: String::new(),
+            url: fixture_path("csv_with_latin_encode.csv")
+                .to_str()
+                .unwrap()
+                .to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        // Python equivalent: test_parse_latin_encoded_csv_file
+        // Just verifies it doesn't error. DuckDB with encoding='latin-1'
+        // may fall through to PyArrow fallback for semicolon-delimited files.
+        let result = reader.read(&resource)?;
+        assert!(result.rows_processed > 0, "Should parse at least 1 row");
+        assert!(result.encoding.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn parse_non_latin_and_non_utf8() -> Result<()> {
+        let reader = CsvReader::new(test_client());
+
+        let resource = CkanResource {
+            id: "00000000-0000-0000-0000-ffff00000000".to_string(),
+            package_id: String::new(),
+            url: fixture_path("non_latin1_and_non_utf8.csv")
+                .to_str()
+                .unwrap()
+                .to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = reader.read(&resource)?;
+        assert_eq!(result.rows_processed, 2);
+        // This file uses latin-1 encoding that only works after the PyArrow fallback
+        // with semicolon delimiter
+        assert!(result.encoding.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn returns_http_error_for_failed_remote_csv_download() -> Result<()> {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/failed.csv");
+            then.status(500)
+                .header("Content-Type", "text/html")
+                .body("<html><title>Erro [500]</title></html>");
+        });
+
+        let reader = CsvReader::new(test_client());
+        let resource = CkanResource {
+            id: "failed-remote-csv".to_string(),
+            package_id: String::new(),
+            url: format!("{}/failed.csv", server.url("")),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let error = match reader.read(&resource) {
+            Ok(_) => anyhow::bail!("a failed remote CSV response should return an HTTP error"),
+            Err(error) => error,
+        };
+        let message = error.to_string();
+        assert!(message.contains("500"), "unexpected error: {message}");
+        assert!(
+            message.contains("Content-Type: text/html"),
+            "unexpected error: {message}"
+        );
+        assert!(
+            message.contains("Content-Encoding: <missing or invalid>"),
+            "unexpected error: {message}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parses_dm_subitem_rec_utf8_csv_fixture() -> Result<()> {
+        let reader = CsvReader::new(test_client());
+
+        let resource = CkanResource {
+            id: "00000000-0000-0000-0000-ffff00000000".to_string(),
+            package_id: String::new(),
+            url: fixture_path("dm_subitem_rec.csv")
+                .to_str()
+                .unwrap()
+                .to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = reader.read(&resource)?;
+
+        assert_eq!(result.rows_processed, 7_134);
+        assert_eq!(result.number_of_columns, 3);
+        assert_eq!(result.encoding.as_deref(), Some("UTF-8"));
+        Ok(())
+    }
+
+    #[test]
+    fn parses_csv_with_mixed_line_endings_in_quoted_header() -> Result<()> {
+        let reader = CsvReader::new(test_client());
+
+        struct TemporaryCsv(PathBuf);
+
+        impl Drop for TemporaryCsv {
+            fn drop(&mut self) {
+                let _ = fs::remove_file(&self.0);
+            }
+        }
+
+        let csv_path = std::env::temp_dir().join(format!(
+            "voos-multiline-header-{}.csv",
+            uuid::Uuid::new_v4()
+        ));
+        let temporary_csv = TemporaryCsv(csv_path);
+
+        let mut csv = Vec::new();
+        csv.extend_from_slice(
+            b"Reg Voo;ANO;DATA;SOLICITANTE;PASSAGEIROS;AERONAVE;MATR;ORIGEM;DESTINO 1;\"DESTINO 2\n(quando houve)\"\r\n",
+        );
+        for id in 1..=2 {
+            csv.extend_from_slice(
+                format!(
+                    "{id};2011;01/01/2011;Governador;Passageiro;Aeronave;PT-ABC;Origem;Destino;\r\n"
+                )
+                .as_bytes(),
+            );
+        }
+        fs::write(&temporary_csv.0, csv)?;
+
+        let resource = CkanResource {
+            id: "fa4f8391-33d1-46ed-9e9e-22ca2ae51103".to_string(),
+            package_id: String::new(),
+            url: temporary_csv.0.to_str().unwrap().to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = reader.read(&resource)?;
+
+        assert_eq!(result.rows_processed, 2);
+        assert_eq!(result.number_of_columns, 10);
+        assert_eq!(result.csv_strict_mode, Some(false));
+        Ok(())
+    }
+
+    #[test]
+    fn csv_with_bom() -> Result<()> {
+        let reader = CsvReader::new(test_client());
+
+        let resource = CkanResource {
+            id: "00000000-0000-0000-0000-ffff00000000".to_string(),
+            package_id: String::new(),
+            url: fixture_path("csv_with_bom.csv")
+                .to_str()
+                .unwrap()
+                .to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+        let result = reader.read(&resource)?;
+        assert_eq!(result.rows_processed, 804);
+        assert_eq!(result.encoding.as_deref(), Some("UTF-8"));
+        assert_eq!(result.csv_strict_mode, Some(true));
+        assert_eq!(result.csv_delimiter.as_deref(), Some(","));
+        let expected_sample_size = CSV_READER_INITIAL_SAMPLE_RECORDS.to_string();
+        assert_eq!(
+            result.csv_samples.as_deref(),
+            Some(expected_sample_size.as_str())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn reads_csv_data_with_rows() -> Result<()> {
+        let reader = CsvReader::new(test_client());
+
+        let resource = CkanResource {
+            id: "00000000-0000-0000-0000-ffff00000000".to_string(),
+            package_id: String::new(),
+            url: fixture_path("csv_with_bom.csv")
+                .to_str()
+                .unwrap()
+                .to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = reader.read(&resource)?;
+        assert_eq!(result.rows_processed, 804);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parses_numeric_columns_with_whitespace_padded_dash_as_null() -> Result<()> {
+        let reader = CsvReader::new(test_client());
+
+        let resource = CkanResource {
+            id: "cb05125e-e879-420f-9bf6-0fcbc75bbc8e".to_string(),
+            package_id: String::new(),
+            url: fixture_path("despesa_pessoal_mensal(1).csv")
+                .to_str()
+                .unwrap()
+                .to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = reader.read(&resource)?;
+
+        assert_eq!(result.rows_processed, 52);
+        assert_eq!(result.number_of_columns, 19);
+        let batches: Vec<_> =
+            ParquetRecordBatchReaderBuilder::try_new(std::fs::File::open(result.parquet.path())?)?
+                .build()?
+                .collect::<std::result::Result<_, _>>()?;
+        assert_eq!(
+            batches[0].schema().field(16).data_type(),
+            &arrow::datatypes::DataType::Float64
+        );
+        let null_count: usize = batches
+            .iter()
+            .map(|batch| batch.column(16).null_count())
+            .sum();
+        assert_eq!(null_count, 36);
+        Ok(())
+    }
+
+    #[test]
+    fn parses_whitespace_only_numeric_cells_as_null() -> Result<()> {
+        let mut csv = tempfile::NamedTempFile::new()?;
+        csv.write_all(b"id,value\n")?;
+        for id in 1..=CSV_READER_INITIAL_SAMPLE_RECORDS + 1 {
+            writeln!(csv, "{id},42")?;
+        }
+        writeln!(csv, "{}, ", CSV_READER_INITIAL_SAMPLE_RECORDS + 2)?;
+        let resource = CkanResource {
+            id: "whitespace-null".to_string(),
+            package_id: String::new(),
+            url: csv.path().to_string_lossy().to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = CsvReader::new(test_client()).read(&resource)?;
+        let batches: Vec<_> =
+            ParquetRecordBatchReaderBuilder::try_new(std::fs::File::open(result.parquet.path())?)?
+                .build()?
+                .collect::<std::result::Result<_, _>>()?;
+
+        assert_eq!(
+            batches[0].schema().field(1).data_type(),
+            &arrow::datatypes::DataType::Int64
+        );
+        let null_count: usize = batches
+            .iter()
+            .map(|batch| batch.column(1).null_count())
+            .sum();
+        assert_eq!(null_count, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn represents_an_entirely_empty_csv_column_as_nullable_text() -> Result<()> {
+        let mut csv = tempfile::NamedTempFile::new()?;
+        csv.write_all(b"id,always_empty\n1,\n2,\n")?;
+
+        let reader = CsvReader::new(test_client());
+        let resource = CkanResource {
+            id: "all-null-column".to_string(),
+            package_id: String::new(),
+            url: csv.path().to_str().unwrap().to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = reader.read(&resource)?;
+        let batches: Vec<_> =
+            ParquetRecordBatchReaderBuilder::try_new(std::fs::File::open(result.parquet.path())?)?
+                .build()?
+                .collect::<std::result::Result<_, _>>()?;
+
+        assert_eq!(
+            batches[0].schema().field(1).data_type(),
+            &arrow::datatypes::DataType::Utf8
+        );
+        assert_eq!(batches[0].column(1).null_count(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_remote_gzip_csv() -> Result<()> {
+        let server = MockServer::start();
+        let mut compressed = Vec::new();
+        let mut encoder = GzEncoder::new(&mut compressed, Compression::default());
+        encoder.write_all(b"name,value\nAna,1\nBia,2\n")?;
+        encoder.finish()?;
+        server.mock(|when, then| {
+            when.method(GET).path("/ft_diarias_2014.csv.gz");
+            then.status(200).body(compressed.clone());
+        });
+
+        let reader = CsvReader::new(test_client());
+        let resource = CkanResource {
+            id: "cfba57bb-358b-4b43-96e6-477920e39f19".to_string(),
+            package_id: String::new(),
+            url: format!("{}/ft_diarias_2014.csv.gz", server.url("")),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = reader.read(&resource)?;
+        assert_eq!(result.rows_processed, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn fails_to_parse_quoted_semicolon_after_long_csv_sample() -> Result<()> {
+        let server = MockServer::start();
+        let mut csv =
+            String::from("id_favorecido;tp_documento;nr_documento_anonimizado;nome_anonimizado\n");
+
+        for id in 1..50_001 {
+            csv.push_str(&format!("{id};1;0;NOME\n"));
+        }
+        csv.push_str(
+            "1254412;2;912488000123;\"COOPERATIVA DE CREDITO DE LIVRE ADMISSAO DO ALTO E MED. S; F\"\n",
+        );
+
+        let mock = server.mock(|when, then| {
+            when.method(GET).path("/dm_favorecido.csv");
+            then.status(200).body(csv);
+        });
+
+        let reader = CsvReader::with_delimiter(test_client(), Some(";".to_string()));
+        let resource = CkanResource {
+            id: "0331ad41-85e6-41da-bbf2-19c0505beef5".to_string(),
+            package_id: String::new(),
+            url: format!("{}/dm_favorecido.csv", server.url("")),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = reader.read(&resource);
+        mock.assert();
+        let result = result?;
+
+        assert_eq!(result.rows_processed, 50_001);
+        assert_eq!(result.encoding.as_deref(), Some("UTF-8"));
+        Ok(())
+    }
+
+    #[test]
+    fn uses_csv_nose_metadata_types_beyond_arrows_inference_window() -> Result<()> {
+        let tempdir = tempdir()?;
+        let path = tempdir.path().join("metadata-types.csv");
+        let mut csv = String::from("value\n");
+        for value in 0..50_000 {
+            csv.push_str(&format!("{value}\n"));
+        }
+        csv.push_str("not-a-number\n");
+        fs::write(&path, csv)?;
+        let resource = CkanResource {
+            id: "metadata-types".to_string(),
+            package_id: String::new(),
+            url: path.to_string_lossy().to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = CsvReader::new(test_client()).read(&resource)?;
+
+        assert_eq!(result.rows_processed, 50_001);
+        assert_eq!(
+            result.parquet.schema.field_with_name("value")?.data_type(),
+            &arrow::datatypes::DataType::Utf8
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn promotes_integer_column_with_na_to_text_without_resniffing() -> Result<()> {
+        // Arrange
+        let mut csv = tempfile::NamedTempFile::new()?;
+        csv.write_all(b"value\n")?;
+        for value in 0..=CSV_READER_INITIAL_SAMPLE_RECORDS {
+            writeln!(csv, "{value}")?;
+        }
+        csv.write_all(b"NA\n")?;
+        let resource = CkanResource {
+            id: "integer-na".to_string(),
+            package_id: String::new(),
+            url: csv.path().to_string_lossy().to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        // Act
+        let result = CsvReader::new(test_client()).read(&resource)?;
+
+        // Assert
+        assert_eq!(result.rows_processed, CSV_READER_INITIAL_SAMPLE_RECORDS + 2);
+        let expected_sample_size = CSV_READER_INITIAL_SAMPLE_RECORDS.to_string();
+        assert_eq!(
+            result.csv_samples.as_deref(),
+            Some(expected_sample_size.as_str())
+        );
+        assert_eq!(
+            result.parquet.schema.field_with_name("value")?.data_type(),
+            &arrow::datatypes::DataType::Utf8
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn promotes_boolean_column_with_f_to_text_without_resniffing() -> Result<()> {
+        // Arrange
+        let mut csv = tempfile::NamedTempFile::new()?;
+        csv.write_all(b"value\n")?;
+        for _ in 0..=CSV_READER_INITIAL_SAMPLE_RECORDS {
+            csv.write_all(b"true\n")?;
+        }
+        csv.write_all(b"F\n")?;
+        let resource = CkanResource {
+            id: "boolean-f".to_string(),
+            package_id: String::new(),
+            url: csv.path().to_string_lossy().to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        // Act
+        let result = CsvReader::new(test_client()).read(&resource)?;
+
+        // Assert
+        assert_eq!(result.rows_processed, CSV_READER_INITIAL_SAMPLE_RECORDS + 2);
+        let expected_sample_size = CSV_READER_INITIAL_SAMPLE_RECORDS.to_string();
+        assert_eq!(
+            result.csv_samples.as_deref(),
+            Some(expected_sample_size.as_str())
+        );
+        assert_eq!(
+            result.parquet.schema.field_with_name("value")?.data_type(),
+            &arrow::datatypes::DataType::Utf8
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn represents_unsigned_csv_values_as_signed_integers() -> Result<()> {
+        let mut csv = tempfile::NamedTempFile::new()?;
+        csv.write_all(b"count\n0\n42\n")?;
+
+        let resource = CkanResource {
+            id: "unsigned-integers".to_string(),
+            package_id: String::new(),
+            url: csv.path().to_string_lossy().to_string(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = CsvReader::new(test_client()).read(&resource)?;
+
+        assert_eq!(
+            result.parquet.schema.field_with_name("count")?.data_type(),
+            &arrow::datatypes::DataType::Int64
+        );
         Ok(())
     }
 }

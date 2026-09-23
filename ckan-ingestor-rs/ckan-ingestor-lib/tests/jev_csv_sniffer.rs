@@ -26,15 +26,13 @@ use common::fixture_path;
 use httpmock::{Method::POST, MockServer};
 use reqwest::blocking::Client;
 use std::fs;
+use std::ptr::metadata;
 use tempfile::tempdir;
 
 #[test]
 fn builds_a_complete_jev_request_for_an_extra_csv_field() -> Result<()> {
-    let request = build_jev_csv_sniffer_request(
-        &fixture_path("inventario.csv"),
-        7,
-        "Csv error: incorrect number of fields for line 7, expected 6 got 7",
-    )?;
+    let metadata = sniff_metadata(&fixture_path("inventario.csv"))?;
+    build_jev_csv_sniffer_request_with_metadata(metadata);
     assert!(request["questions"].get("affected_column").is_none());
     assert_eq!(request["questions"]["fields_to_merge"]["type"], "choice");
     assert!(request["questions"]["fields_to_merge"]["criteria"].is_object());
@@ -85,6 +83,7 @@ fn builds_a_complete_jev_request_for_an_extra_csv_field() -> Result<()> {
     }
     for key in [
         "fields_to_merge",
+        "error_source",
         "is_delimiter_correct",
         "is_has_header_correct",
         "is_num_fields_correct",
@@ -129,8 +128,10 @@ fn repairs_the_problematic_record_from_a_jev_choice() -> Result<()> {
         "test-key".to_string(),
     );
 
-    let repaired = repairer.repair_csv(
+    let metadata = sniff_metadata(&fixture_path("inventario.csv"))?;
+    let repaired = repairer.repair_csv_with_metadata(
         &fixture_path("inventario.csv"),
+        &metadata,
         7,
         "Csv error: incorrect number of fields for line 7, expected 6 got 7",
     )?;
@@ -286,6 +287,285 @@ fn csv_reader_applies_five_inventario_jev_responses_before_reaching_line_92() ->
             .body_contains("\"actual_fields\":7");
         then.status(200).json_body(fifth_response);
     });
+    let sixth_response = serde_json::json!({
+        "model": "jev-1.13.0",
+        "answers": {
+            "fields_to_merge": {
+                "type": "choice",
+                "choice": "merge_2_3",
+                "confidence": 0.38,
+                "probabilities": {
+                    "merge_7_8": 0.13,
+                    "merge_5_6": 0.01,
+                    "merge_1_2": 0.1,
+                    "merge_4_5": 0.01,
+                    "merge_11_12": 0.06,
+                    "merge_6_7": 0.02,
+                    "merge_10_11": 0.03,
+                    "merge_8_9": 0.15,
+                    "merge_3_4": 0.04,
+                    "merge_2_3": 0.44,
+                    "merge_9_10": 0.01
+                },
+                "stats": {}
+            },
+            "is_delimiter_correct": {"type": "noul", "noul": 0.76, "stats": {}},
+            "is_has_header_correct": {"type": "noul", "noul": 0.93, "stats": {}},
+            "is_num_fields_correct": {"type": "noul", "noul": 0.83, "stats": {}}
+        },
+        "usage": {"input_tokens": 5340, "output_tokens": 208},
+        "request_id": "playground_183fa4a859869d54a1bbded6a291db0a27d",
+        "evaluation_time_ms": 130.6539039942436
+    });
+    let sixth_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/v1/systemone")
+            .body_contains("\"line_number\":92")
+            .body_contains("\"actual_fields\":12")
+            .matches(|request| {
+                let body = request.body.as_deref().expect("JEV request body");
+                let payload: serde_json::Value =
+                    serde_json::from_slice(body).expect("valid JEV request JSON");
+                println!(
+                    "Sixth JEV request:\n{}",
+                    serde_json::to_string_pretty(&payload).expect("serializable JEV request")
+                );
+                true
+            });
+        then.status(200).json_body(sixth_response);
+    });
+    let seventh_response = serde_json::json!({
+        "model": "jev-1.13.0",
+        "answers": {
+            "fields_to_merge": {
+                "type": "choice",
+                "choice": "merge_2_3",
+                "confidence": 0.8,
+                "probabilities": {
+                    "merge_4_5": 0.01,
+                    "merge_7_8": 0.04,
+                    "merge_6_7": 0.06,
+                    "merge_3_4": 0.02,
+                    "merge_8_9": 0,
+                    "merge_10_11": 0.01,
+                    "merge_5_6": 0,
+                    "merge_2_3": 0.83,
+                    "merge_9_10": 0,
+                    "merge_1_2": 0.03
+                },
+                "stats": {}
+            },
+            "is_delimiter_correct": {"type": "noul", "noul": 0.72, "stats": {}},
+            "is_has_header_correct": {"type": "noul", "noul": 0.97, "stats": {}},
+            "is_num_fields_correct": {"type": "noul", "noul": 0.86, "stats": {}}
+        },
+        "usage": {"input_tokens": 5283, "output_tokens": 195},
+        "request_id": "playground_1837cfbf2f3964f44998eff7edc66bb7d56",
+        "evaluation_time_ms": 106.13544999796432
+    });
+    let seventh_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/v1/systemone")
+            .body_contains("\"line_number\":92")
+            .body_contains("\"actual_fields\":11")
+            .matches(|request| {
+                let body = request.body.as_deref().expect("JEV request body");
+                let payload: serde_json::Value =
+                    serde_json::from_slice(body).expect("valid JEV request JSON");
+                println!(
+                    "Seventh JEV request:\n{}",
+                    serde_json::to_string_pretty(&payload).expect("serializable JEV request")
+                );
+                true
+            });
+        then.status(200).json_body(seventh_response);
+    });
+    let eighth_response = serde_json::json!({
+        "model": "jev-1.13.0",
+        "answers": {
+            "fields_to_merge": {
+                "type": "choice",
+                "choice": "merge_2_3",
+                "confidence": 0.33,
+                "probabilities": {
+                    "merge_2_3": 0.41,
+                    "merge_4_5": 0.01,
+                    "merge_5_6": 0.25,
+                    "merge_3_4": 0.17,
+                    "merge_7_8": 0,
+                    "merge_6_7": 0.12,
+                    "merge_1_2": 0.03,
+                    "merge_8_9": 0,
+                    "merge_9_10": 0.01
+                },
+                "stats": {}
+            },
+            "is_delimiter_correct": {"type": "noul", "noul": 0.71, "stats": {}},
+            "is_has_header_correct": {"type": "noul", "noul": 0.97, "stats": {}},
+            "is_num_fields_correct": {"type": "noul", "noul": 0.83, "stats": {}}
+        },
+        "usage": {"input_tokens": 5191, "output_tokens": 182},
+        "request_id": "playground_183cf0745182dae4088a3cc5d01a46df398",
+        "evaluation_time_ms": 132.8395989985438
+    });
+    let eighth_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/v1/systemone")
+            .body_contains("\"line_number\":92")
+            .body_contains("\"actual_fields\":10")
+            .matches(|request| {
+                let body = request.body.as_deref().expect("JEV request body");
+                let payload: serde_json::Value =
+                    serde_json::from_slice(body).expect("valid JEV request JSON");
+                println!(
+                    "Eighth JEV request:\n{}",
+                    serde_json::to_string_pretty(&payload).expect("serializable JEV request")
+                );
+                true
+            });
+        then.status(200).json_body(eighth_response);
+    });
+    let ninth_response = serde_json::json!({
+        "model": "jev-1.13.0",
+        "answers": {
+            "fields_to_merge": {
+                "type": "choice",
+                "choice": "merge_2_3",
+                "confidence": 0.22,
+                "probabilities": {
+                    "merge_7_8": 0,
+                    "merge_6_7": 0.01,
+                    "merge_3_4": 0.21,
+                    "merge_8_9": 0.01,
+                    "merge_1_2": 0.03,
+                    "merge_2_3": 0.32,
+                    "merge_5_6": 0.13,
+                    "merge_4_5": 0.29
+                },
+                "stats": {}
+            },
+            "is_delimiter_correct": {"type": "noul", "noul": 0.68, "stats": {}},
+            "is_has_header_correct": {"type": "noul", "noul": 0.97, "stats": {}},
+            "is_num_fields_correct": {"type": "noul", "noul": 0.84, "stats": {}}
+        },
+        "usage": {"input_tokens": 5102, "output_tokens": 170},
+        "request_id": "playground_183dc033277e80e4f288ff57527e056f473",
+        "evaluation_time_ms": 122.48423999699298
+    });
+    let ninth_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/v1/systemone")
+            .body_contains("\"line_number\":92")
+            .body_contains("\"actual_fields\":9")
+            .matches(|request| {
+                let body = request.body.as_deref().expect("JEV request body");
+                let payload: serde_json::Value =
+                    serde_json::from_slice(body).expect("valid JEV request JSON");
+                println!(
+                    "Ninth JEV request:\n{}",
+                    serde_json::to_string_pretty(&payload).expect("serializable JEV request")
+                );
+                true
+            });
+        then.status(200).json_body(ninth_response);
+    });
+    let tenth_response = serde_json::json!({
+        "model": "jev-1.13.0",
+        "answers": {
+            "fields_to_merge": {
+                "type": "choice",
+                "choice": "merge_3_4",
+                "confidence": 0.87,
+                "probabilities": {
+                    "merge_3_4": 0.9,
+                    "merge_4_5": 0,
+                    "merge_5_6": 0,
+                    "merge_2_3": 0.08,
+                    "merge_1_2": 0.02,
+                    "merge_7_8": 0,
+                    "merge_6_7": 0
+                },
+                "stats": {}
+            },
+            "is_delimiter_correct": {"type": "noul", "noul": 0.72, "stats": {}},
+            "is_has_header_correct": {"type": "noul", "noul": 0.97, "stats": {}},
+            "is_num_fields_correct": {"type": "noul", "noul": 0.84, "stats": {}}
+        },
+        "usage": {"input_tokens": 5017, "output_tokens": 159},
+        "request_id": "playground_183054dd7bd231b469cbc0b17052c64438d",
+        "evaluation_time_ms": 169.12725499423686
+    });
+    let tenth_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/v1/systemone")
+            .body_contains("\"line_number\":92")
+            .body_contains("\"actual_fields\":8")
+            .matches(|request| {
+                let body = request.body.as_deref().expect("JEV request body");
+                let payload: serde_json::Value =
+                    serde_json::from_slice(body).expect("valid JEV request JSON");
+                println!(
+                    "Tenth JEV request:\n{}",
+                    serde_json::to_string_pretty(&payload).expect("serializable JEV request")
+                );
+                true
+            });
+        then.status(200).json_body(tenth_response);
+    });
+    let eleventh_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/v1/systemone")
+            .body_contains("\"line_number\":92")
+            .body_contains("\"actual_fields\":7")
+            .matches(|request| {
+                let body = request.body.as_deref().expect("JEV request body");
+                let payload: serde_json::Value =
+                    serde_json::from_slice(body).expect("valid JEV request JSON");
+                println!(
+                    "Eleventh JEV request:\n{}",
+                    serde_json::to_string_pretty(&payload).expect("serializable JEV request")
+                );
+                true
+            });
+        then.status(200).json_body(serde_json::json!({
+            "model": "jev-1.13.0",
+            "answers": {
+                "fields_to_merge": {
+                    "type": "choice",
+                    "choice": "merge_2_3",
+                    "confidence": 0.88,
+                    "probabilities": {
+                        "merge_4_5": 0,
+                        "merge_2_3": 0.91,
+                        "merge_6_7": 0.08,
+                        "merge_3_4": 0,
+                        "merge_5_6": 0.01,
+                        "merge_1_2": 0
+                    },
+                    "stats": {}
+                },
+                "is_delimiter_correct": {"type": "noul", "noul": 0.77, "stats": {}},
+                "is_has_header_correct": {"type": "noul", "noul": 0.97, "stats": {}},
+                "is_num_fields_correct": {"type": "noul", "noul": 0.84, "stats": {}}
+            },
+            "usage": {"input_tokens": 4933, "output_tokens": 148},
+            "request_id": "playground_183c3b76b07b71747deb04780a510e80e8a",
+            "evaluation_time_ms": 187.68362600530963
+        }));
+    });
+    let twelfth_mock = server.mock(|when, then| {
+        when.method(POST).path("/v1/systemone").matches(|request| {
+            let body = request.body.as_deref().expect("JEV request body");
+            let payload: serde_json::Value =
+                serde_json::from_slice(body).expect("valid JEV request JSON");
+            println!(
+                "Twelfth JEV request:\n{}",
+                serde_json::to_string_pretty(&payload).expect("serializable JEV request")
+            );
+            true
+        });
+        then.status(500);
+    });
     let repairer = JevCsvRepairer::new(
         Client::new(),
         format!("{}/v1/systemone", server.base_url()),
@@ -313,7 +593,14 @@ fn csv_reader_applies_five_inventario_jev_responses_before_reaching_line_92() ->
     third_mock.assert();
     fourth_mock.assert();
     fifth_mock.assert();
-    assert!(error.to_string().contains("line 92, expected 6 got 12"));
+    sixth_mock.assert();
+    seventh_mock.assert();
+    eighth_mock.assert();
+    ninth_mock.assert();
+    tenth_mock.assert();
+    eleventh_mock.assert();
+    twelfth_mock.assert();
+    assert!(error.to_string().contains("line 138, expected 6 got 9"));
     Ok(())
 }
 
@@ -427,5 +714,26 @@ fn csv_reader_repairs_the_first_inventario_error_before_reporting_the_next_one()
 
     mock.assert();
     assert!(error.to_string().contains("line 60, expected 6 got 8"));
+    Ok(())
+}
+
+#[test]
+fn logs_jev_request_for_relatorio_nominal_metadata_inference_error() -> Result<()> {
+    let metadata = sniff_metadata(&fixture_path(
+        "relatorio_nominal_servidores_adm_direta_10-2025.csv",
+    ))?;
+    build_jev_csv_sniffer_request_with_metadata(metadata);
+
+    println!(
+        "Relatorio nominal JEV request:\n{}",
+        serde_json::to_string_pretty(&request)?
+    );
+
+    assert_eq!(request["state"]["problematic_line"]["line_number"], 225);
+    assert_eq!(request["state"]["problematic_line"]["expected_fields"], 9);
+    assert_eq!(
+        request["state"]["problematic_line"]["error"],
+        "Csv error: incorrect number of fields for line 225, expected 9 got 10"
+    );
     Ok(())
 }
