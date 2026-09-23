@@ -15,9 +15,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
-use crate::jev_csv_sniffer::CsvNoulQuestion::{
-    IsDelimiterCorrect, IsHasHeaderCorrect, IsNumFieldsCorrect,
-};
+use crate::jev_csv_sniffer::CsvNoulQuestion::{Delimiter, Fields, Header};
 use anyhow::{anyhow, Context, Result};
 use csv_nose::{Metadata, Quote};
 use encoding_rs::Encoding;
@@ -91,7 +89,7 @@ impl JevCsvRepairer {
             .and_then(|answer| answer.choice.as_deref())
             .context("JEV response has no fields_to_merge choice")?;
 
-        return match ensure_metadata_answers_are_true(&response) {
+        match ensure_metadata_answers_are_true(&response) {
             Ok(_) => {
                 let (left, right) = merge_choice(choice)?;
                 log::info!("JEV approved CSV repair for line {line_number}: choice={choice}");
@@ -101,7 +99,7 @@ impl JevCsvRepairer {
             }
             Err(error) => {
                 let is_has_header_correct =
-                    response.get_noul_answer_as_bool(&CsvNoulQuestion::IsHasHeaderCorrect)?;
+                    response.get_noul_answer_as_bool(&CsvNoulQuestion::Header)?;
                 if !(is_has_header_correct) {
                     let mut new_metadata = metadata.clone();
                     new_metadata.dialect.header.has_header_row = true;
@@ -110,7 +108,7 @@ impl JevCsvRepairer {
                     Err(error)
                 }
             }
-        };
+        }
     }
 }
 
@@ -136,17 +134,17 @@ impl JevResponse {
 }
 
 enum CsvNoulQuestion {
-    IsDelimiterCorrect,
-    IsHasHeaderCorrect,
-    IsNumFieldsCorrect,
+    Delimiter,
+    Header,
+    Fields,
 }
 
 impl CsvNoulQuestion {
     fn as_str(&self) -> &'static str {
         match self {
-            CsvNoulQuestion::IsDelimiterCorrect => "is_delimiter_correct",
-            CsvNoulQuestion::IsHasHeaderCorrect => "is_has_header_correct",
-            CsvNoulQuestion::IsNumFieldsCorrect => "is_num_fields_correct",
+            CsvNoulQuestion::Delimiter => "is_delimiter_correct",
+            CsvNoulQuestion::Header => "is_has_header_correct",
+            CsvNoulQuestion::Fields => "is_num_fields_correct",
         }
     }
 }
@@ -159,7 +157,7 @@ impl JevAnswer {
 }
 
 fn ensure_metadata_answers_are_true(answers: &JevResponse) -> Result<()> {
-    for question in [IsDelimiterCorrect, IsHasHeaderCorrect, IsNumFieldsCorrect] {
+    for question in [Delimiter, Header, Fields] {
         let answer = answers.get_noul_answer_as_bool(&question);
         anyhow::ensure!(answer?, "JEV did not confirm {}", question.as_str());
     }

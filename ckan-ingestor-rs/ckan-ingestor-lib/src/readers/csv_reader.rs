@@ -75,7 +75,7 @@ pub enum CsvParserError {
 
 impl CsvParserError {
     pub fn unknown_error(error: anyhow::Error) -> Self {
-        Self::UnknownError { error: error }
+        Self::UnknownError { error }
     }
 
     pub fn error_message(&self) -> String {
@@ -344,7 +344,7 @@ impl CsvReader {
                         column_index,
                         line: _,
                         expected_type: _,
-                        message,
+                        message: _,
                     } => {
                         return self.try_read_csv_promoting_column(
                             path,
@@ -352,7 +352,6 @@ impl CsvReader {
                             false,
                             sample_size,
                             jev_repair_count,
-                            message,
                             column_index,
                         )
                     }
@@ -377,19 +376,13 @@ impl CsvReader {
                         )
                     }
                     // After exaust sample_size try to repair with Jev
-                    CsvParserError::ColumnCountMissmatch {
-                        line: line_number,
-                        expect_number_of_columns,
-                        actual_number_of_columns,
-                        message,
-                    } if sample_size == SampleSize::All => {
+                    error @ CsvParserError::ColumnCountMissmatch { .. }
+                        if sample_size == SampleSize::All =>
+                    {
                         return self.try_read_csv_reapairing_with_jev(
-                            &path,
+                            path,
                             metadata,
-                            line_number,
-                            expect_number_of_columns,
-                            actual_number_of_columns,
-                            message,
+                            error,
                             jev_repair_count,
                         )
                     }
@@ -428,17 +421,16 @@ impl CsvReader {
         strict_mode: bool,
         sample_size: SampleSize,
         jev_repair_count: usize,
-        _error_message: String,
         column_index: usize,
     ) -> Result<SuccessResult, CsvParserError> {
         log::info!("CSV parse failed for column {column_index}; treating the column as text line");
         if let Some(column) = metadata.types.get_mut(column_index) {
             *column = Type::Text;
-            return self.try_read_csv(path, metadata, strict_mode, sample_size, jev_repair_count);
+            self.try_read_csv(path, metadata, strict_mode, sample_size, jev_repair_count)
         } else {
-            return Err(CsvParserError::UnknownError {
+            Err(CsvParserError::UnknownError {
                 error: anyhow!("Failed to get column at index {column_index}"),
-            });
+            })
         }
     }
 
@@ -462,23 +454,20 @@ impl CsvReader {
             sample_size.next(),
             false,
         )?;
-        return self.try_read_csv(
+        self.try_read_csv(
             path,
             &mut metadata,
             strict_mode,
             sample_size.next(),
             jev_repair_count,
-        );
+        )
     }
 
     fn try_read_csv_reapairing_with_jev(
         &self,
         csv_path: &str,
         metadata: &mut Metadata,
-        line_number: usize,
-        expect_number_of_columns: usize,
-        actual_number_of_columns: usize,
-        error_message: String,
+        error: CsvParserError,
         jev_repair_count: usize,
     ) -> Result<SuccessResult, CsvParserError> {
         let Some(repairer) = &self.jev_repairer else {
@@ -491,6 +480,15 @@ impl CsvReader {
                 ),
             });
         }
+        let CsvParserError::ColumnCountMissmatch {
+            line: line_number,
+            expect_number_of_columns,
+            actual_number_of_columns,
+            message: error_message,
+        } = error
+        else {
+            unreachable!("JEV repairs require a column-count mismatch")
+        };
         let current_path = PathBuf::from(csv_path);
         log::info!("Attempting JEV CSV repair {jev_repair_count} for line {line_number}");
         let repair_result = repairer.repair_csv_with_metadata(
@@ -521,12 +519,12 @@ impl CsvReader {
             },
             Err(repair_error) => {
                 log::info!("JEV CSV repair did not produce a usable file: {repair_error}");
-                return Err(CsvParserError::ColumnCountMissmatch {
+                Err(CsvParserError::ColumnCountMissmatch {
                     line: line_number,
                     expect_number_of_columns,
                     actual_number_of_columns,
                     message: error_message,
-                });
+                })
             }
         }
     }
@@ -821,10 +819,12 @@ mod tests {
         let result = reader.try_read_csv_reapairing_with_jev(
             path.to_str().expect("temporary path is valid UTF-8"),
             &mut metadata,
-            2,
-            2,
-            3,
-            "line 2, expected 2 got 3".to_string(),
+            CsvParserError::ColumnCountMissmatch {
+                line: 2,
+                expect_number_of_columns: 2,
+                actual_number_of_columns: 3,
+                message: "line 2, expected 2 got 3".to_string(),
+            },
             0,
         );
 
