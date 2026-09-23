@@ -18,9 +18,11 @@ use crate::parquet_output::ParquetOutput;
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 use crate::ckan_resource::CkanResource;
 use crate::jev_csv_sniffer::JevCsvRepairer;
-use crate::readers::ckan_reader::{download_to_temp, CkanReader, ReadResult, SuccessResult};
+use crate::readers::ckan_reader::{
+    download_to_temp, CkanReader, FailedResult, ReadResult, SuccessResult,
+};
 use crate::readers::temp_file_cleanup::TempFileCleanup;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use arrow::error::ArrowError;
 use arrow_csv::reader::{Format, ReaderBuilder};
 use csv_nose::{Metadata, Quote, SampleSize, Sniffer, Type};
@@ -31,11 +33,9 @@ use regex::Regex;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read};
 use std::path::PathBuf;
-use std::ptr::metadata;
 use std::sync::LazyLock;
-
 static COLUMN_PARSE_ERROR: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"Error while parsing value '[^']+' as type '[^']+' for column (\d+)")
+    Regex::new(r"Error while parsing value '[^']+' as type '[^']+' for column (\d+) at line (\d+)")
         .expect("valid column parse error regex")
 });
 
@@ -49,90 +49,165 @@ const MAX_JEV_CSV_REPAIRS: usize = 2000;
 pub const CSV_READER_INITIAL_SAMPLE_RECORDS: usize = 25_000;
 pub const CSV_READER_MAX_SAMPLE_RECORDS: usize = 800_000;
 
-pub struct ColumnCountMissmatchError {
-    pub line: usize,
-    pub expected: usize,
-    pub found: usize,
-    pub error: String,
-}
-
-pub struct ColumnTypeMissmatchError {
-    pub column_index: usize,
-    pub line: usize,
-    pub error: String,
-}
-
 pub enum CsvParserError {
-    ColumnCountMissmatch(ColumnCountMissmatchError),
-    ColumnTypeMissmatch(ColumnTypeMissmatchError),
-    ParserError(String),
-    UnknownError(anyhow::Error),
+    ColumnCountMissmatch {
+        line: usize,
+        expect_number_of_columns: usize,
+        actual_number_of_columns: usize,
+        message: String,
+    },
+    ColumnTypeMissmatch {
+        value: String,
+        column_index: usize,
+        line: usize,
+        expected_type: String,
+        message: String,
+    },
+    ParserError {
+        message: String,
+    },
+    UnknownError {
+        error: anyhow::Error,
+    },
 }
 
 impl CsvParserError {
-    fn line(&self) -> Option<usize> {
-        match self {
-            CsvParserError::ColumnCountMissmatch(field_count_error) => Some(field_count_error.line),
-            CsvParserError::ColumnTypeMissmatch(column_parser_error) => {
-                Some(column_parser_error.line)
-            }
-            CsvParserError::UnknownError(_) => None,
-            CsvParserError::ParserError(_) => None,
-        }
-    }
-
     pub fn unknown_error(error: anyhow::Error) -> Self {
-        Self::UnknownError(error)
+        Self::UnknownError { error: error }
     }
 
     pub fn error_message(&self) -> String {
         match self {
-            CsvParserError::ColumnCountMissmatch(column_count_missmatch_error) => {
-                column_count_missmatch_error.error
+            CsvParserError::ColumnCountMissmatch {
+                line: _,
+                expect_number_of_columns: _,
+                actual_number_of_columns: _,
+                message,
+            } => message.to_string(),
+            CsvParserError::ColumnTypeMissmatch {
+                value: _,
+                column_index: _,
+                line: _,
+                expected_type: _,
+                message,
+            } => message.to_string(),
+            CsvParserError::ParserError { message } => message.to_string(),
+            CsvParserError::UnknownError { error } => error.to_string(),
+        }
+    }
+
+    fn get_column_count_misssmatch(message: String) -> Option<CsvParserError> {
+        let captures = CSV_FIELD_COUNT_ERROR.captures(&message)?;
+        let line: Option<usize> = captures.get(1)?.as_str().parse().ok();
+        let expected: Option<usize> = captures.get(2)?.as_str().parse().ok();
+        let found: Option<usize> = captures.get(1)?.as_str().parse().ok();
+        match (line, expected, found) {
+            (Some(line), Some(expected), Some(found)) => {
+                Some(CsvParserError::ColumnCountMissmatch {
+                    line,
+                    expect_number_of_columns: expected,
+                    actual_number_of_columns: found,
+                    message: message.to_string(),
+                })
             }
-            CsvParserError::ColumnTypeMissmatch(column_type_missmatch_error) => {
-                column_type_missmatch_error.error
-            }
-            CsvParserError::ParserError(message) => message.to_string(),
-            CsvParserError::UnknownError(error) => error.to_string(),
+            _ => None,
+        }
+    }
+
+    fn get_column_type_missmatch(message: String) -> Option<CsvParserError> {
+        let captures = COLUMN_PARSE_ERROR.captures(&message)?;
+        let value = captures.get(1)?.as_str().to_string();
+        let expected_type = captures.get(2)?.as_str().to_string();
+        let column_index: Option<usize> = captures.get(3)?.as_str().parse().ok();
+        let line: Option<usize> = captures.get(4)?.as_str().parse().ok();
+        match (line, column_index) {
+            (Some(line), Some(column_index)) => Some(CsvParserError::ColumnTypeMissmatch {
+                value,
+                column_index,
+                line,
+                expected_type,
+                message: message.to_string(),
+            }),
+            _ => None,
         }
     }
 }
 
 impl From<anyhow::Error> for CsvParserError {
     fn from(value: anyhow::Error) -> Self {
-        CsvParserError::UnknownError(value)
+        CsvParserError::UnknownError { error: value }
     }
 }
 
 impl From<ArrowError> for CsvParserError {
-    // let column = error.chain().find_map(|source| {
-    //     let message = source.to_string();
-    //     let captures = COLUMN_PARSE_ERROR.captures(&message)?;
-    //     captures.get(1)?.as_str().parse::<usize>().ok()
-    // })?;
     fn from(value: ArrowError) -> Self {
         match value {
-            ArrowError::NotYetImplemented(_) => todo!(),
-            ArrowError::ExternalError(_error) => todo!(),
-            ArrowError::CastError(_) => todo!(),
-            ArrowError::MemoryError(_) => todo!(),
-            ArrowError::ParseError(_) => todo!(),
-            ArrowError::SchemaError(_) => todo!(),
-            ArrowError::ComputeError(_) => todo!(),
-            ArrowError::DivideByZero => todo!(),
-            ArrowError::ArithmeticOverflow(_) => todo!(),
-            ArrowError::CsvError(_) => todo!(),
-            ArrowError::JsonError(_) => todo!(),
-            ArrowError::AvroError(_) => todo!(),
-            ArrowError::IoError(_, error) => todo!(),
-            ArrowError::IpcError(_) => todo!(),
-            ArrowError::InvalidArgumentError(_) => todo!(),
-            ArrowError::ParquetError(_) => todo!(),
-            ArrowError::CDataInterface(_) => todo!(),
-            ArrowError::DictionaryKeyOverflowError => todo!(),
-            ArrowError::RunEndIndexOverflowError => todo!(),
-            ArrowError::OffsetOverflowError(_) => todo!(),
+            ArrowError::NotYetImplemented(message) => CsvParserError::UnknownError {
+                error: anyhow!(message.to_string()),
+            },
+            ArrowError::ExternalError(error) => CsvParserError::UnknownError {
+                error: anyhow!(error.to_string()),
+            },
+            ArrowError::CastError(message) => CsvParserError::UnknownError {
+                error: anyhow!(message.to_string()),
+            },
+            ArrowError::MemoryError(message) => CsvParserError::UnknownError {
+                error: anyhow!(message.to_string()),
+            },
+            ArrowError::ParseError(message) => CsvParserError::get_column_type_missmatch(
+                message.to_string(),
+            )
+            .unwrap_or(CsvParserError::ParserError {
+                message: message.to_string(),
+            }),
+            ArrowError::SchemaError(message) => CsvParserError::UnknownError {
+                error: anyhow!(message.to_string()),
+            },
+            ArrowError::ComputeError(message) => CsvParserError::UnknownError {
+                error: anyhow!(message.to_string()),
+            },
+            ArrowError::DivideByZero => CsvParserError::UnknownError {
+                error: anyhow!(value.to_string()),
+            },
+            ArrowError::ArithmeticOverflow(message) => CsvParserError::UnknownError {
+                error: anyhow!(message.to_string()),
+            },
+            ArrowError::CsvError(message) => CsvParserError::get_column_count_misssmatch(
+                message.to_string(),
+            )
+            .unwrap_or(CsvParserError::ParserError {
+                message: message.to_string(),
+            }),
+            ArrowError::JsonError(message) => CsvParserError::UnknownError {
+                error: anyhow!(message.to_string()),
+            },
+            ArrowError::AvroError(message) => CsvParserError::UnknownError {
+                error: anyhow!(message.to_string()),
+            },
+            ArrowError::IoError(message, _error) => CsvParserError::UnknownError {
+                error: anyhow!(message.to_string()),
+            },
+            ArrowError::IpcError(message) => CsvParserError::UnknownError {
+                error: anyhow!(message.to_string()),
+            },
+            ArrowError::InvalidArgumentError(message) => CsvParserError::UnknownError {
+                error: anyhow!(message.to_string()),
+            },
+            ArrowError::ParquetError(message) => CsvParserError::UnknownError {
+                error: anyhow!(message.to_string()),
+            },
+            ArrowError::CDataInterface(message) => CsvParserError::UnknownError {
+                error: anyhow!(message.to_string()),
+            },
+            ArrowError::DictionaryKeyOverflowError => CsvParserError::UnknownError {
+                error: anyhow!(value.to_string()),
+            },
+            ArrowError::RunEndIndexOverflowError => CsvParserError::UnknownError {
+                error: anyhow!(value.to_string()),
+            },
+            ArrowError::OffsetOverflowError(_) => CsvParserError::UnknownError {
+                error: anyhow!(value.to_string()),
+            },
         }
     }
 }
@@ -207,37 +282,37 @@ impl CsvReader {
             cleanup.commit();
         }
 
-        let metadata = sniff_metadata(&csv_path, self.csv_delimiter.as_deref(), sample_size)?;
-        let encoding = metadata.encoding.name.to_string();
-        let csv_delimiter = char::from(metadata.dialect.delimiter).to_string();
-        let has_mixed_line_endings = has_mixed_line_endings(
+        let mut metadata = sniff_metadata(
             &csv_path,
-            metadata.encoding.name,
-            metadata.dialect.header.num_preamble_rows,
+            self.csv_delimiter.as_deref(),
+            SampleSize::Records(CSV_READER_INITIAL_SAMPLE_RECORDS),
         )?;
 
         self.try_read_csv(
             &csv_path,
-            &metadata,
+            &mut metadata,
             true,
             SampleSize::Records(CSV_READER_INITIAL_SAMPLE_RECORDS),
+            0,
         )
-        .map_err(|error| anyhow!(error.error_message()))
+        .map_err(|error| FailedResult::from(anyhow!(error.error_message())))
     }
 
     fn try_read_csv(
         &self,
         path: &str,
-        metadata: &Metadata,
+        metadata: &mut Metadata,
         strict_mode: bool,
         sample_size: SampleSize,
+        jev_repair_count: usize,
     ) -> Result<SuccessResult, CsvParserError> {
         let dialect = &metadata.dialect;
+        let regex = Regex::new(r"^(|\s*|\s*-\s*)$").context("failed to compile regex")?;
         let format = Format::default()
             .with_header(dialect.header.has_header_row)
             .with_delimiter(dialect.delimiter)
             .with_truncated_rows(!strict_mode)
-            .with_null_regex(Regex::new(r"^(|\s*|\s*-\s*)$")?);
+            .with_null_regex(regex);
 
         let format = match dialect.quote {
             Quote::None => format.with_quote(0),
@@ -257,51 +332,87 @@ impl CsvReader {
 
         let mut parquet = None;
         for batch_result in csv_reader {
-            let batch = match batch_result {
-                Err(arrow_error) => match CsvParserError::from(arrow_error) {
-                    // First just try to fix by promoting the column type to string
-                    CsvParserError::ColumnTypeMissmatch(column_parser_error) => {
-                        log::info!(
-                            "CSV parse failed for column {}; treating the column as text: {}",
-                            column_parser_error.column_index,
-                            column_parser_error.error
-                        );
-                        *metadata.types.get_mut(column_parser_error.column_index)? = Type::Text;
-                        return self.try_read_csv(path, &metadata, strict_mode, sample_size);
-                    }
+            let batch = match batch_result.map_err(CsvParserError::from) {
+                Err(error) => match error {
                     // Then try to increase sample_size
-                    error @ (CsvParserError::ColumnCountMissmatch(_)
-                    | CsvParserError::ColumnTypeMissmatch(_)
-                    | CsvParserError::ParserError(_))
+                    CsvParserError::ColumnCountMissmatch {
+                        line: _,
+                        expect_number_of_columns: _,
+                        actual_number_of_columns: _,
+                        message: _,
+                    }
+                    | CsvParserError::ColumnTypeMissmatch {
+                        value: _,
+                        column_index: _,
+                        line: _,
+                        expected_type: _,
+                        message: _,
+                    }
+                    | CsvParserError::ParserError { message: _ }
                         if sample_size != SampleSize::All =>
                     {
-                        let error_message = error.error_message();
-                        log::info!("CSV parse failed with sample size {}; retrying with a larger sample: {error_message}", csv_sample_size_label(sample_size));
-                        return self.try_read_csv(path, &metadata, false, sample_size.next());
+                        return self.try_read_csv_increasing_metadata_sample(
+                            path,
+                            metadata,
+                            strict_mode,
+                            sample_size,
+                            jev_repair_count,
+                            error,
+                        )
+                    }
+                    // First just try to fix by promoting the column type to string
+                    CsvParserError::ColumnTypeMissmatch {
+                        value: _,
+                        column_index,
+                        line: _,
+                        expected_type: _,
+                        message,
+                    } => {
+                        return self.try_read_csv_promoting_column(
+                            path,
+                            metadata,
+                            false,
+                            sample_size,
+                            jev_repair_count,
+                            message,
+                            column_index,
+                        )
                     }
                     // After exaust sample_size try to repair with Jev
-                    CsvParserError::ColumnCountMissmatch(field_count_error)
-                        if sample_size == SampleSize::All =>
-                    {
-                        return self.try_jev_repair(&csv_path, &metadata, field_count_error, 0)
+                    CsvParserError::ColumnCountMissmatch {
+                        line: line_number,
+                        expect_number_of_columns,
+                        actual_number_of_columns,
+                        message,
+                    } if sample_size == SampleSize::All => {
+                        return self.try_read_csv_reapairing_with_jev(
+                            &path,
+                            metadata,
+                            line_number,
+                            expect_number_of_columns,
+                            actual_number_of_columns,
+                            message,
+                            jev_repair_count,
+                        )
                     }
-                    CsvParserError::UnknownError(_) => return Err(error),
+                    // Non recover erros
+                    CsvParserError::UnknownError { error: _ } => return Err(error),
                     parser_error => return Err(parser_error),
                 },
                 Ok(batch) => batch,
             };
             if parquet.is_none() {
-                parquet = Some(ParquetOutput::try_new(&batch)?);
+                parquet = Some(ParquetOutput::try_new(&batch).context("failed to create parquet")?);
             }
 
             parquet
                 .as_mut()
                 .expect("Parquet output initialized")
-                .write(&batch)?;
+                .write(&batch)
+                .context("failed to write parquet")?;
         }
         let mut parquet = parquet.ok_or_else(|| anyhow::anyhow!("No data"))?;
-        parquet.finish()?;
-
+        parquet.finish().context("failed to finish parquet")?;
         Ok(SuccessResult::from_csv(
             parquet,
             metadata.encoding.name.to_string(),
@@ -312,82 +423,104 @@ impl CsvReader {
         ))
     }
 
-    fn try_jev_repair(
+    fn try_read_csv_promoting_column(
+        &self,
+        path: &str,
+        metadata: &mut Metadata,
+        strict_mode: bool,
+        sample_size: SampleSize,
+        jev_repair_count: usize,
+        _error_message: String,
+        column_index: usize,
+    ) -> Result<SuccessResult, CsvParserError> {
+        log::info!("CSV parse failed for column {column_index}; treating the column as text line");
+        if let Some(column) = metadata.types.get_mut(column_index) {
+            *column = Type::Text;
+            return self.try_read_csv(path, metadata, strict_mode, sample_size, jev_repair_count);
+        } else {
+            return Err(CsvParserError::UnknownError {
+                error: anyhow!("Failed to get column at index {column_index}"),
+            });
+        }
+    }
+
+    fn try_read_csv_increasing_metadata_sample(
+        &self,
+        path: &str,
+        metadata: &Metadata,
+        strict_mode: bool,
+        sample_size: SampleSize,
+        jev_repair_count: usize,
+        error: CsvParserError,
+    ) -> Result<SuccessResult, CsvParserError> {
+        let error_message = error.error_message();
+        log::info!(
+            "CSV parse failed with sample size {}; retrying with a larger sample: {error_message}",
+            csv_sample_size_label(sample_size)
+        );
+        let mut metadata = sniff_metadata(
+            path,
+            Some(&metadata.dialect.delimiter.to_string().as_str()),
+            sample_size.next(),
+        )?;
+        return self.try_read_csv(
+            path,
+            &mut metadata,
+            strict_mode,
+            sample_size.next(),
+            jev_repair_count,
+        );
+    }
+
+    fn try_read_csv_reapairing_with_jev(
         &self,
         csv_path: &str,
-        metadata: &Metadata,
-        error: ColumnCountMissmatchError,
-        repair_number: usize,
+        metadata: &mut Metadata,
+        line_number: usize,
+        expect_number_of_columns: usize,
+        actual_number_of_columns: usize,
+        error_message: String,
+        jev_repair_count: usize,
     ) -> Result<SuccessResult, CsvParserError> {
         let Some(repairer) = &self.jev_repairer else {
             return Err(anyhow!("Jev is disable").into());
         };
-        if (repair_number > MAX_JEV_CSV_REPAIRS) {
-            return Err(CsvParserError::UnknownError(anyhow::anyhow!(
-                "JEV CSV repair limit reached after {MAX_JEV_CSV_REPAIRS} repairs"
-            )));
+        if jev_repair_count > MAX_JEV_CSV_REPAIRS {
+            return Err(CsvParserError::UnknownError {
+                error: anyhow::anyhow!(
+                    "JEV CSV repair limit reached after {MAX_JEV_CSV_REPAIRS} repairs"
+                ),
+            });
         }
-        let mut current_path = PathBuf::from(csv_path);
-        let mut cleanups = Vec::new();
-        let line_number = error.line;
-        log::info!("Attempting JEV CSV repair {repair_number} for line {line_number}");
-        let repaired_action =
-            match repairer.repair_csv_with_metadata(&current_path, metadata, error) {
-                Ok(action) => match action {
-                    FixInput(path_buf) => todo!(),
-                    FixMetadata(metadata) => todo!(),
-                },
-                Err(repair_error) => {
-                    log::info!("JEV CSV repair did not produce a usable file: {repair_error}");
-                    return Err(CsvParserError::UnknownError(repair_error));
-                }
-            };
-        cleanups.push(TempFileCleanup::from_path(repaired_path.clone()));
-        let repaired_path_str = repaired_path.to_string_lossy();
-        match try_read_csv_with_promotions(&repaired_path_str, metadata.clone(), true) {
-            Ok(parquet) => {
-                log::info!("JEV-repaired CSV parsed successfully after {repair_number} repair(s)");
-                return Ok(Some(SuccessResult::from_csv(
-                    parquet,
-                    metadata.encoding.name.to_string(),
-                    true,
-                    char::from(metadata.dialect.delimiter).to_string(),
-                    "jev-repaired".to_string(),
-                    self.reader_name().to_string(),
-                )));
-            }
-            Err(parse_error) => {
-                let Some(next_line_number) = csv_error_line(&parse_error) else {
-                    return Err(parse_error);
-                };
-                log::info!(
-                    "JEV-repaired CSV found next structural error at line {next_line_number}"
-                );
-                current_path = repaired_path;
-                current_error = parse_error.to_string();
-                line_number = next_line_number;
+        let current_path = PathBuf::from(csv_path);
+        log::info!("Attempting JEV CSV repair {jev_repair_count} for line {line_number}");
+        let repair_result = repairer.repair_csv_with_metadata(
+            &current_path,
+            metadata,
+            line_number,
+            expect_number_of_columns,
+            actual_number_of_columns,
+            error_message,
+        );
+        match repair_result {
+            Ok(action) => match action {
+                FixInput(path_buf) => self.try_read_csv(
+                    &path_buf.to_string_lossy(),
+                    metadata,
+                    false,
+                    SampleSize::All,
+                    jev_repair_count + 1,
+                ),
+                FixMetadata(_metadata) => todo!(),
+            },
+            Err(repair_error) => {
+                log::info!("JEV CSV repair did not produce a usable file: {repair_error}");
+                return Err(CsvParserError::UnknownError {
+                    error: anyhow!(repair_error.to_string()),
+                });
             }
         }
     }
-}
-
-fn csv_error_line(error: &anyhow::Error) -> Option<ColumnCountMissmatchError> {
-    std::iter::once(error.to_string())
-        .chain(error.chain().map(ToString::to_string))
-        .find_map(|message| {
-            let captures = CSV_FIELD_COUNT_ERROR.captures(&message)?;
-            let line: Option<usize> = captures.get(1)?.as_str().parse().ok();
-            let expected: Option<usize> = captures.get(1)?.as_str().parse().ok();
-            let found: Option<usize> = captures.get(1)?.as_str().parse().ok();
-            match (line, expected, found) {
-                (Some(line), Some(expected), Some(found)) => Some(ColumnCountMissmatchError {
-                    line,
-                    expected,
-                    found,
-                }),
-                _ => None,
-            }
-        })
 }
 
 fn csv_batch_size(number_of_columns: usize) -> usize {
@@ -486,26 +619,6 @@ fn decoded_reader(path: &str, encoding_name: &str, preamble_rows: usize) -> Resu
         }
     }
     Ok(Box::new(reader))
-}
-
-fn has_mixed_line_endings(path: &str, encoding_name: &str, preamble_rows: usize) -> Result<bool> {
-    let mut reader = decoded_reader(path, encoding_name, preamble_rows)?;
-    let mut sample = Vec::new();
-    reader.by_ref().take(1024 * 1024).read_to_end(&mut sample)?;
-
-    let mut has_crlf = false;
-    let mut has_bare_lf = false;
-    for (index, byte) in sample.iter().enumerate() {
-        if *byte != b'\n' {
-            continue;
-        }
-        if index > 0 && sample[index - 1] == b'\r' {
-            has_crlf = true;
-        } else {
-            has_bare_lf = true;
-        }
-    }
-    Ok(has_crlf && has_bare_lf)
 }
 
 fn downloaded_csv_suffix(url: &str) -> &'static str {

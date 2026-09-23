@@ -18,11 +18,8 @@
 use crate::jev_csv_sniffer::CsvNoulQuestion::{
     IsDelimiterCorrect, IsHasHeaderCorrect, IsNumFieldsCorrect,
 };
-use crate::readers::csv_reader::{
-    ColumnCountMissmatchError, CsvParserError, CSV_READER_INITIAL_SAMPLE_RECORDS,
-};
 use anyhow::{anyhow, Context, Result};
-use csv_nose::{Metadata, Quote, SampleSize, Sniffer};
+use csv_nose::{Metadata, Quote};
 use encoding_rs::Encoding;
 use regex::Regex;
 use serde::Deserialize;
@@ -63,14 +60,22 @@ impl JevCsvRepairer {
         &self,
         csv_path: &Path,
         metadata: &Metadata,
-        error: ColumnCountMissmatchError,
+        line_number: usize,
+        expect_number_of_columns: usize,
+        actual_number_of_columns: usize,
+        error_message: String,
     ) -> Result<RepairAction> {
-        log::info!("Requesting JEV CSV repair decision for line {}", error.line);
+        log::info!(
+            "Requesting JEV CSV repair decision for line {}",
+            line_number
+        );
         let request = build_jev_csv_sniffer_request_with_metadata(
             csv_path,
             metadata,
-            error.line,
-            error.error,
+            line_number,
+            expect_number_of_columns,
+            actual_number_of_columns,
+            error_message,
         )?;
         let response: JevResponse = self
             .client
@@ -89,17 +94,14 @@ impl JevCsvRepairer {
         return match ensure_metadata_answers_are_true(&response) {
             Ok(_) => {
                 let (left, right) = merge_choice(choice)?;
-                log::info!(
-                    "JEV approved CSV repair for line {problematic_line_number}: choice={choice}"
-                );
-                let repaired_path =
-                    repair_line(csv_path, metadata, problematic_line_number, left, right)?;
-                log::info!("Created temporary JEV-repaired CSV for line {problematic_line_number}");
+                log::info!("JEV approved CSV repair for line {line_number}: choice={choice}");
+                let repaired_path = repair_line(csv_path, metadata, line_number, left, right)?;
+                log::info!("Created temporary JEV-repaired CSV for line {line_number}");
                 Ok(RepairAction::FixInput(repaired_path))
             }
             Err(error) => {
                 let is_has_header_correct =
-                    response.getNoulAnswerAsBool(&CsvNoulQuestion::IsHasHeaderCorrect)?;
+                    response.get_noul_answer_as_bool(&CsvNoulQuestion::IsHasHeaderCorrect)?;
                 if !(is_has_header_correct) {
                     let mut new_metadata = metadata.clone();
                     new_metadata.dialect.header.has_header_row = true;
@@ -124,12 +126,12 @@ struct JevAnswer {
 }
 
 impl JevResponse {
-    fn getNoulAnswerAsBool(&self, question: &CsvNoulQuestion) -> Result<bool> {
+    fn get_noul_answer_as_bool(&self, question: &CsvNoulQuestion) -> Result<bool> {
         let answer = self.answers.get(question.as_str()).ok_or(anyhow!(
             "JEV response has no question: {}",
             question.as_str()
         ))?;
-        answer.getNoulAsBoolean()
+        answer.get_noul_as_boolean()
     }
 }
 
@@ -150,7 +152,7 @@ impl CsvNoulQuestion {
 }
 
 impl JevAnswer {
-    fn getNoulAsBoolean(&self) -> Result<bool> {
+    fn get_noul_as_boolean(&self) -> Result<bool> {
         let value = self.noul.ok_or(anyhow!("JEV response has no noul"))?;
         Ok(value > 0.5)
     }
@@ -158,7 +160,7 @@ impl JevAnswer {
 
 fn ensure_metadata_answers_are_true(answers: &JevResponse) -> Result<()> {
     for question in [IsDelimiterCorrect, IsHasHeaderCorrect, IsNumFieldsCorrect] {
-        let answer = answers.getNoulAnswerAsBool(&question);
+        let answer = answers.get_noul_answer_as_bool(&question);
         anyhow::ensure!(answer?, "JEV did not confirm {}", question.as_str());
     }
     Ok(())
@@ -260,6 +262,8 @@ pub fn build_jev_csv_sniffer_request_with_metadata(
     csv_path: &Path,
     metadata: &Metadata,
     problematic_line_number: usize,
+    expect_number_of_columns: usize,
+    actual_number_of_columns: usize,
     error: String,
 ) -> Result<Value> {
     let lines = read_lines(csv_path, metadata.encoding.name)?;
@@ -271,7 +275,6 @@ pub fn build_jev_csv_sniffer_request_with_metadata(
         char::from(metadata.dialect.delimiter),
         csv_quote(metadata),
     )?;
-    let actual_fields = parsed_fields.len();
     let questions = questions_json(&parsed_fields, metadata.dialect.delimiter);
 
     Ok(json!({
@@ -286,18 +289,12 @@ pub fn build_jev_csv_sniffer_request_with_metadata(
                 "raw": problematic_line,
                 "parsed_fields": parsed_fields,
                 "error": error,
-                "expected_fields": metadata.num_fields,
-                "actual_fields": actual_fields
+                "expected_fields": expect_number_of_columns,
+                "actual_fields": actual_number_of_columns
             }
         },
         "questions": questions
     }))
-}
-
-fn sniff_metadata(csv_path: &Path) -> Result<Metadata> {
-    let mut sniffer = Sniffer::new();
-    sniffer.sample_size(SampleSize::Records(CSV_READER_INITIAL_SAMPLE_RECORDS));
-    Ok(sniffer.sniff_path(csv_path)?)
 }
 
 fn read_lines(csv_path: &Path, encoding_name: &str) -> Result<Vec<String>> {
