@@ -506,8 +506,12 @@ impl CsvReader {
                 }
                 FixMetadata(fixed_metadata) => {
                     let delimiter_hint = char::from(fixed_metadata.dialect.delimiter).to_string();
-                    let mut metadata =
-                        sniff_metadata(csv_path, Some(&delimiter_hint), SampleSize::All, true)?;
+                    let mut metadata = sniff_metadata(
+                        csv_path,
+                        Some(&delimiter_hint),
+                        SampleSize::All,
+                        fixed_metadata.dialect.header.has_header_row,
+                    )?;
                     self.try_read_csv(
                         csv_path,
                         &mut metadata,
@@ -831,6 +835,49 @@ mod tests {
         let result = result.map_err(|error| anyhow!(error.error_message()))?;
         assert_eq!(result.number_of_columns, 2);
         mock.assert();
+        Ok(())
+    }
+
+    #[test]
+    fn parses_fixture_after_jev_corrects_header_field_count() -> Result<()> {
+        let server = MockServer::start();
+        let header_correction_response = serde_json::json!({
+            "model": "jev-latest",
+            "answers": {
+                "fields_to_merge": {"type": "choice", "choice": "merge_1_2"},
+                "is_delimiter_correct": {"type": "noul", "noul": 1.0},
+                "is_has_header_correct": {"type": "noul", "noul": 0.0},
+                "is_num_fields_correct": {"type": "noul", "noul": 1.0}
+            }
+        });
+        let header_correction_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/v1/systemone")
+                .body_contains("\"line_number\":225");
+            then.status(200).json_body(header_correction_response);
+        });
+        let repairer = JevCsvRepairer::new(
+            test_client(),
+            format!("{}/v1/systemone", server.base_url()),
+            "test-key".to_string(),
+        );
+        let reader = CsvReader::new(test_client()).with_jev_repairer(repairer);
+        let resource = CkanResource {
+            id: "relatorio-nominal-servidores-adm-direta-10-2025".to_string(),
+            package_id: String::new(),
+            url: fixture_path("relatorio_nominal_servidores_adm_direta_10-2025.csv")
+                .to_string_lossy()
+                .into_owned(),
+            format: "CSV".to_string(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = reader.read(&resource)?;
+
+        assert_eq!(result.rows_processed, 445);
+        assert_eq!(result.number_of_columns, 11);
+        header_correction_mock.assert();
         Ok(())
     }
 
