@@ -1296,6 +1296,7 @@ dependencies = [
  "arrow-ipc",
  "arrow-json",
  "bytes",
+ "chrono",
  "csv-nose",
  "ducklake",
  "encoding_rs",

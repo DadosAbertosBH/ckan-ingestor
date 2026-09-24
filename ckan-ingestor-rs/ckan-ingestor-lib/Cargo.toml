@@ -25,6 +25,7 @@ geo-types = "=0.7.20"
 geojson = "=0.24.2"
 uuid = { version = "1.17.0", features = ["v4"] }
 bytes = "1.10"
+chrono = "0.4"
 object_store = { version = "=0.13.2", default-features = false, features = ["aws", "fs"] }
 tokio = { version = "1.0", features = ["fs", "io-util", "macros", "rt", "sync"] }
 url = "2"

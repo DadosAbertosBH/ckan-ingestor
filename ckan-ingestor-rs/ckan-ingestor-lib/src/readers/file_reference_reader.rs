@@ -41,6 +41,8 @@ impl<'a> FileReferenceReader<'a> {
                 "MAP".to_string(),
                 "PDF".to_string(),
                 "TAB".to_string(),
+                "TIF".to_string(),
+                "TIFF".to_string(),
             ],
         }
     }
@@ -86,10 +88,13 @@ impl CkanReader for FileReferenceReader<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use crate::{
         ckan_resource::CkanResource, config::S3Settings, readers::ckan_reader::CkanReader,
         s3_document_ingestor::S3DocumentIngestor,
     };
+    use object_store::memory::InMemory;
 
     use super::FileReferenceReader;
 
@@ -100,7 +105,7 @@ mod tests {
 
         assert_eq!(
             reader.supported_formats(),
-            &["HTML", "DOCX", "MAP", "PDF", "TAB"]
+            &["HTML", "DOCX", "MAP", "PDF", "TAB", "TIF", "TIFF"]
         );
     }
 
@@ -118,5 +123,30 @@ mod tests {
         };
 
         assert!(reader.can_read(&resource));
+    }
+
+    #[test]
+    fn rejects_html_when_a_non_html_format_is_declared() {
+        let server = httpmock::MockServer::start();
+        let _page = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/raster.tif");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body("<html>links</html>");
+        });
+        let ingestor = S3DocumentIngestor::new_with_store(
+            "https://files.example/documents".into(),
+            Arc::new(InMemory::new()),
+        );
+        let resource = CkanResource {
+            id: "resource-id".into(),
+            package_id: "package-id".into(),
+            url: format!("{}/raster.tif", server.base_url()),
+            format: "PDF".into(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        assert!(FileReferenceReader::new(&ingestor).read(&resource).is_err());
     }
 }

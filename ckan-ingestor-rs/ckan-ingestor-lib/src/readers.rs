@@ -18,6 +18,7 @@ pub mod ckan_reader;
 pub mod csv_reader;
 pub mod datapackage_reader;
 pub mod datastore_reader;
+pub mod external_resource_crawler_reader;
 pub mod file_reference_reader;
 mod geojson;
 mod gtfs_realtime;
