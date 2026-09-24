@@ -23,6 +23,7 @@ use ckan_ingestor_lib::readers::datapackage_reader::DatapackageReader;
 use ckan_ingestor_lib::readers::datastore_reader::DatastoreReader;
 use ckan_ingestor_lib::readers::file_reference_reader::FileReferenceReader;
 use ckan_ingestor_lib::readers::json_reader::JsonReader;
+use ckan_ingestor_lib::readers::logfile_reader::LogfileReader;
 use ckan_ingestor_lib::readers::multiple_reader::{HttpFormatResolver, MultipleReader};
 use ckan_ingestor_lib::readers::protobuf_reader::ProtobufReader;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
@@ -218,6 +219,7 @@ fn run_conversion(
         Box::new(DatapackageReader::with_client(http_client.clone())),
         Box::new(JsonReader::with_client(http_client.clone())),
         Box::new(ProtobufReader::with_client(http_client.clone())),
+        Box::new(LogfileReader::with_client(http_client.clone())),
         Box::new(FileReferenceReader::new(s3)),
     ])
     .with_format_resolver(HttpFormatResolver::new(http_client));
