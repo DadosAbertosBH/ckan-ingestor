@@ -18,8 +18,9 @@
 use anyhow::Result;
 use arrow::datatypes::{DataType, Field, Fields, Schema};
 use arrow_json::reader::{infer_json_schema_from_iterator, ReaderBuilder};
+use encoding_rs::WINDOWS_1252;
 use serde_json::Value;
-use std::fs::File;
+use std::fs;
 use std::sync::Arc;
 
 use crate::{
@@ -72,7 +73,7 @@ impl JsonReader {
     }
 
     fn try_read_json(&self, path: &str) -> Result<ParquetOutput> {
-        let document = serde_json::from_reader(File::open(path)?)?;
+        let document = parse_json_bytes(&fs::read(path)?)?;
         if is_geojson(&document) {
             write_geoparquet(geojson_to_record_batch(serde_json::from_value(document)?)?)
         } else {
@@ -107,6 +108,17 @@ impl JsonReader {
         let mut output = output.ok_or_else(|| anyhow::anyhow!("No data"))?;
         output.finish()?;
         Ok(output)
+    }
+}
+
+fn parse_json_bytes(bytes: &[u8]) -> Result<Value> {
+    match serde_json::from_slice(bytes) {
+        Ok(document) => Ok(document),
+        Err(_error) if std::str::from_utf8(bytes).is_err() => {
+            let (decoded, _, _) = WINDOWS_1252.decode(bytes);
+            Ok(serde_json::from_str(&decoded)?)
+        }
+        Err(error) => Err(error.into()),
     }
 }
 

@@ -20,6 +20,57 @@ use ckan_ingestor_lib::ckan_resource::CkanResource;
 use ckan_ingestor_lib::readers::ckan_reader::CkanReader;
 use ckan_ingestor_lib::readers::json_reader::JsonReader;
 use httpmock::{Method::GET, MockServer};
+use tempfile::NamedTempFile;
+
+fn geojson_with_windows_1252_superscript_two() -> Vec<u8> {
+    let prefix = br#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"MENSAGEM_PERM":""#;
+    let suffix = br#""},"geometry":{"type":"Point","coordinates":[-43.9,-22.9]}}]}"#;
+    let invalid_byte_offset = 896;
+    let padding_len = invalid_byte_offset - prefix.len() - b"360m".len();
+    let mut document = Vec::with_capacity(prefix.len() + padding_len + 1 + suffix.len());
+
+    document.extend_from_slice(prefix);
+    document.extend(std::iter::repeat_n(b'x', padding_len));
+    document.extend_from_slice(b"360m");
+    document.push(0xb2);
+    document.extend_from_slice(suffix);
+    document
+}
+
+#[test]
+fn reproduces_windows_1252_geojson_error_at_the_source_column() {
+    let error =
+        serde_json::from_slice::<serde_json::Value>(&geojson_with_windows_1252_superscript_two())
+            .expect_err("Windows-1252 bytes must fail UTF-8 JSON parsing");
+
+    assert_eq!(
+        error.to_string(),
+        "invalid unicode code point at line 1 column 898"
+    );
+}
+
+#[test]
+fn reads_windows_1252_geojson_with_superscript_two() -> Result<()> {
+    let mut file = NamedTempFile::with_suffix(".json")?;
+    std::io::Write::write_all(&mut file, &geojson_with_windows_1252_superscript_two())?;
+    let resource = CkanResource {
+        id: "windows-1252-geojson-resource".to_string(),
+        package_id: String::new(),
+        url: file.path().to_string_lossy().into_owned(),
+        format: "JSON".to_string(),
+        datastore_active: false,
+        last_modified: String::new(),
+    };
+
+    let result = JsonReader::new().read(&resource)?;
+
+    assert_eq!(result.rows_processed, 1);
+    assert!(result.preview[0]["MENSAGEM_PERM"]
+        .as_str()
+        .is_some_and(|message| message.ends_with("360m²")));
+    assert!(result.parquet.schema.field_with_name("geometry").is_ok());
+    Ok(())
+}
 
 #[test]
 fn rejects_json_lines_documents() -> Result<()> {
