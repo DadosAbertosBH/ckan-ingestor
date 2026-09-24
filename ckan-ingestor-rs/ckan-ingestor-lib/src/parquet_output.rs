@@ -127,6 +127,10 @@ impl ParquetOutput {
         Ok(())
     }
 
+    pub fn append_key_value_metadata(&mut self, metadata: parquet::file::metadata::KeyValue) {
+        self.writer.append_key_value_metadata(metadata);
+    }
+
     pub fn metadata(&self) -> Option<&ParquetMetaData> {
         self.metadata.as_ref()
     }

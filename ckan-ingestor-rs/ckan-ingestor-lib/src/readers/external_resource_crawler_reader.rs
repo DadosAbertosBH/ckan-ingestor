@@ -15,14 +15,14 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
-use std::{collections::HashSet, io::Read, sync::Arc};
+use std::{
+    collections::HashSet,
+    fs::File,
+    io::{Read, Write},
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result};
-use arrow::{
-    array::StringArray,
-    datatypes::{DataType, Field, Schema},
-    record_batch::RecordBatch,
-};
 use regex::Regex;
 use reqwest::{blocking::Client, header::CONTENT_TYPE};
 use serde::Deserialize;
@@ -30,20 +30,25 @@ use url::Url;
 
 use crate::{
     ckan_resource::CkanResource,
-    parquet_output::ParquetOutput,
     readers::ckan_reader::{CkanReader, ReadResult, SuccessResult},
-    s3_document_ingestor::S3DocumentIngestor,
+    readers::{
+        crawler_aggregate::SchemaAccumulator,
+        crawler_archive::{matches_format, visit_zip, ArchiveLimits},
+        temp_file_cleanup::TempFileCleanup,
+    },
 };
 
 const MAX_PAGE_BYTES: u64 = 8 * 1024 * 1024;
 const FOLDER_MIME: &str = "application/vnd.google-apps.folder";
+const MAX_HTML_DEPTH: usize = 4;
+const MAX_HTML_PAGES: usize = 10_000;
 
 #[derive(Debug)]
 pub struct CrawlError(pub anyhow::Error);
 
 impl std::fmt::Display for CrawlError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Drive crawl failed: {}", self.0)
+        write!(f, "external resource crawl failed: {}", self.0)
     }
 }
 impl std::error::Error for CrawlError {}
@@ -55,7 +60,7 @@ struct DriveLink {
     folder: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DriveFile {
     id: String,
@@ -74,30 +79,37 @@ struct DrivePage {
     incomplete_search: bool,
 }
 
-/// Resolves public Google Drive links found on an HTML resource page.
+#[derive(Clone)]
+enum CrawledSource {
+    Http { url: String },
+    Zip { url: String },
+    Drive(DriveFile),
+}
+
+/// Discovers files linked by HTML pages, ZIP archives, and public Drive folders,
+/// then delegates each materialized file to the configured readers.
 pub struct ExternalResourceCrawlerReader<'a> {
     client: Client,
-    ingestor: &'a S3DocumentIngestor,
+    readers: Vec<Box<dyn CkanReader + 'a>>,
     api_key: String,
     api_base: String,
     formats: Vec<String>,
 }
 
 impl<'a> ExternalResourceCrawlerReader<'a> {
-    pub fn new(client: Client, ingestor: &'a S3DocumentIngestor, api_key: String) -> Self {
+    pub fn new(client: Client, readers: Vec<Box<dyn CkanReader + 'a>>, api_key: String) -> Self {
+        let mut formats = Vec::new();
+        for format in readers.iter().flat_map(|reader| reader.supported_formats()) {
+            if !format.eq_ignore_ascii_case("HTML") && !formats.contains(format) {
+                formats.push(format.clone());
+            }
+        }
         Self {
             client,
-            ingestor,
+            readers,
             api_key,
             api_base: "https://www.googleapis.com/drive/v3".into(),
-            formats: vec![
-                "DOCX".into(),
-                "MAP".into(),
-                "PDF".into(),
-                "TAB".into(),
-                "TIF".into(),
-                "TIFF".into(),
-            ],
+            formats,
         }
     }
 
@@ -158,13 +170,11 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
         }
     }
 
-    fn crawl(
+    fn crawl_delegated(
         &self,
-        page_url: &str,
-        resource_format: &str,
+        resource: &CkanResource,
         response: impl Read,
     ) -> Result<SuccessResult> {
-        anyhow::ensure!(!self.api_key.is_empty(), "GOOGLE_DRIVE_API_KEY is required");
         let mut bytes = Vec::new();
         response.take(MAX_PAGE_BYTES + 1).read_to_end(&mut bytes)?;
         anyhow::ensure!(
@@ -172,25 +182,125 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
             "HTML page exceeds crawl limit"
         );
         let html = String::from_utf8(bytes).context("HTML page is not UTF-8")?;
-        let mut pending = extract_drive_links(&html, page_url)?;
-        let mut visited_folders = HashSet::new();
-        let mut visited_files = HashSet::new();
-        let mut output = None::<ParquetOutput>;
+        let sources = self.discover_sources(&resource.url, &resource.format, &html)?;
+        anyhow::ensure!(
+            !sources.is_empty(),
+            "no matching files or ZIP archives found"
+        );
+        let limits = ArchiveLimits::from_env()?;
+
+        let mut schemas = SchemaAccumulator::new();
+        self.visit_sources(resource, &sources, limits, |result, _| schemas.add(result))?;
+        let format = resource.format.to_ascii_uppercase();
+        let tabular = format.contains("CSV") || format.contains("JSON");
+        let mut output = schemas.build(tabular)?;
+        self.visit_sources(resource, &sources, limits, |result, source| {
+            output.append(result, source)
+        })?;
+        let parquet = output.finish()?;
+        Ok(SuccessResult::new(parquet, self.reader_name().into()))
+    }
+
+    fn discover_sources(
+        &self,
+        page_url: &str,
+        format: &str,
+        html: &str,
+    ) -> Result<Vec<CrawledSource>> {
+        let root = Url::parse(page_url)?;
+        let root_prefix = directory_prefix(root.path());
+        let mut pages = vec![(root.clone(), Some(html.to_owned()), 0_usize)];
+        let mut visited_pages = HashSet::new();
+        let mut visited_sources = HashSet::new();
+        let mut sources = Vec::new();
+        while let Some((page, document, depth)) = pages.pop() {
+            if !visited_pages.insert(page.as_str().to_owned()) {
+                continue;
+            }
+            anyhow::ensure!(
+                visited_pages.len() <= MAX_HTML_PAGES,
+                "HTML page count exceeds crawl limit"
+            );
+            let document = match document {
+                Some(document) => document,
+                None => {
+                    let response = self.client.get(page.clone()).send()?.error_for_status()?;
+                    if !is_html(
+                        response
+                            .headers()
+                            .get(CONTENT_TYPE)
+                            .and_then(|value| value.to_str().ok()),
+                    ) {
+                        continue;
+                    }
+                    limited_html(response)?
+                }
+            };
+            for url in extract_http_links(&document, &page)? {
+                if url.host_str() == Some("drive.google.com") {
+                    continue;
+                }
+                let name = url
+                    .path_segments()
+                    .and_then(Iterator::last)
+                    .unwrap_or_default()
+                    .to_owned();
+                let lower = name.to_ascii_lowercase();
+                if lower.ends_with(".zip") {
+                    if visited_sources.insert(url.as_str().to_owned()) {
+                        sources.push(CrawledSource::Zip { url: url.into() });
+                    }
+                } else if matches_format(&name, format) {
+                    if visited_sources.insert(url.as_str().to_owned()) {
+                        sources.push(CrawledSource::Http { url: url.into() });
+                    }
+                } else if depth < MAX_HTML_DEPTH
+                    && url.host_str() == root.host_str()
+                    && within_root_path(url.path(), root_prefix)
+                    && looks_like_directory(&url)
+                {
+                    pages.push((url, None, depth + 1));
+                }
+            }
+            for file in self.collect_drive_files(&document, page.as_str(), format)? {
+                let key = format!("drive:{}", file.id);
+                if visited_sources.insert(key) {
+                    sources.push(CrawledSource::Drive(file));
+                }
+            }
+        }
+        Ok(sources)
+    }
+
+    fn collect_drive_files(
+        &self,
+        html: &str,
+        page_url: &str,
+        format: &str,
+    ) -> Result<Vec<DriveFile>> {
+        let mut pending = extract_drive_links(html, page_url)?;
+        if pending.is_empty() {
+            return Ok(Vec::new());
+        }
+        anyhow::ensure!(!self.api_key.is_empty(), "GOOGLE_DRIVE_API_KEY is required");
+        let mut folders = HashSet::new();
+        let mut files = HashSet::new();
+        let mut found = Vec::new();
         while let Some(link) = pending.pop() {
             if link.folder {
-                if !visited_folders.insert(link.id.clone()) {
+                if !folders.insert(link.id.clone()) {
                     continue;
                 }
                 for child in self.list_folder(&link)? {
-                    pending.push(DriveLink {
-                        id: child.id.clone(),
-                        resource_key: child.resource_key.clone(),
-                        folder: child.mime_type == FOLDER_MIME,
-                    });
-                    if child.mime_type != FOLDER_MIME
-                        && matches_resource_format(&child.name, resource_format)
+                    if child.mime_type == FOLDER_MIME {
+                        pending.push(DriveLink {
+                            id: child.id,
+                            resource_key: child.resource_key,
+                            folder: true,
+                        });
+                    } else if matches_format(&child.name, format) && files.insert(child.id.clone())
                     {
-                        self.write_file(&child, &mut visited_files, &mut output)?;
+                        found.push(child);
                     }
                 }
             } else {
@@ -200,81 +310,216 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                         folder: true,
                         ..link
                     });
-                } else if matches_resource_format(&file.name, resource_format) {
-                    self.write_file(&file, &mut visited_files, &mut output)?;
+                } else if matches_format(&file.name, format) && files.insert(file.id.clone()) {
+                    found.push(file);
                 }
             }
         }
-        let mut output = output.context("no accessible matching files found in Drive links")?;
-        output.finish()?;
-        Ok(SuccessResult::new(output, self.reader_name().into()))
+        Ok(found)
     }
 
-    fn write_file(
+    fn visit_sources<F>(
         &self,
-        file: &DriveFile,
-        visited: &mut HashSet<String>,
-        output: &mut Option<ParquetOutput>,
-    ) -> Result<()> {
-        if !visited.insert(file.id.clone()) {
-            return Ok(());
-        }
-        let modified = file
-            .modified_time
-            .as_deref()
-            .context("Drive file missing modifiedTime")?;
-        let url = self
-            .ingestor
-            .ingest_drive_file(&file.id, modified, &file.mime_type, || {
-                let mut request = self
-                    .client
-                    .get(format!("{}/files/{}", self.api_base, file.id))
-                    .header("x-goog-api-key", &self.api_key)
-                    .query(&[("alt", "media")]);
-                if let Some(key) = &file.resource_key {
-                    request = request
-                        .header("x-goog-drive-resource-keys", format!("{}/{}", file.id, key));
+        resource: &CkanResource,
+        sources: &[CrawledSource],
+        limits: ArchiveLimits,
+        mut visit: F,
+    ) -> Result<()>
+    where
+        F: FnMut(&SuccessResult, &str) -> Result<()>,
+    {
+        let mut found = 0_usize;
+        for source in sources {
+            match source {
+                CrawledSource::Http { url } => {
+                    let child = child_resource(resource, url.clone(), url, None);
+                    let result = self.read_child(&child)?;
+                    visit(&result, url)?;
+                    found += 1;
                 }
-                let response = request.send()?.error_for_status()?;
-                anyhow::ensure!(
-                    !response
-                        .headers()
-                        .get(CONTENT_TYPE)
-                        .and_then(|v| v.to_str().ok())
-                        .is_some_and(|v| v.to_ascii_lowercase().starts_with("text/html")),
-                    "Drive returned HTML for {}",
-                    file.id
-                );
-                Ok(response)
-            })?;
-        let batch = RecordBatch::try_new(
-            Arc::new(Schema::new(vec![
-                Field::new("url", DataType::Utf8, false),
-                Field::new("name", DataType::Utf8, false),
-            ])),
-            vec![
-                Arc::new(StringArray::from(vec![url])),
-                Arc::new(StringArray::from(vec![file.name.clone()])),
-            ],
-        )?;
-        if output.is_none() {
-            *output = Some(ParquetOutput::try_new(&batch)?);
+                CrawledSource::Drive(file) => {
+                    let modified_time = file
+                        .modified_time
+                        .as_deref()
+                        .context("Drive file missing modifiedTime")?;
+                    let path = self.download_drive_file(file)?;
+                    let _cleanup = TempFileCleanup::from_path(path.clone());
+                    let child = child_resource(
+                        resource,
+                        path.to_string_lossy().into_owned(),
+                        &format!("drive://{}", file.id),
+                        Some(modified_time),
+                    );
+                    let result = self.read_child(&child)?;
+                    visit(&result, &format!("drive://{}/{}", file.id, file.name))?;
+                    found += 1;
+                }
+                CrawledSource::Zip { url } => {
+                    let path = download_zip_to_temp(&self.client, url, limits.max_zip_bytes)?;
+                    let _cleanup = TempFileCleanup::from_path(path.clone());
+                    found += visit_zip(
+                        Path::new(&path),
+                        url,
+                        &resource.format,
+                        limits,
+                        &mut |member, source_name| {
+                            let child = child_resource(
+                                resource,
+                                member.to_string_lossy().into_owned(),
+                                source_name,
+                                None,
+                            );
+                            let result = self.read_child(&child)?;
+                            visit(&result, source_name)
+                        },
+                    )?;
+                }
+            }
         }
-        output.as_mut().expect("initialized output").write(&batch)?;
+        anyhow::ensure!(found > 0, "no matching files found");
         Ok(())
+    }
+
+    fn read_child(&self, resource: &CkanResource) -> ReadResult {
+        let mut last_failure = None;
+        for reader in &self.readers {
+            if !reader.can_read(resource) {
+                continue;
+            }
+            match reader.read(resource) {
+                Ok(result) => return Ok(result),
+                Err(error) => last_failure = Some(error),
+            }
+        }
+        Err(last_failure.unwrap_or_else(|| {
+            crate::readers::ckan_reader::FailedResult::from_string(
+                &format!("no delegated reader supports {}", resource.format),
+                self.reader_name().into(),
+            )
+        }))
+    }
+
+    fn download_drive_file(&self, file: &DriveFile) -> Result<std::path::PathBuf> {
+        let suffix = Path::new(&file.name)
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(|value| format!(".{value}"))
+            .unwrap_or_default();
+        let path = std::env::temp_dir().join(format!("{}{}", uuid::Uuid::new_v4(), suffix));
+        let mut cleanup = TempFileCleanup::from_path(path.clone());
+        let mut request = self
+            .client
+            .get(format!("{}/files/{}", self.api_base, file.id))
+            .header("x-goog-api-key", &self.api_key)
+            .query(&[("alt", "media")]);
+        if let Some(key) = &file.resource_key {
+            request = request.header("x-goog-drive-resource-keys", format!("{}/{}", file.id, key));
+        }
+        let mut response = request.send()?.error_for_status()?;
+        anyhow::ensure!(
+            !is_html(
+                response
+                    .headers()
+                    .get(CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok())
+            ),
+            "Drive returned HTML for {}",
+            file.id
+        );
+        let mut output = std::fs::File::create(&path)?;
+        std::io::copy(&mut response, &mut output)?;
+        cleanup.commit();
+        Ok(path)
     }
 }
 
-fn matches_resource_format(name: &str, format: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    match format.to_ascii_uppercase().as_str() {
-        "TIF" | "TIFF" => lower.ends_with(".tif") || lower.ends_with(".tiff"),
-        "DOCX" => lower.ends_with(".docx"),
-        "MAP" => lower.ends_with(".map"),
-        "PDF" => lower.ends_with(".pdf"),
-        "TAB" => lower.ends_with(".tab"),
-        _ => false,
+fn child_resource(
+    parent: &CkanResource,
+    url: String,
+    source_identity: &str,
+    last_modified: Option<&str>,
+) -> CkanResource {
+    CkanResource {
+        id: uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, source_identity.as_bytes()).to_string(),
+        url,
+        last_modified: last_modified.unwrap_or_default().to_owned(),
+        ..parent.clone()
     }
+}
+
+fn download_zip_to_temp(client: &Client, url: &str, max_bytes: u64) -> Result<PathBuf> {
+    let mut response = client.get(url).send()?.error_for_status()?;
+    if let Some(length) = response.content_length() {
+        anyhow::ensure!(length <= max_bytes, "ZIP exceeds configured size");
+    }
+    let path = std::env::temp_dir().join(format!("{}.zip", uuid::Uuid::new_v4()));
+    let mut cleanup = TempFileCleanup::from_path(path.clone());
+    let mut output = File::create(&path)?;
+    let copied = std::io::copy(&mut response.by_ref().take(max_bytes + 1), &mut output)?;
+    anyhow::ensure!(copied <= max_bytes, "ZIP exceeds configured size");
+    output.flush()?;
+    cleanup.commit();
+    Ok(path)
+}
+
+fn is_html(content_type: Option<&str>) -> bool {
+    content_type.is_some_and(|value| {
+        let media_type = value.split(';').next().unwrap_or_default().trim();
+        media_type.eq_ignore_ascii_case("text/html")
+            || media_type.eq_ignore_ascii_case("application/xhtml+xml")
+    })
+}
+
+fn limited_html(mut response: reqwest::blocking::Response) -> Result<String> {
+    let mut bytes = Vec::new();
+    response
+        .by_ref()
+        .take(MAX_PAGE_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    anyhow::ensure!(
+        bytes.len() as u64 <= MAX_PAGE_BYTES,
+        "HTML page exceeds crawl limit"
+    );
+    String::from_utf8(bytes).context("HTML page is not UTF-8")
+}
+
+fn directory_prefix(path: &str) -> &str {
+    if path.ends_with('/') {
+        path
+    } else {
+        path.rsplit_once('/')
+            .map(|(prefix, _)| prefix)
+            .unwrap_or("")
+    }
+}
+
+fn within_root_path(path: &str, prefix: &str) -> bool {
+    prefix == "/"
+        || path == prefix
+        || path
+            .strip_prefix(prefix)
+            .is_some_and(|suffix| prefix.ends_with('/') || suffix.starts_with('/'))
+}
+
+fn looks_like_directory(url: &Url) -> bool {
+    url.path().ends_with('/') || Path::new(url.path()).extension().is_none()
+}
+
+fn extract_http_links(html: &str, base: &Url) -> Result<Vec<Url>> {
+    let hrefs = Regex::new(r#"(?is)<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']"#)?;
+    let mut links = Vec::new();
+    for href in hrefs.captures_iter(html) {
+        let value = href[1].replace("&amp;", "&");
+        let Ok(mut url) = base.join(&value) else {
+            continue;
+        };
+        if !matches!(url.scheme(), "http" | "https") {
+            continue;
+        }
+        url.set_fragment(None);
+        links.push(url);
+    }
+    Ok(links)
 }
 
 fn extract_drive_links(html: &str, base: &str) -> Result<Vec<DriveLink>> {
@@ -335,16 +580,14 @@ impl CkanReader for ExternalResourceCrawlerReader<'_> {
     fn do_read(&self, resource: &CkanResource) -> ReadResult {
         let result = (|| -> Result<SuccessResult> {
             let response = self.client.get(&resource.url).send()?.error_for_status()?;
-            let is_html = response
-                .headers()
-                .get(CONTENT_TYPE)
-                .and_then(|v| v.to_str().ok())
-                .is_some_and(|v| {
-                    v.to_ascii_lowercase().starts_with("text/html")
-                        || v.to_ascii_lowercase().starts_with("application/xhtml+xml")
-                });
+            let is_html = is_html(
+                response
+                    .headers()
+                    .get(CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok()),
+            );
             anyhow::ensure!(is_html, "resource content is not HTML");
-            self.crawl(&resource.url, &resource.format, response)
+            self.crawl_delegated(resource, response)
         })();
         result.map_err(|error| CrawlError(error).into())
     }
@@ -352,16 +595,37 @@ impl CkanReader for ExternalResourceCrawlerReader<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{
+        io::{Cursor, Write},
+        sync::Arc,
+    };
 
+    use arrow::datatypes::DataType;
     use object_store::memory::InMemory;
 
     use crate::{
-        ckan_resource::CkanResource, readers::ckan_reader::CkanReader,
+        ckan_resource::CkanResource,
+        readers::{
+            ckan_reader::CkanReader, csv_reader::CsvReader,
+            file_reference_reader::FileReferenceReader, json_reader::JsonReader,
+        },
         s3_document_ingestor::S3DocumentIngestor,
     };
 
     use super::*;
+
+    fn zip_bytes(entries: &[(&str, &str)]) -> Vec<u8> {
+        let mut archive = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        for (name, body) in entries {
+            archive
+                .start_file(*name, zip::write::SimpleFileOptions::default())
+                .expect("start ZIP member");
+            archive
+                .write_all(body.as_bytes())
+                .expect("write ZIP member");
+        }
+        archive.finish().expect("finish ZIP").into_inner()
+    }
 
     #[test]
     fn extracts_only_google_drive_links_and_resource_keys() {
@@ -373,6 +637,190 @@ mod tests {
         assert_eq!(links[0].resource_key.as_deref(), Some("key1"));
         assert!(links[0].folder);
         assert_eq!(links[1].id, "file_1");
+        assert!(within_root_path("/bhgeo/files/", "/bhgeo"));
+        assert!(!within_root_path("/bhgeo-other/", "/bhgeo"));
+    }
+
+    #[test]
+    fn accepts_json_and_csv_resources_for_crawling() {
+        let client = Client::new();
+        let reader = ExternalResourceCrawlerReader::new(
+            client.clone(),
+            vec![
+                Box::new(JsonReader::with_client(client.clone())),
+                Box::new(CsvReader::new(client)),
+            ],
+            String::new(),
+        );
+        for format in ["JSON", "CSV"] {
+            let resource = CkanResource {
+                id: "resource-id".into(),
+                package_id: "package-id".into(),
+                url: "https://example.test/listing/".into(),
+                format: format.into(),
+                datastore_active: false,
+                last_modified: String::new(),
+            };
+            assert!(reader.can_read(&resource), "{format} should be crawled");
+        }
+    }
+
+    #[test]
+    fn delegates_multiple_json_links_and_unifies_their_schemas() {
+        let server = httpmock::MockServer::start();
+        let _page = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/listing/");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(r#"<a href="one.json">one</a><a href="sub/">subdirectory</a>"#);
+        });
+        let _subdirectory = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/listing/sub/");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(r#"<a href="two.json">two</a>"#);
+        });
+        let _one = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/listing/one.json");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"[{"shared":1,"left":"a"}]"#);
+        });
+        let _two = server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/listing/sub/two.json");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"[{"shared":"two","right":true}]"#);
+        });
+        let client = Client::new();
+        let reader = ExternalResourceCrawlerReader::new(
+            client.clone(),
+            vec![Box::new(JsonReader::with_client(client))],
+            String::new(),
+        );
+        let resource = CkanResource {
+            id: "resource-id".into(),
+            package_id: "package-id".into(),
+            url: format!("{}/listing/", server.base_url()),
+            format: "JSON".into(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = reader.read(&resource).expect("crawl succeeds");
+
+        assert_eq!(result.rows_processed, 2);
+        assert_eq!(result.number_of_columns, 4);
+        assert!(result.preview[0].get("__source_file").is_some());
+        assert_eq!(result.preview[0]["shared"], "1");
+        assert_eq!(
+            result
+                .parquet
+                .schema
+                .field_with_name("shared")
+                .unwrap()
+                .data_type(),
+            &DataType::Utf8
+        );
+        assert!(result.parquet.schema.field_with_name("left").is_ok());
+        assert!(result.parquet.schema.field_with_name("right").is_ok());
+    }
+
+    #[test]
+    fn extracts_and_delegates_every_matching_file_in_a_zip() {
+        let server = httpmock::MockServer::start();
+        let _page = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/listing/");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(r#"<a href="records.zip">records</a>"#);
+        });
+        let body = zip_bytes(&[
+            ("one.json", r#"[{"id":1}]"#),
+            ("nested/two.json", r#"[{"id":2}]"#),
+            ("ignored.txt", "ignored"),
+        ]);
+        let _archive = server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/listing/records.zip");
+            then.status(200)
+                .header("content-type", "application/zip")
+                .body(body);
+        });
+        let client = Client::new();
+        let reader = ExternalResourceCrawlerReader::new(
+            client.clone(),
+            vec![Box::new(JsonReader::with_client(client))],
+            String::new(),
+        );
+        let resource = CkanResource {
+            id: "resource-id".into(),
+            package_id: "package-id".into(),
+            url: format!("{}/listing/", server.base_url()),
+            format: "JSON".into(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = reader.read(&resource).expect("ZIP crawl succeeds");
+
+        assert_eq!(result.rows_processed, 2);
+        assert_eq!(result.number_of_columns, 2);
+        assert!(result.parquet.schema.field_with_name("id").is_ok());
+        assert!(result
+            .parquet
+            .schema
+            .field_with_name("__source_file")
+            .is_ok());
+    }
+
+    #[test]
+    fn rejects_a_mix_of_plain_json_and_geojson() {
+        let server = httpmock::MockServer::start();
+        let _page = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/listing/");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(r#"<a href="plain.json">plain</a><a href="geo.geojson">geo</a>"#);
+        });
+        let _plain = server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/listing/plain.json");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"[{"id":1}]"#);
+        });
+        let _geo = server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/listing/geo.geojson");
+            then.status(200)
+                .header("content-type", "application/geo+json")
+                .body(
+                    r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"id":2},"geometry":{"type":"Point","coordinates":[-43.9,-19.9]}}]}"#,
+                );
+        });
+        let client = Client::new();
+        let reader = ExternalResourceCrawlerReader::new(
+            client.clone(),
+            vec![Box::new(JsonReader::with_client(client))],
+            String::new(),
+        );
+        let resource = CkanResource {
+            id: "resource-id".into(),
+            package_id: "package-id".into(),
+            url: format!("{}/listing/", server.base_url()),
+            format: "JSON".into(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let error = match reader.read(&resource) {
+            Ok(_) => panic!("mixed JSON kinds must fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains("GeoJSON and plain JSON"));
     }
 
     #[test]
@@ -413,8 +861,12 @@ mod tests {
             "https://files.example/documents".into(),
             Arc::new(InMemory::new()),
         );
-        let reader = ExternalResourceCrawlerReader::new(Client::new(), &ingestor, "api-key".into())
-            .with_api_base(format!("{}/drive/v3", server.base_url()));
+        let reader = ExternalResourceCrawlerReader::new(
+            Client::new(),
+            vec![Box::new(FileReferenceReader::new(&ingestor))],
+            "api-key".into(),
+        )
+        .with_api_base(format!("{}/drive/v3", server.base_url()));
         let resource = CkanResource {
             id: "resource-id".into(),
             package_id: "package-id".into(),
@@ -427,5 +879,6 @@ mod tests {
         let result = reader.read(&resource).expect("crawl succeeds");
         assert_eq!(result.rows_processed, 1);
         assert_eq!(result.number_of_columns, 2);
+        assert_eq!(result.preview[0]["name"], "mapa.tif");
     }
 }

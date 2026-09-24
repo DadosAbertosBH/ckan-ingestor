@@ -15,6 +15,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 pub mod ckan_reader;
+mod crawler_aggregate;
+mod crawler_archive;
 pub mod csv_reader;
 pub mod datapackage_reader;
 pub mod datastore_reader;

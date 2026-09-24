@@ -24,7 +24,7 @@ use arrow::{
     datatypes::{Field, Schema},
     record_batch::RecordBatch,
 };
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 /// Stores opaque source files in S3 and exposes their download URL as a one-row dataset.
 pub struct FileReferenceReader<'a> {
     ingestor: &'a S3DocumentIngestor,
@@ -54,29 +54,44 @@ impl CkanReader for FileReferenceReader<'_> {
     }
 
     fn do_read(&self, resource: &CkanResource) -> ReadResult {
-        let download_url = self.ingestor.ingest(
-            [
-                resource.id.as_str(),
-                resource.format.to_lowercase().as_str(),
-            ]
-            .join(".")
-            .as_str(),
-            &resource.url,
-            &resource.format,
-        )?;
+        let filename = [
+            resource.id.as_str(),
+            resource.format.to_lowercase().as_str(),
+        ]
+        .join(".");
+        let local_path = Path::new(&resource.url);
+        let download_url = if local_path.is_file() {
+            self.ingestor.ingest_path(
+                &filename,
+                local_path,
+                &resource.format,
+                Some(&resource.last_modified),
+            )?
+        } else {
+            self.ingestor
+                .ingest(&filename, &resource.url, &resource.format)?
+        };
+        let source_name = url::Url::parse(&resource.url)
+            .ok()
+            .filter(|url| matches!(url.scheme(), "http" | "https"))
+            .and_then(|url| url.path_segments()?.next_back().map(str::to_owned))
+            .or_else(|| {
+                local_path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(str::to_owned)
+            })
+            .unwrap_or_else(|| filename.clone());
 
-        // Criar o schema com uma coluna 'url'
-        let schema = Arc::new(Schema::new(vec![Field::new(
-            "url",
-            arrow::datatypes::DataType::Utf8,
-            false,
-        )]));
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("url", arrow::datatypes::DataType::Utf8, false),
+            Field::new("name", arrow::datatypes::DataType::Utf8, false),
+        ]));
 
-        // Criar o array com o valor do download_url
         let url_array = StringArray::from(vec![download_url.as_str()]);
+        let name_array = StringArray::from(vec![source_name]);
 
-        // Criar o RecordBatch
-        let batch = RecordBatch::try_new(schema, vec![Arc::new(url_array)])?;
+        let batch = RecordBatch::try_new(schema, vec![Arc::new(url_array), Arc::new(name_array)])?;
 
         let mut parquet = ParquetOutput::try_new(&batch)?;
         parquet.write(&batch)?;
@@ -148,5 +163,39 @@ mod tests {
         };
 
         assert!(FileReferenceReader::new(&ingestor).read(&resource).is_err());
+    }
+
+    #[test]
+    fn ingests_a_local_file_discovered_by_the_crawler() {
+        let source = tempfile::NamedTempFile::with_suffix(".tif").expect("temporary TIFF");
+        std::fs::write(source.path(), b"TIFF").expect("write TIFF");
+        let ingestor = S3DocumentIngestor::new_with_store(
+            "https://files.example/documents".into(),
+            Arc::new(InMemory::new()),
+        );
+        let resource = CkanResource {
+            id: "drive-file-id".into(),
+            package_id: "package-id".into(),
+            url: source.path().to_string_lossy().into_owned(),
+            format: "TIF".into(),
+            datastore_active: false,
+            last_modified: "2026-01-01T00:00:00Z".into(),
+        };
+
+        let result = FileReferenceReader::new(&ingestor)
+            .read(&resource)
+            .expect("local file is ingested");
+
+        assert_eq!(result.rows_processed, 1);
+        assert_eq!(result.number_of_columns, 2);
+        assert_eq!(
+            result.preview[0]["name"],
+            source
+                .path()
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .as_ref()
+        );
     }
 }

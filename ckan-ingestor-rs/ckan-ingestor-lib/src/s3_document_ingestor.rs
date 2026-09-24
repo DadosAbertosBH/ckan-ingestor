@@ -22,7 +22,9 @@ use object_store::{
     ObjectStore, PutMultipartOptions, PutOptions, WriteMultipart,
 };
 use reqwest::blocking::Client as HttpClient;
+use std::fs::File;
 use std::io::Read;
+use std::path::Path as FsPath;
 use std::sync::Arc;
 use url::Url;
 
@@ -90,6 +92,70 @@ impl S3DocumentIngestor {
                 )
             })?;
         Ok(format!("{}/{}", self.public_url, object_url))
+    }
+
+    /// Stores a local file materialized by a crawler. When the upstream
+    /// modification timestamp is available, an existing newer object is reused.
+    pub fn ingest_path(
+        &self,
+        filename: &str,
+        source_path: &FsPath,
+        content_type: &str,
+        source_modified: Option<&str>,
+    ) -> Result<String> {
+        let key = format!("docs/{filename}");
+        let path = Path::from(key.clone());
+        let public_url = format!("{}/{}", self.public_url, key);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        if let Some(modified) = source_modified.filter(|value| !value.is_empty()) {
+            let source_modified = DateTime::parse_from_rfc3339(modified)
+                .context("source modification time must be RFC 3339")?
+                .with_timezone(&Utc);
+            match runtime.block_on(self.store.get_opts(
+                &path,
+                GetOptions {
+                    head: true,
+                    ..Default::default()
+                },
+            )) {
+                Ok(object) if source_modified <= object.meta.last_modified => {
+                    return Ok(public_url);
+                }
+                Ok(_) | Err(StoreError::NotFound { .. }) => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+
+        let mut attributes = Attributes::new();
+        attributes.insert(Attribute::ContentType, content_type.to_owned().into());
+        if let Some(modified) = source_modified.filter(|value| !value.is_empty()) {
+            attributes.insert(
+                Attribute::Metadata("source-modified-time".into()),
+                modified.to_owned().into(),
+            );
+        }
+        let upload = runtime.block_on(self.store.put_multipart_opts(
+            &path,
+            PutMultipartOptions {
+                attributes,
+                ..Default::default()
+            },
+        ))?;
+        let mut writer = WriteMultipart::new(upload);
+        let mut input = File::open(source_path)?;
+        let mut buffer = vec![0; 5 * 1024 * 1024];
+        loop {
+            let read = input.read(&mut buffer)?;
+            if read == 0 {
+                break;
+            }
+            writer.write(&buffer[..read]);
+            runtime.block_on(writer.wait_for_capacity(2))?;
+        }
+        runtime.block_on(writer.finish())?;
+        Ok(public_url)
     }
 
     /// Stores a Drive file under a key shared by every CKAN resource that links to it.
@@ -278,5 +344,51 @@ mod tests {
             .unwrap();
         assert_eq!(first, second);
         assert_eq!(downloads.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn reuses_a_crawled_local_file_until_its_source_revision_advances() {
+        let store = Arc::new(InMemory::new());
+        let ingestor = S3DocumentIngestor::new_with_store(
+            "https://files.example/bucket".into(),
+            store.clone(),
+        );
+        let source = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(source.path(), b"first").unwrap();
+        ingestor
+            .ingest_path(
+                "stable-id.tif",
+                source.path(),
+                "image/tiff",
+                Some("2020-01-01T00:00:00Z"),
+            )
+            .unwrap();
+        std::fs::write(source.path(), b"second").unwrap();
+        ingestor
+            .ingest_path(
+                "stable-id.tif",
+                source.path(),
+                "image/tiff",
+                Some("2020-01-01T00:00:00Z"),
+            )
+            .unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let stored = runtime
+            .block_on(store.get(&Path::from("docs/stable-id.tif")))
+            .unwrap();
+        assert_eq!(runtime.block_on(stored.bytes()).unwrap(), "first");
+
+        ingestor
+            .ingest_path(
+                "stable-id.tif",
+                source.path(),
+                "image/tiff",
+                Some("2099-01-01T00:00:00Z"),
+            )
+            .unwrap();
+        let stored = runtime
+            .block_on(store.get(&Path::from("docs/stable-id.tif")))
+            .unwrap();
+        assert_eq!(runtime.block_on(stored.bytes()).unwrap(), "second");
     }
 }

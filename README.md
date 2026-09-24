@@ -173,6 +173,11 @@ O `.gitlab-ci.yml` constrói e publica as imagens no registry do GitLab:
 | `S3_ACCESS_KEY_ID` | `admin` | Access key do S3 |
 | `S3_SECRET_ACCESS_KEY` | `password` | Secret key do S3 |
 | `S3_USE_SSL` | `false` | Usar SSL no S3 |
+| `GOOGLE_DRIVE_API_KEY` | (vazio) | Chave da Google Drive API usada para percorrer links públicos encontrados pelo crawler |
+| `CRAWLER_MAX_ZIP_BYTES` | `8589934592` | Tamanho máximo, em bytes, de cada ZIP baixado ou aninhado |
+| `CRAWLER_MAX_EXPANDED_BYTES` | `68719476736` | Soma máxima, em bytes, dos membros expandidos de uma árvore de ZIPs |
+| `CRAWLER_MAX_ARCHIVE_DEPTH` | `4` | Profundidade máxima de ZIPs aninhados |
+| `CRAWLER_MAX_ARCHIVE_ENTRIES` | `100000` | Quantidade máxima de entradas em uma árvore de ZIPs |
 | `RUST_LOG` | `info` | Nível de log |
 
 ### Worker coordinator Rust

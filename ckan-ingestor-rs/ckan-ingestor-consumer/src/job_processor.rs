@@ -223,12 +223,19 @@ fn run_conversion(
         Box::new(JsonReader::with_client(http_client.clone())),
         Box::new(ProtobufReader::with_client(http_client.clone())),
         Box::new(LogfileReader::with_client(http_client.clone())),
+        Box::new(FileReferenceReader::new(s3)),
         Box::new(ExternalResourceCrawlerReader::new(
             http_client.clone(),
-            s3,
+            vec![
+                Box::new(CsvReader::with_delimiter(
+                    http_client.clone(),
+                    job.csv_delimiter.clone(),
+                )),
+                Box::new(JsonReader::with_client(http_client.clone())),
+                Box::new(FileReferenceReader::new(s3)),
+            ],
             env::var("GOOGLE_DRIVE_API_KEY").unwrap_or_default(),
         )),
-        Box::new(FileReferenceReader::new(s3)),
     ])
     .with_format_resolver(HttpFormatResolver::new(http_client));
     match reader.read(&resource) {
