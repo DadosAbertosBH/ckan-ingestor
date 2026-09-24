@@ -88,6 +88,8 @@ pub struct JobResultMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expected_columns: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub http_status: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preview: Option<Vec<serde_json::Value>>,
@@ -204,6 +206,7 @@ impl JobResultMessage {
             csv_delimiter: None,
             csv_samples: None,
             expected_columns: None,
+            http_status: None,
             error_message: None,
             preview: None,
             artifact: None,
@@ -237,6 +240,7 @@ mod artifact_tests {
             csv_delimiter: None,
             csv_samples: None,
             expected_columns: None,
+            http_status: Some(403),
             error_message: None,
             preview: None,
             artifact: Some(ParquetArtifact {
@@ -260,5 +264,6 @@ mod artifact_tests {
         let decoded: JobResultMessage = serde_json::from_slice(&encoded).unwrap();
 
         assert_eq!(decoded.artifact, message.artifact);
+        assert_eq!(decoded.http_status, Some(403));
     }
 }

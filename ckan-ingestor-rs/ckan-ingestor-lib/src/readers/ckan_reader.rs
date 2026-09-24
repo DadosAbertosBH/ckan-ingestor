@@ -184,6 +184,12 @@ impl FailedResult {
     pub fn is_deleted(&self) -> bool {
         self.deleted
     }
+
+    pub fn http_status(&self) -> Option<u16> {
+        self.error
+            .downcast_ref::<HttpStatusError>()
+            .map(|error| error.status().as_u16())
+    }
 }
 
 impl<E> From<E> for FailedResult
@@ -261,7 +267,8 @@ mod tests {
 
     use crate::parquet_output::ParquetOutput;
 
-    use super::SuccessResult;
+    use super::{FailedResult, HttpStatusError, SuccessResult};
+    use reqwest::StatusCode;
 
     fn output() -> ParquetOutput {
         let schema = Arc::new(Schema::new(vec![Field::new("value", DataType::Utf8, true)]));
@@ -311,6 +318,16 @@ mod tests {
 
         assert_eq!(result.expected_rows, Some(42));
         assert_eq!(result.expected_columns, Some(3));
+    }
+
+    #[test]
+    fn failed_result_exposes_the_http_status() {
+        let result = FailedResult::from(anyhow::Error::new(HttpStatusError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "resource download failed with HTTP status 500 Internal Server Error",
+        )));
+
+        assert_eq!(result.http_status(), Some(500));
     }
 
     #[test]

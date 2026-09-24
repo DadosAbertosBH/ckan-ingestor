@@ -95,6 +95,10 @@ func (s *txStore) RemoveLabel(ctx context.Context, resourceID, label string) err
 	_, err := s.tx.ExecContext(ctx, `DELETE FROM resource_metadata_label WHERE resource_id=? AND label=?`, resourceID, label)
 	return err
 }
+func (s *txStore) RemoveLabelsWithPrefix(ctx context.Context, resourceID, prefix string) error {
+	_, err := s.tx.ExecContext(ctx, `DELETE FROM resource_metadata_label WHERE resource_id=? AND label LIKE ?`, resourceID, prefix+"%")
+	return err
+}
 func (s *txStore) PutCSVHint(ctx context.Context, resourceID, delimiter string) error {
 	_, err := s.tx.ExecContext(ctx, `INSERT INTO csv_hint (resource_id,delimiter) VALUES (?,?) ON DUPLICATE KEY UPDATE delimiter=VALUES(delimiter)`, resourceID, delimiter)
 	return err

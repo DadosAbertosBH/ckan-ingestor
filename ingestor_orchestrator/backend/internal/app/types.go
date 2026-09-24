@@ -141,6 +141,7 @@ type JobResultMessage struct {
 	CSVDelimiter    *string         `json:"csv_delimiter,omitempty"`
 	CSVSamples      *string         `json:"csv_samples,omitempty"`
 	ExpectedColumns *int64          `json:"expected_columns,omitempty"`
+	HTTPStatus      *int64          `json:"http_status,omitempty"`
 	ErrorMessage    *string         `json:"error_message,omitempty"`
 	Preview         json.RawMessage `json:"preview,omitempty"`
 }

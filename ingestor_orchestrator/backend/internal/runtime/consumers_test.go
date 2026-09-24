@@ -53,13 +53,13 @@ func (f *fakeProcessor) ApplyMetadataResult(_ context.Context, value app.Metadat
 func TestHandlersDecodeContracts(t *testing.T) {
 	processor := &fakeProcessor{}
 	consumers := &Consumers{processor: processor}
-	if err := consumers.handleJob(context.Background(), []byte(`{"job_id":"job","resource_id":"resource","status":"SUCCESS"}`)); err != nil {
+	if err := consumers.handleJob(context.Background(), []byte(`{"job_id":"job","resource_id":"resource","status":"FAILED","http_status":403}`)); err != nil {
 		t.Fatal(err)
 	}
 	if err := consumers.handleMetadata(context.Background(), []byte(`{"sync_id":"sync","status":"success"}`)); err != nil {
 		t.Fatal(err)
 	}
-	if len(processor.jobs) != 1 || processor.jobs[0].JobID != "job" || len(processor.metadata) != 1 {
+	if len(processor.jobs) != 1 || processor.jobs[0].JobID != "job" || processor.jobs[0].HTTPStatus == nil || *processor.jobs[0].HTTPStatus != 403 || len(processor.metadata) != 1 {
 		t.Fatalf("decoded = %#v %#v", processor.jobs, processor.metadata)
 	}
 }

@@ -150,6 +150,7 @@ fn job_result_from_success(
         resource_format: None,
         instance_id: None,
         ckan_url: None,
+        http_status: None,
         error_message: None,
         preview: Some(outcome.preview),
         artifact: Some(artifact),
@@ -188,6 +189,7 @@ fn run_conversion(
             csv_delimiter: None,
             csv_samples: None,
             expected_columns: None,
+            http_status: None,
             error_message: None,
             preview: None,
             artifact: None,
@@ -279,6 +281,7 @@ fn failed_job(job: &JobMessage, error: impl std::fmt::Display) -> JobResultMessa
         resource_format: None,
         instance_id: None,
         ckan_url: None,
+        http_status: None,
         error_message: Some(truncated.to_string()),
         preview: None,
         artifact: None,
@@ -306,6 +309,7 @@ fn processing_job(job: &JobMessage) -> JobResultMessage {
         resource_format: None,
         instance_id: None,
         ckan_url: None,
+        http_status: None,
         error_message: None,
         preview: None,
         artifact: None,
@@ -318,6 +322,7 @@ fn job_result_from_failure(
     datastore_active: bool,
     failed: ckan_ingestor_lib::readers::ckan_reader::FailedResult,
 ) -> JobResultMessage {
+    let http_status = failed.http_status();
     JobResultMessage {
         job_id: job_id.into(),
         status: JobStatus::Failed,
@@ -342,6 +347,7 @@ fn job_result_from_failure(
         expected_columns: failed
             .expected_columns
             .and_then(|value| i64::try_from(value).ok()),
+        http_status,
         error_message: Some(failed.error.to_string()),
         preview: Some(vec![]),
         artifact: None,
@@ -378,6 +384,7 @@ fn job_result_from_deleted(
         expected_columns: failed
             .expected_columns
             .and_then(|value| i64::try_from(value).ok()),
+        http_status: None,
         error_message: None,
         preview: None,
         artifact: None,
@@ -395,9 +402,10 @@ mod tests {
     };
     use ckan_ingestor_lib::{
         parquet_output::ParquetOutput,
-        readers::ckan_reader::{FailedResult, SuccessResult},
+        readers::ckan_reader::{FailedResult, HttpStatusError, SuccessResult},
     };
     use ckan_ingestor_worker_lib::ParquetArtifact;
+    use reqwest::StatusCode;
 
     use super::{job_result_from_deleted, job_result_from_failure, job_result_from_success};
     use crate::messages::JobStatus;
@@ -462,6 +470,17 @@ mod tests {
             Some("No data to create table from")
         );
         assert!(result.artifact.is_none());
+    }
+
+    #[test]
+    fn maps_http_failure_to_the_protocol_http_status() {
+        let failed = FailedResult::from(anyhow::Error::new(HttpStatusError::new(
+            StatusCode::FORBIDDEN,
+            "resource download failed with HTTP status 403 Forbidden",
+        )));
+        let result = job_result_from_failure("job-1", "resource-1", false, failed);
+
+        assert_eq!(result.http_status, Some(403));
     }
 
     #[test]

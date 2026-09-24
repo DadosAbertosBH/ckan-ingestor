@@ -29,6 +29,7 @@ type Tx interface {
 	PutTerminal(context.Context, *TerminalState) error
 	AddLabel(context.Context, string, string) error
 	RemoveLabel(context.Context, string, string) error
+	RemoveLabelsWithPrefix(context.Context, string, string) error
 	PutCSVHint(context.Context, string, string) error
 	CSVHint(context.Context, string) (*string, error)
 	Sync(context.Context, string) (*MetadataSync, error)

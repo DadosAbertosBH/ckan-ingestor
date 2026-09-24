@@ -133,6 +133,17 @@ func (p *Processor) applyFailed(ctx context.Context, tx Tx, job *Job, message Jo
 	if job.Status == JobFailed || job.Status == JobCompleted || job.Status == JobDeleted {
 		return nil
 	}
+	if err := tx.RemoveLabel(ctx, job.ResourceID, "empty"); err != nil {
+		return err
+	}
+	if err := tx.RemoveLabelsWithPrefix(ctx, job.ResourceID, "http-code:"); err != nil {
+		return err
+	}
+	if message.HTTPStatus != nil {
+		if err := tx.AddLabel(ctx, job.ResourceID, "http-code:"+strconv.FormatInt(*message.HTTPStatus, 10)); err != nil {
+			return err
+		}
+	}
 	now := p.now()
 	errorMessage := ""
 	if message.ErrorMessage != nil {
@@ -156,6 +167,12 @@ func (p *Processor) applyDeleted(ctx context.Context, tx Tx, job *Job) error {
 	if job.Status == JobDeleted || job.Status == JobCompleted || job.Status == JobFailed {
 		return nil
 	}
+	if err := tx.RemoveLabel(ctx, job.ResourceID, "empty"); err != nil {
+		return err
+	}
+	if err := tx.RemoveLabelsWithPrefix(ctx, job.ResourceID, "http-code:"); err != nil {
+		return err
+	}
 	now := p.now()
 	if err := tx.InsertResult(ctx, &JobResult{ID: p.newID(), JobID: job.ID, Success: true, Status: JobDeleted, CreatedAt: now}); err != nil {
 		return err
@@ -173,6 +190,9 @@ func (p *Processor) applyDeleted(ctx context.Context, tx Tx, job *Job) error {
 func (p *Processor) applySuccess(ctx context.Context, tx Tx, job *Job, message JobResultMessage) error {
 	if job.Status == JobCompleted || job.Status == JobFailed || job.Status == JobDeleted {
 		return nil
+	}
+	if err := tx.RemoveLabelsWithPrefix(ctx, job.ResourceID, "http-code:"); err != nil {
+		return err
 	}
 	now := p.now()
 	rows := int64(0)

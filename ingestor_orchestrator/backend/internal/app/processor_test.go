@@ -19,6 +19,7 @@ package app
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -155,6 +156,14 @@ func (m *memoryStore) RemoveLabel(_ context.Context, id, label string) error {
 	delete(m.labels[id], label)
 	return nil
 }
+func (m *memoryStore) RemoveLabelsWithPrefix(_ context.Context, id, prefix string) error {
+	for label := range m.labels[id] {
+		if strings.HasPrefix(label, prefix) {
+			delete(m.labels[id], label)
+		}
+	}
+	return nil
+}
 func (m *memoryStore) PutCSVHint(_ context.Context, id, value string) error {
 	m.hints[id] = value
 	return nil
@@ -254,6 +263,71 @@ func TestApplyFailureTruncatesErrorAndIsIdempotent(t *testing.T) {
 	}
 	if len(store.results) != 1 || len(*store.results[0].ErrorMessage) != 16000 {
 		t.Fatalf("results = %#v", store.results)
+	}
+}
+
+func TestApplyFailureRemovesEmptyLabel(t *testing.T) {
+	store := newMemoryStore()
+	store.jobs["job-1"] = &Job{ID: "job-1", ResourceID: "resource-1", Status: JobProcessing}
+	store.labels["resource-1"] = map[string]bool{"empty": true}
+
+	if err := fixedProcessor(store).ApplyJobResult(context.Background(), JobResultMessage{
+		JobID: "job-1", ResourceID: "resource-1", Status: "FAILED",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if store.labels["resource-1"]["empty"] {
+		t.Fatal("empty label was retained after failure")
+	}
+}
+
+func TestApplyFailureReplacesHTTPStatusLabel(t *testing.T) {
+	store := newMemoryStore()
+	store.jobs["job-1"] = &Job{ID: "job-1", ResourceID: "resource-1", Status: JobProcessing}
+	store.labels["resource-1"] = map[string]bool{"empty": true, "http-code:500": true}
+	status := int64(403)
+
+	if err := fixedProcessor(store).ApplyJobResult(context.Background(), JobResultMessage{
+		JobID: "job-1", ResourceID: "resource-1", Status: "FAILED", HTTPStatus: &status,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if store.labels["resource-1"]["empty"] || store.labels["resource-1"]["http-code:500"] {
+		t.Fatalf("stale labels were retained: %#v", store.labels["resource-1"])
+	}
+	if !store.labels["resource-1"]["http-code:403"] {
+		t.Fatalf("HTTP status label missing: %#v", store.labels["resource-1"])
+	}
+}
+
+func TestApplyDeletedRemovesResultStateLabels(t *testing.T) {
+	store := newMemoryStore()
+	store.jobs["job-1"] = &Job{ID: "job-1", ResourceID: "resource-1", Status: JobProcessing}
+	store.labels["resource-1"] = map[string]bool{"empty": true, "http-code:500": true}
+
+	if err := fixedProcessor(store).ApplyJobResult(context.Background(), JobResultMessage{
+		JobID: "job-1", ResourceID: "resource-1", Status: "DELETED",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if store.labels["resource-1"]["empty"] || store.labels["resource-1"]["http-code:500"] {
+		t.Fatalf("result state labels were retained: %#v", store.labels["resource-1"])
+	}
+}
+
+func TestApplySuccessRemovesHTTPStatusLabel(t *testing.T) {
+	store := newMemoryStore()
+	store.jobs["job-1"] = &Job{ID: "job-1", ResourceID: "resource-1", Status: JobProcessing}
+	store.labels["resource-1"] = map[string]bool{"http-code:500": true}
+	rows := int64(2)
+
+	if err := fixedProcessor(store).ApplyJobResult(context.Background(), JobResultMessage{
+		JobID: "job-1", ResourceID: "resource-1", Status: "SUCCESS", RowsProcessed: &rows,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if store.labels["resource-1"]["http-code:500"] {
+		t.Fatalf("HTTP status label was retained: %#v", store.labels["resource-1"])
 	}
 }
 
