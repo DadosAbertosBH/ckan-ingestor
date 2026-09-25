@@ -113,16 +113,6 @@ enum CrawledSource {
     Drive(DriveFile),
 }
 
-impl CrawledSource {
-    fn log_label(&self) -> String {
-        match self {
-            Self::Http { url } => format!("http:{url}"),
-            Self::Zip { url } => format!("zip:{url}"),
-            Self::Drive(file) => format!("drive:{}/{}", file.id, file.name),
-        }
-    }
-}
-
 /// Discovers files linked by HTML pages, ZIP archives, and public Drive folders,
 /// then delegates each materialized file to the configured readers.
 pub struct ExternalResourceCrawlerReader<'a> {
@@ -228,14 +218,9 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
         let html = String::from_utf8(bytes).context("HTML page is not UTF-8")?;
         let sources = self.discover_sources(&resource.url, &resource.format, &html)?;
         log::info!(
-            "External crawler discovered {} source(s) for resource {}: {}",
+            "External crawler discovered {} source(s) for resource {}",
             sources.len(),
-            resource.id,
-            sources
-                .iter()
-                .map(CrawledSource::log_label)
-                .collect::<Vec<_>>()
-                .join(", ")
+            resource.id
         );
         anyhow::ensure!(
             !sources.is_empty(),
@@ -248,14 +233,9 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
             materialized.push(source?);
         }
         log::info!(
-            "External crawler materialized {} source(s) for resource {}: {}",
+            "External crawler materialized {} source(s) for resource {}",
             materialized.len(),
-            resource.id,
-            materialized
-                .iter()
-                .map(|source| format!("{} -> {}", source.source_label, source.resource.url))
-                .collect::<Vec<_>>()
-                .join(", ")
+            resource.id
         );
         anyhow::ensure!(!materialized.is_empty(), "no matching files found");
         if materialized.len() > 1 {
@@ -807,34 +787,6 @@ mod tests {
         assert_eq!(links[1].id, "file_1");
         assert!(within_root_path("/bhgeo/files/", "/bhgeo"));
         assert!(!within_root_path("/bhgeo-other/", "/bhgeo"));
-    }
-
-    #[test]
-    fn labels_every_discovered_source_kind_for_logging() {
-        let sources = [
-            CrawledSource::Http {
-                url: "https://example.test/data.json".into(),
-            },
-            CrawledSource::Zip {
-                url: "https://example.test/data.zip".into(),
-            },
-            CrawledSource::Drive(DriveFile {
-                id: "drive-id".into(),
-                name: "data.json".into(),
-                mime_type: "application/json".into(),
-                modified_time: Some("2026-01-01T00:00:00Z".into()),
-                resource_key: Some("secret-resource-key".into()),
-            }),
-        ];
-
-        assert_eq!(
-            sources.map(|source| source.log_label()),
-            [
-                "http:https://example.test/data.json",
-                "zip:https://example.test/data.zip",
-                "drive:drive-id/data.json",
-            ]
-        );
     }
 
     #[test]
