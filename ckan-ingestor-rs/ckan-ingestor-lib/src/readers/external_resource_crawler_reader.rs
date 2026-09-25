@@ -247,6 +247,16 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
         while let Some(source) = futures::executor::block_on(copied.next()) {
             materialized.push(source?);
         }
+        log::info!(
+            "External crawler materialized {} source(s) for resource {}: {}",
+            materialized.len(),
+            resource.id,
+            materialized
+                .iter()
+                .map(|source| format!("{} -> {}", source.source_label, source.resource.url))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         anyhow::ensure!(!materialized.is_empty(), "no matching files found");
         if materialized.len() > 1 {
             materialized.sort_by(|left, right| left.resource.id.cmp(&right.resource.id));
@@ -527,7 +537,7 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
             .client
             .get(format!("{}/files/{}", self.api_base, file.id))
             .header("x-goog-api-key", &self.api_key)
-            .query(&[("alt", "media")]);
+            .query(&[("alt", "media"), ("supportsAllDrives", "true")]);
         if let Some(key) = &file.resource_key {
             request = request.header("x-goog-drive-resource-keys", format!("{}/{}", file.id, key));
         }
@@ -1134,7 +1144,8 @@ mod tests {
         let _download = server.mock(|when, then| {
             when.method(httpmock::Method::GET)
                 .path("/drive/v3/files/file_1")
-                .query_param("alt", "media");
+                .query_param("alt", "media")
+                .query_param("supportsAllDrives", "true");
             then.status(200)
                 .header("content-type", "image/tiff")
                 .body("TIFF");
