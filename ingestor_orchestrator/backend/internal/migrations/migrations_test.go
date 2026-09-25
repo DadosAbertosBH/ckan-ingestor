@@ -60,6 +60,25 @@ func TestCSVHintMigrationContainsAllLegacySeeds(t *testing.T) {
 	}
 }
 
+func TestDefaultCKANInstancesAreSeeded(t *testing.T) {
+	data, err := files.ReadFile("sql/00005_default_ckan_instances.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := string(data)
+	for _, value := range []string{
+		"INSERT IGNORE INTO ckan_instance",
+		"PBH",
+		"https://dados.pbh.gov.br",
+		"Minas Gerais",
+		"https://dados.mg.gov.br/",
+	} {
+		if !strings.Contains(sql, value) {
+			t.Fatalf("default instance migration is missing %q", value)
+		}
+	}
+}
+
 func TestChildJobsMigrationHasGooseUpAndExpectedColumns(t *testing.T) {
 	data, err := files.ReadFile("sql/00004_child_jobs.sql")
 	if err != nil {

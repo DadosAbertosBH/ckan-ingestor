@@ -34,7 +34,9 @@ use reqwest::{
 };
 use url::Url;
 
-use crate::{DownloadedSource, HttpStatusError, MediaType, S3Settings, Source, SourceVersion};
+use crate::{
+    CopiedSource, DownloadedSource, HttpStatusError, MediaType, S3Settings, Source, SourceVersion,
+};
 
 const RETRIES: usize = 3;
 const MULTIPART_CONCURRENCY: usize = 2;
@@ -163,16 +165,21 @@ impl SourceStorage {
         self.store_at_key(&format!("docs/{}", source.source.filename), source)
     }
 
-    pub fn cached_crawled_url(&self, source: &Source) -> Result<Option<String>> {
-        self.current_url(&Path::from(crawled_file_key(source)), &source.version)
+    pub fn cached_crawled(&self, source: Source) -> Result<Option<CopiedSource>> {
+        let url = self.current_url(&Path::from(crawled_file_key(&source)), &source.version)?;
+        Ok(url.map(|url| CopiedSource { source, url }))
     }
 
     pub fn crawled_url(&self, source: &Source) -> String {
         format!("{}/{}", self.public_url, crawled_file_key(source))
     }
 
-    pub fn store_crawled(&self, source: &DownloadedSource) -> Result<String> {
-        self.store_at_key(&crawled_file_key(&source.source), source)
+    pub fn copy_crawled(&self, source: DownloadedSource) -> Result<CopiedSource> {
+        let url = self.store_at_key(&crawled_file_key(&source.source), &source)?;
+        Ok(CopiedSource {
+            source: source.source.clone(),
+            url,
+        })
     }
 
     fn store_at_key(&self, key: &str, source: &DownloadedSource) -> Result<String> {

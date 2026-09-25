@@ -37,7 +37,9 @@ use crate::{
         crawler_archive::{matches_format, visit_zip, ArchiveLimits},
     },
 };
-use source_io::{DownloadedSource, MediaType, Source, SourceStorage, SourceVersion, TemporaryPath};
+use source_io::{
+    CopiedSource, DownloadedSource, MediaType, Source, SourceStorage, SourceVersion, TemporaryPath,
+};
 
 const MAX_PAGE_BYTES: u64 = 8 * 1024 * 1024;
 const FOLDER_MIME: &str = "application/vnd.google-apps.folder";
@@ -99,11 +101,9 @@ struct DrivePage {
     incomplete_search: bool,
 }
 
-struct CopiedSource {
+struct ChildSource {
     resource: CkanResource,
     source_label: String,
-    public_url: String,
-    _downloaded: Option<DownloadedSource>,
 }
 
 #[derive(Clone)]
@@ -255,7 +255,7 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                     .iter()
                     .map(|source| DiscoveredChild {
                         resource_id: source.resource.id.clone(),
-                        url: source.public_url.clone(),
+                        url: source.resource.url.clone(),
                         source_label: source.source_label.clone(),
                         format: source.resource.format.clone(),
                         last_modified: source.resource.last_modified.clone(),
@@ -403,7 +403,7 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
         resource: &'b CkanResource,
         sources: &'b [CrawledSource],
         limits: ArchiveLimits,
-    ) -> impl Stream<Item = Result<CopiedSource>> + 'b {
+    ) -> impl Stream<Item = Result<ChildSource>> + 'b {
         async_stream::stream! {
             for source in sources {
                 match self.copy_source(resource, source, limits) {
@@ -426,40 +426,19 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
         resource: &CkanResource,
         source: &CrawledSource,
         limits: ArchiveLimits,
-    ) -> Result<Vec<CopiedSource>> {
+    ) -> Result<Vec<ChildSource>> {
         let mut copied = Vec::new();
         match source {
             CrawledSource::Http { url } => {
                 let source = self
                     .storage
                     .inspect(Source::from_url_with_format(url, &resource.format));
-                if let Some(cached_url) = self.storage.cached_crawled_url(&source)? {
-                    copied.push(CopiedSource {
-                        resource: child_resource(
-                            resource,
-                            cached_url.clone(),
-                            &source.identity,
-                            source.version.as_str(),
-                        ),
-                        source_label: url.clone(),
-                        public_url: cached_url,
-                        _downloaded: None,
-                    });
+                if let Some(copied_source) = self.storage.cached_crawled(source.clone())? {
+                    copied.push(child_source(resource, copied_source, url.clone()));
                     return Ok(copied);
                 }
-                let downloaded = self.storage.download(source)?;
-                let public_url = self.storage.store_crawled(&downloaded)?;
-                copied.push(CopiedSource {
-                    resource: child_resource(
-                        resource,
-                        downloaded.path.to_string_lossy().into_owned(),
-                        &downloaded.source.identity,
-                        downloaded.source.version.as_str(),
-                    ),
-                    source_label: url.clone(),
-                    public_url,
-                    _downloaded: Some(downloaded),
-                });
+                let copied_source = self.storage.copy_crawled(self.storage.download(source)?)?;
+                copied.push(child_source(resource, copied_source, url.clone()));
             }
             CrawledSource::Drive(file) => {
                 let modified_time = file
@@ -472,33 +451,15 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                     &file.name,
                     SourceVersion::known(modified_time),
                 );
-                if let Some(cached_url) = self.storage.cached_crawled_url(&source)? {
-                    copied.push(CopiedSource {
-                        resource: child_resource(
-                            resource,
-                            cached_url.clone(),
-                            &source.identity,
-                            source.version.as_str(),
-                        ),
-                        source_label: format!("drive://{}/{}", file.id, file.name),
-                        public_url: cached_url,
-                        _downloaded: None,
-                    });
+                let source_label = format!("drive://{}/{}", file.id, file.name);
+                if let Some(copied_source) = self.storage.cached_crawled(source.clone())? {
+                    copied.push(child_source(resource, copied_source, source_label));
                     return Ok(copied);
                 }
-                let downloaded = self.download_drive_file(file, source)?;
-                let public_url = self.storage.store_crawled(&downloaded)?;
-                copied.push(CopiedSource {
-                    resource: child_resource(
-                        resource,
-                        downloaded.path.to_string_lossy().into_owned(),
-                        &downloaded.source.identity,
-                        downloaded.source.version.as_str(),
-                    ),
-                    source_label: format!("drive://{}/{}", file.id, file.name),
-                    public_url,
-                    _downloaded: Some(downloaded),
-                });
+                let copied_source = self
+                    .storage
+                    .copy_crawled(self.download_drive_file(file, source)?)?;
+                copied.push(child_source(resource, copied_source, source_label));
             }
             CrawledSource::Zip { url } => {
                 let path = download_zip_to_temp(&self.client, url, limits.max_zip_bytes)?;
@@ -512,18 +473,12 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                         let mut source =
                             Source::from_url_with_format(source_name, &resource.format);
                         source.version = source_version(modified.map(str::to_owned));
-                        if let Some(cached_url) = self.storage.cached_crawled_url(&source)? {
-                            copied.push(CopiedSource {
-                                resource: child_resource(
-                                    resource,
-                                    cached_url.clone(),
-                                    &source.identity,
-                                    source.version.as_str(),
-                                ),
-                                source_label: source_name.to_owned(),
-                                public_url: cached_url,
-                                _downloaded: None,
-                            });
+                        if let Some(copied_source) = self.storage.cached_crawled(source.clone())? {
+                            copied.push(child_source(
+                                resource,
+                                copied_source,
+                                source_name.to_owned(),
+                            ));
                             return Ok(());
                         }
                         let retained = source.temporary_path();
@@ -533,18 +488,12 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                             retained,
                             MediaType::known(content_type_for_format(&resource.format)),
                         );
-                        let public_url = self.storage.store_crawled(&downloaded)?;
-                        copied.push(CopiedSource {
-                            resource: child_resource(
-                                resource,
-                                downloaded.path.to_string_lossy().into_owned(),
-                                &downloaded.source.identity,
-                                downloaded.source.version.as_str(),
-                            ),
-                            source_label: source_name.to_owned(),
-                            public_url,
-                            _downloaded: Some(downloaded),
-                        });
+                        let copied_source = self.storage.copy_crawled(downloaded)?;
+                        copied.push(child_source(
+                            resource,
+                            copied_source,
+                            source_name.to_owned(),
+                        ));
                         Ok(())
                     },
                 )?;
@@ -614,6 +563,18 @@ fn child_resource(
         url,
         last_modified: last_modified.unwrap_or_default().to_owned(),
         ..parent.clone()
+    }
+}
+
+fn child_source(parent: &CkanResource, copied: CopiedSource, source_label: String) -> ChildSource {
+    ChildSource {
+        resource: child_resource(
+            parent,
+            copied.url,
+            &copied.source.identity,
+            copied.source.version.as_str(),
+        ),
+        source_label,
     }
 }
 
@@ -903,7 +864,7 @@ mod tests {
     }
 
     #[test]
-    fn emits_a_temporary_source_only_after_uploading_it_to_crawled_files() {
+    fn emits_an_r2_source_after_uploading_it_to_crawled_files() {
         let server = httpmock::MockServer::start();
         let _file = server.mock(|when, then| {
             when.method(httpmock::Method::GET).path("/records.json");
@@ -941,7 +902,7 @@ mod tests {
             .expect("one source")
             .expect("source copy succeeds");
 
-        assert!(Path::new(&source.resource.url).exists());
+        assert!(source.resource.url.contains("/crawled-files/"));
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let objects = runtime
             .block_on(store.list(None).try_collect::<Vec<_>>())
@@ -990,7 +951,7 @@ mod tests {
         .expect("second member")
         .expect("cached copy succeeds");
 
-        assert!(Path::new(&first.resource.url).exists());
+        assert!(first.resource.url.contains("/crawled-files/"));
         assert!(second.resource.url.contains("/crawled-files/"));
         assert_eq!(_archive.hits(), 2, "ZIP is always extracted again");
     }

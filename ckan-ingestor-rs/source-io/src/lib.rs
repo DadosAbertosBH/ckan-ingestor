@@ -170,6 +170,13 @@ pub struct DownloadedSource {
     pub media_type: MediaType,
 }
 
+/// A source copied to durable storage, either from the cache or a fresh upload.
+#[derive(Clone, Debug)]
+pub struct CopiedSource {
+    pub source: Source,
+    pub url: String,
+}
+
 impl DownloadedSource {
     pub fn from_path(source: Source, path: PathBuf, media_type: MediaType) -> Self {
         Self {
