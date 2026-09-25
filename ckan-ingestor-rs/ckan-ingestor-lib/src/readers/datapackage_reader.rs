@@ -96,7 +96,7 @@ impl DatapackageReader {
 
     fn read_document(&self, resource: &CkanResource) -> ReadResult {
         let tempfile = download_to_temp(&self.client, &resource.url, ".json")?;
-        let document: Value = serde_json::from_reader(File::open(&tempfile.path_as_str()?)?)
+        let document: Value = serde_json::from_reader(File::open(tempfile.path_as_str()?)?)
             .with_context(|| format!("invalid datapackage JSON: {}", resource.url))?;
         let resources = document
             .get("resources")

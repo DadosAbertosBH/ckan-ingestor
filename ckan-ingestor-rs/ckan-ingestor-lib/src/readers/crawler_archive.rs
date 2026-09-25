@@ -34,6 +34,12 @@ pub(crate) struct ArchiveLimits {
     pub max_entries: usize,
 }
 
+struct ArchiveVisitState {
+    depth: usize,
+    entries: usize,
+    expanded: u64,
+}
+
 impl Default for ArchiveLimits {
     fn default() -> Self {
         Self {
@@ -83,18 +89,12 @@ pub(crate) fn visit_zip<F>(
 where
     F: FnMut(&Path, &str, Option<&str>) -> Result<()>,
 {
-    let mut entries = 0;
-    let mut expanded = 0;
-    visit_zip_inner(
-        path,
-        source,
-        format,
-        limits,
-        1,
-        &mut entries,
-        &mut expanded,
-        visit,
-    )
+    let mut state = ArchiveVisitState {
+        depth: 1,
+        entries: 0,
+        expanded: 0,
+    };
+    visit_zip_inner(path, source, format, limits, &mut state, visit)
 }
 
 fn visit_zip_inner<F>(
@@ -102,16 +102,14 @@ fn visit_zip_inner<F>(
     source: &str,
     format: &str,
     limits: ArchiveLimits,
-    depth: usize,
-    entries: &mut usize,
-    expanded: &mut u64,
+    state: &mut ArchiveVisitState,
     visit: &mut F,
 ) -> Result<usize>
 where
     F: FnMut(&Path, &str, Option<&str>) -> Result<()>,
 {
     anyhow::ensure!(
-        depth <= limits.max_depth,
+        state.depth <= limits.max_depth,
         "ZIP nesting exceeds configured depth"
     );
     anyhow::ensure!(
@@ -121,9 +119,9 @@ where
     let mut archive = ZipArchive::new(File::open(path)?)?;
     let mut found = 0;
     for index in 0..archive.len() {
-        *entries += 1;
+        state.entries += 1;
         anyhow::ensure!(
-            *entries <= limits.max_entries,
+            state.entries <= limits.max_entries,
             "ZIP entry count exceeds configured limit"
         );
         let mut member = archive.by_index(index)?;
@@ -131,11 +129,12 @@ where
             continue;
         }
         let member_size = member.size();
-        *expanded = expanded
+        state.expanded = state
+            .expanded
             .checked_add(member_size)
             .context("ZIP size overflow")?;
         anyhow::ensure!(
-            *expanded <= limits.max_expanded_bytes,
+            state.expanded <= limits.max_expanded_bytes,
             "ZIP expanded size exceeds configured limit"
         );
         let name = member.name().to_owned();
@@ -168,16 +167,11 @@ where
         drop(output);
         let member_source = format!("{source}!/{name}");
         if nested {
-            found += visit_zip_inner(
-                &temp_path,
-                &member_source,
-                format,
-                limits,
-                depth + 1,
-                entries,
-                expanded,
-                visit,
-            )?;
+            state.depth += 1;
+            let nested_found =
+                visit_zip_inner(&temp_path, &member_source, format, limits, state, visit)?;
+            state.depth -= 1;
+            found += nested_found;
         } else {
             visit(&temp_path, &member_source, modified.as_deref())?;
             found += 1;

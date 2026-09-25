@@ -170,11 +170,13 @@ impl MessageProcessor for JobProcessor {
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
 enum WorkerOutput {
     Job(JobMessage),
     Result(JobResultMessage),
 }
 
+#[allow(clippy::large_enum_variant)]
 enum ConversionOutcome {
     Result(JobResultMessage),
     Children(Vec<DiscoveredChild>),

@@ -48,8 +48,8 @@ impl MessageProcessor for ParquetProcessor {
         stream! {
             if let (Some(parent_job_id), Some(parent_resource_id)) =
                 (result.parent_job_id.clone(), result.parent_resource_id.clone())
+                && matches!(result.status, JobStatus::Success | JobStatus::Failed | JobStatus::Deleted)
             {
-                if matches!(result.status, JobStatus::Success | JobStatus::Failed | JobStatus::Deleted) {
                     if result.status == JobStatus::Success && result.artifact.is_none() {
                         result.status = JobStatus::Failed;
                         result.error_message = Some("child success is missing its Parquet artifact".into());
@@ -89,7 +89,6 @@ impl MessageProcessor for ParquetProcessor {
                     }
                     return;
                 }
-            }
             if result.status == JobStatus::Success {
                 let registration = async {
                     // A deterministic S3 object found by the worker is an

@@ -274,14 +274,14 @@ impl CsvReader {
         )?;
 
         let mut metadata = sniff_metadata(
-            &tempfile.path_as_str()?,
+            tempfile.path_as_str()?,
             self.csv_delimiter.as_deref(),
             SampleSize::Records(CSV_READER_INITIAL_SAMPLE_RECORDS),
             false,
         )?;
 
         self.try_read_csv(
-            &tempfile.path_as_str()?,
+            tempfile.path_as_str()?,
             &mut metadata,
             true,
             SampleSize::Records(CSV_READER_INITIAL_SAMPLE_RECORDS),
