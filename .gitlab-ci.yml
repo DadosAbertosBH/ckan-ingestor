@@ -134,7 +134,7 @@ test-rust:
     TESTCONTAINERS_HOST_OVERRIDE: "docker"
     RAYON_NUM_THREADS: "1"
   cache:
-    - key: ckan-rust-v1
+    - key: ckan-rust-v2
       paths:
         - .cargo-home/
         # - .kache/
