@@ -137,7 +137,7 @@ test-rust:
     - key: ckan-rust-v1
       paths:
         - .cargo-home/
-        - .kache/
+        # - .kache/
   script:
     - until curl -fsS http://docker:2375/_ping; do sleep 1; done
     - cd ckan-ingestor-rs
