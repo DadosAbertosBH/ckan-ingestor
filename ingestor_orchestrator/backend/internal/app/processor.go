@@ -70,7 +70,7 @@ func (p *Processor) ApplyJobResult(ctx context.Context, message JobResultMessage
 		}
 		switch message.Status {
 		case "PROCESSING":
-			return p.applyProcessing(ctx, tx, job)
+			return p.applyProcessing(ctx, tx, job, message)
 		case "FAILED":
 			return p.applyFailed(ctx, tx, job, message)
 		case "DELETED":
@@ -93,6 +93,9 @@ func (p *Processor) applyPending(ctx context.Context, tx Tx, message JobResultMe
 	now := p.now()
 	job := &Job{
 		ID: message.JobID, ResourceID: message.ResourceID, ResourceName: message.ResourceName,
+		SourceVersion: message.SourceVersion,
+		ParentJobID:   message.ParentJobID, ParentResourceID: message.ParentResourceID,
+		ChildIndex: message.ChildIndex, TotalChildCount: message.TotalChildCount,
 		ResourceURL: message.ResourceURL, ResourceFormat: message.ResourceFormat,
 		DatasetName: *message.DatasetName, Status: JobPending, IdempotencyKey: message.ResourceID,
 		InstanceID: *message.InstanceID, CreatedAt: now, UpdatedAt: now,
@@ -105,6 +108,9 @@ func (p *Processor) applyPending(ctx context.Context, tx Tx, message JobResultMe
 	}
 	if err := tx.InsertJob(ctx, job); err != nil {
 		return err
+	}
+	if job.ParentJobID != nil {
+		return nil
 	}
 	status, err := p.resourceStatus(ctx, tx, job.ResourceID, JobPending)
 	if err != nil {
@@ -120,11 +126,17 @@ func (p *Processor) applyPending(ctx context.Context, tx Tx, message JobResultMe
 // attempt. Reopening here (and not on PENDING) keeps the discovery announcement
 // idempotent while the terminal guards in applySuccess/applyFailed still discard
 // genuinely late results.
-func (p *Processor) applyProcessing(ctx context.Context, tx Tx, job *Job) error {
+func (p *Processor) applyProcessing(ctx context.Context, tx Tx, job *Job, message JobResultMessage) error {
 	now := p.now()
+	if message.TotalChildCount != nil {
+		job.TotalChildCount = message.TotalChildCount
+	}
 	job.Status, job.StartedAt, job.CompletedAt, job.UpdatedAt = JobProcessing, &now, nil, now
 	if err := tx.UpdateJob(ctx, job); err != nil {
 		return err
+	}
+	if job.ParentJobID != nil {
+		return nil
 	}
 	return p.updateLatest(ctx, tx, job, string(JobProcessing))
 }
@@ -132,6 +144,9 @@ func (p *Processor) applyProcessing(ctx context.Context, tx Tx, job *Job) error 
 func (p *Processor) applyFailed(ctx context.Context, tx Tx, job *Job, message JobResultMessage) error {
 	if job.Status == JobFailed || job.Status == JobCompleted || job.Status == JobDeleted {
 		return nil
+	}
+	if job.ParentJobID != nil {
+		return p.applyChildTerminal(ctx, tx, job, message)
 	}
 	if err := tx.RemoveLabel(ctx, job.ResourceID, "empty"); err != nil {
 		return err
@@ -167,6 +182,9 @@ func (p *Processor) applyDeleted(ctx context.Context, tx Tx, job *Job) error {
 	if job.Status == JobDeleted || job.Status == JobCompleted || job.Status == JobFailed {
 		return nil
 	}
+	if job.ParentJobID != nil {
+		return p.applyChildTerminal(ctx, tx, job, JobResultMessage{Status: "DELETED"})
+	}
 	if err := tx.RemoveLabel(ctx, job.ResourceID, "empty"); err != nil {
 		return err
 	}
@@ -190,6 +208,9 @@ func (p *Processor) applyDeleted(ctx context.Context, tx Tx, job *Job) error {
 func (p *Processor) applySuccess(ctx context.Context, tx Tx, job *Job, message JobResultMessage) error {
 	if job.Status == JobCompleted || job.Status == JobFailed || job.Status == JobDeleted {
 		return nil
+	}
+	if job.ParentJobID != nil {
+		return p.applyChildTerminal(ctx, tx, job, message)
 	}
 	if err := tx.RemoveLabelsWithPrefix(ctx, job.ResourceID, "http-code:"); err != nil {
 		return err
@@ -229,6 +250,23 @@ func (p *Processor) applySuccess(ctx context.Context, tx Tx, job *Job, message J
 		return err
 	}
 	return p.updateLatest(ctx, tx, job, string(JobCompleted))
+}
+
+func (p *Processor) applyChildTerminal(ctx context.Context, tx Tx, job *Job, message JobResultMessage) error {
+	now := p.now()
+	status := JobCompleted
+	if message.Status == "FAILED" {
+		status = JobFailed
+	}
+	if message.Status == "DELETED" {
+		status = JobDeleted
+	}
+	result := &JobResult{ID: p.newID(), JobID: job.ID, Success: status != JobFailed, Status: status, ErrorMessage: message.ErrorMessage, RowsProcessed: message.RowsProcessed, CreatedAt: now}
+	if err := tx.InsertResult(ctx, result); err != nil {
+		return err
+	}
+	job.Status, job.CompletedAt, job.UpdatedAt = status, &now, now
+	return tx.UpdateJob(ctx, job)
 }
 
 func (p *Processor) applyLabels(ctx context.Context, tx Tx, resourceID string, message JobResultMessage, rows int64) error {

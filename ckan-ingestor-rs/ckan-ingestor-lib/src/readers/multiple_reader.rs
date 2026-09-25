@@ -15,10 +15,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 use crate::ckan_resource::CkanResource;
-use crate::readers::ckan_reader::{CkanReader, FailedResult, HttpStatusError, ReadResult};
+use crate::readers::ckan_reader::{CkanReader, FailedResult, ReadResult};
 use log::info;
 use reqwest::blocking::Client;
 use reqwest::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
+use source_io::HttpStatusError;
 
 /// Infers the format of a CKAN resource that has an empty `format` field.
 ///

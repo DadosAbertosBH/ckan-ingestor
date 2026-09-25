@@ -18,10 +18,7 @@ use std::sync::Arc;
 use crate::{
     ckan_resource::CkanResource,
     parquet_output::ParquetOutput,
-    readers::{
-        ckan_reader::{download_to_temp, CkanReader, FailedResult, ReadResult, SuccessResult},
-        temp_file_cleanup::TempFileCleanup,
-    },
+    readers::ckan_reader::{download_to_temp, CkanReader, FailedResult, ReadResult, SuccessResult},
 };
 
 const TEXT_FIELDS: [&str; 13] = [
@@ -98,17 +95,8 @@ impl DatapackageReader {
     }
 
     fn read_document(&self, resource: &CkanResource) -> ReadResult {
-        let is_remote = resource.url.starts_with("http://") || resource.url.starts_with("https://");
-        let path = if is_remote {
-            download_to_temp(&self.client, &resource.url, ".json")?
-        } else {
-            resource.url.clone()
-        };
-        let mut cleanup = TempFileCleanup::from_path(path.clone().into());
-        if !is_remote {
-            cleanup.commit();
-        }
-        let document: Value = serde_json::from_reader(File::open(&path)?)
+        let tempfile = download_to_temp(&self.client, &resource.url, ".json")?;
+        let document: Value = serde_json::from_reader(File::open(&tempfile.path_as_str()?)?)
             .with_context(|| format!("invalid datapackage JSON: {}", resource.url))?;
         let resources = document
             .get("resources")

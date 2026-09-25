@@ -122,6 +122,21 @@
                 </div>
             </div>
 
+            <div v-if="resource.latest_job?.children?.length" class="jobs-section">
+                <h2 class="section-title">Child jobs ({{ resource.latest_job.children.length }})</h2>
+                <table class="data-table">
+                    <thead><tr><th>#</th><th>File</th><th>Status</th><th></th></tr></thead>
+                    <tbody>
+                        <tr v-for="child in resource.latest_job.children" :key="child.id">
+                            <td>{{ (child.child_index ?? 0) + 1 }}</td>
+                            <td>{{ child.resource_name || child.resource_id }}</td>
+                            <td><JobStatusBadge :status="child.status" /></td>
+                            <td><router-link :to="{ name: 'job-detail', params: { id: child.id } }">Details</router-link></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
             <div class="jobs-section">
                 <h2 class="section-title">
                     Job History ({{ resource.jobs?.length ?? 0 }})

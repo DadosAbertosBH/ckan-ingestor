@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 ckan_ingestor_lib = { path = "../ckan-ingestor-lib", default-features = false }
+source_io = { path = "../source-io" }
 ckan_ingestor_worker_lib = { path = "../ckan-ingestor-worker-lib" }
 iggy_processor = { path = "../iggy-processor" }
 message_processor = { path = "../message-processor" }
@@ -27,6 +28,7 @@ url = "2"
 base64 = "0.22"
 arrow-ipc = "=59.2.0"
 arrow = "=59.2.0"
+uuid = { version = "1", features = ["v5"] }
 
 [dev-dependencies]
 message_processor = { path = "../message-processor", features = ["test-support"] }

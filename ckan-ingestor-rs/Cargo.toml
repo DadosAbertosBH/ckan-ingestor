@@ -7,5 +7,6 @@ members = [
     "ckan-metadata-ingestor",
     "ckan-ingestor-consumer",
     "ckan-worker-coordinator",
+    "source-io"
 ]
 resolver = "2"

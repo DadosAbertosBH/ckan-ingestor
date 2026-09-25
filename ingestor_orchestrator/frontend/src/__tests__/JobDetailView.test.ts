@@ -83,6 +83,16 @@ beforeEach(() => {
 });
 
 describe("JobDetailView — labels", () => {
+  it("shows child jobs inline with their processing status", async () => {
+    mockFetchJob.mockResolvedValue({ ...makeJob(),
+      children: [makeJob({ id: "child-1", resource_name: "arquivo.json", status: "processing" })],
+    });
+    const wrapper = await mountDetail();
+    await flushPromises();
+    expect(wrapper.text()).toContain("Child jobs (1)");
+    expect(wrapper.text()).toContain("arquivo.json");
+    expect(wrapper.find('a[href="/jobs/child-1"]').exists()).toBe(true);
+  });
   it("renders only topic, partition, and offset in broker metadata", async () => {
     mockFetchJob.mockResolvedValue(
       makeJob({

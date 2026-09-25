@@ -24,6 +24,11 @@ export interface InstanceStats {
 
 export interface Job {
   id: string;
+  parent_job_id?: string | null;
+  parent_resource_id?: string | null;
+  child_index?: number | null;
+  total_child_count?: number | null;
+  children?: Job[];
   instance_id: string | null;
   instance_name: string | null;
   resource_id: string;

@@ -151,6 +151,14 @@ impl S3DocumentIngestor {
         }
     }
 
+    pub fn crawled_file_url(&self, source_identity: &str, filename: &str) -> String {
+        format!(
+            "{}/{}",
+            self.public_url,
+            crawled_file_key(source_identity, filename)
+        )
+    }
+
     /// Streams a materialized crawler file to the shared `crawled-files/` namespace.
     pub fn ingest_crawled_path(
         &self,

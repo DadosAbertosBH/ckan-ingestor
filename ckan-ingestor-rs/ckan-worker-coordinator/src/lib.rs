@@ -7,6 +7,8 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
+pub mod child_jobs;
+pub mod child_merge;
 pub mod data_writer;
 pub mod ducklake_data_writer;
 pub mod metadata_message_processor;
@@ -25,6 +27,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
 
+use crate::child_jobs::ChildJobs;
 use crate::ducklake_data_writer::DucklakeDataWriter;
 use crate::metadata_message_processor::MetadataProcessor;
 use crate::metadata_sync_processor::MetadataSyncProcessor;
@@ -180,6 +183,8 @@ pub async fn run() -> Result<()> {
     factory.initialize().await?;
     let registrar = ParquetRegistrar::new(factory.clone());
     registrar.initialize().await?;
+    let child_jobs = ChildJobs::new(factory.clone());
+    child_jobs.initialize().await?;
     let metadata_writer =
         DucklakeDataWriter::new(factory.client().await?, factory.storage_options().to_vec());
     let processor = MetadataSyncProcessor::new(factory.clone(), metadata_writer);
@@ -199,7 +204,7 @@ pub async fn run() -> Result<()> {
     let mut parquet_consumer = WorkerHandler::new(
         IggySource::new(parquet_client, parquet_consumer),
         publisher.clone(),
-        parquet_processor(&settings, registrar),
+        parquet_processor(&settings, registrar, child_jobs),
     );
     parquet_consumer.run();
     let shutdown = Arc::new(Notify::new());
@@ -212,8 +217,12 @@ pub async fn run() -> Result<()> {
     Ok(())
 }
 
-fn parquet_processor(settings: &IggySettings, registrar: ParquetRegistrar) -> ParquetProcessor {
-    ParquetProcessor::new(settings.result_topic.clone(), registrar)
+fn parquet_processor(
+    settings: &IggySettings,
+    registrar: ParquetRegistrar,
+    child_jobs: ChildJobs,
+) -> ParquetProcessor {
+    ParquetProcessor::new(settings.result_topic.clone(), registrar, child_jobs)
 }
 
 async fn connected_client(connection_string: &str) -> Result<IggyClient> {
@@ -320,11 +329,14 @@ mod tests {
             parquet_result_topic: "internal-parquet-results".into(),
             ..IggySettings::default()
         };
-        let registrar = ParquetRegistrar::new(DucklakeFactory::for_sqlite(
+        let factory = DucklakeFactory::for_sqlite(
             &temp.path().join("catalog.sqlite"),
             &temp.path().join("data"),
-        ));
-        let processor = parquet_processor(&settings, registrar);
+        );
+        let registrar = ParquetRegistrar::new(factory.clone());
+        let child_jobs = ChildJobs::new(factory);
+        child_jobs.initialize().await.unwrap();
+        let processor = parquet_processor(&settings, registrar, child_jobs);
         let mut result = JobResultMessage::pending("job", "resource", "dataset", "instance");
         result.status = JobStatus::Failed;
 

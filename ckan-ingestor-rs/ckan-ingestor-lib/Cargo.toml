@@ -8,6 +8,7 @@ default = ["ducklake-backend"]
 ducklake-backend = ["dep:ducklake"]
 
 [dependencies]
+source_io = { path = "../source-io" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"] }
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }

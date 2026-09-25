@@ -60,7 +60,12 @@ impl CkanReader for FileReferenceReader<'_> {
         ]
         .join(".");
         let local_path = Path::new(&resource.url);
-        let download_url = if local_path.is_file() {
+        let download_url = if resource
+            .url
+            .starts_with(&format!("{}/crawled-files/", self.ingestor.public_url))
+        {
+            resource.url.clone()
+        } else if local_path.is_file() {
             self.ingestor.ingest_path(
                 &filename,
                 local_path,
@@ -138,6 +143,29 @@ mod tests {
         };
 
         assert!(reader.can_read(&resource));
+    }
+
+    #[test]
+    fn reuses_a_crawled_file_url_without_downloading_it_again() {
+        let ingestor = S3DocumentIngestor::new_with_store(
+            "https://files.example/documents".into(),
+            Arc::new(InMemory::new()),
+        );
+        let reader = FileReferenceReader::new(&ingestor);
+        let resource = CkanResource {
+            id: "child-id".into(),
+            package_id: "package-id".into(),
+            url: "https://files.example/documents/crawled-files/hash/mapa.tif".into(),
+            format: "TIF".into(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = reader.read(&resource);
+        assert!(
+            result.is_ok(),
+            "cached R2 reference should be read directly"
+        );
     }
 
     #[test]

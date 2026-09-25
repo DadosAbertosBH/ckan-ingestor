@@ -67,6 +67,45 @@ func TestRetryJobPersistsAttemptAfterPublishingRetryMessage(t *testing.T) {
 	}
 }
 
+func TestRetryKeepsOriginalSourceVersion(t *testing.T) {
+	store := newMemoryStore()
+	var pending JobResultMessage
+	if err := json.Unmarshal([]byte(`{"job_id":"original","status":"PENDING","resource_id":"resource","dataset_name":"dataset","instance_id":"instance","source_version":"2026-09-01T00:00:00Z"}`), &pending); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixedProcessor(store).ApplyJobResult(context.Background(), pending); err != nil {
+		t.Fatal(err)
+	}
+	pub := &fakePublisher{}
+	dispatcher := &Dispatcher{Store: store, Publisher: pub, RetryTopic: "jobs-retry", NewID: func() string { return "retry" }}
+	if _, err := dispatcher.RetryJob(context.Background(), "original"); err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(pub.messages[0].payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["source_version"] != "2026-09-01T00:00:00Z" {
+		t.Fatalf("retry source version = %#v", payload["source_version"])
+	}
+	if payload["dataset_name"] != "dataset" || payload["instance_id"] != "instance" {
+		t.Fatalf("retry lost child-job discovery metadata: %#v", payload)
+	}
+}
+
+func TestRetryJobRequiresTheParentForChildJobs(t *testing.T) {
+	store := newMemoryStore()
+	store.jobs["child"] = &Job{ID: "child", ParentJobID: ptr("parent"), ResourceID: "child-resource", DatasetName: "dataset", InstanceID: "instance", Status: JobFailed}
+	pub := &fakePublisher{}
+	dispatcher := &Dispatcher{Store: store, Publisher: pub, RetryTopic: "jobs-retry", NewID: func() string { return "retry" }}
+	if _, err := dispatcher.RetryJob(context.Background(), "child"); !errors.Is(err, ErrInvalidMessage) {
+		t.Fatalf("child retry error = %v", err)
+	}
+	if len(pub.messages) != 0 {
+		t.Fatal("child retry was published independently")
+	}
+}
+
 func TestRetryJobRequeuesNonFailedJob(t *testing.T) {
 	store := newMemoryStore()
 	store.jobs["completed"] = &Job{ID: "completed", ResourceID: "resource", DatasetName: "dataset", InstanceID: "instance", CKANURL: "https://example.test", Status: JobCompleted}

@@ -18,6 +18,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -215,6 +216,40 @@ func TestApplyPendingCreatesCoordinatedJobAndLatestProjection(t *testing.T) {
 	}
 	if store.latest["resource-1"] == nil || store.latest["resource-1"].LatestJobID != "job-1" {
 		t.Fatalf("latest not created: %#v", store.latest)
+	}
+}
+
+func TestChildJobResultsStayOutOfLatestResourceProjection(t *testing.T) {
+	store := newMemoryStore()
+	processor := fixedProcessor(store)
+	var pending JobResultMessage
+	if err := json.Unmarshal([]byte(`{"job_id":"child-1","status":"PENDING","resource_id":"child-resource","dataset_name":"dataset","instance_id":"instance-1","parent_job_id":"parent-1","parent_resource_id":"parent-resource","child_index":0,"total_child_count":2}`), &pending); err != nil {
+		t.Fatal(err)
+	}
+	if err := processor.ApplyJobResult(context.Background(), pending); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := store.latest["child-resource"]; exists {
+		t.Fatal("child resource was promoted to the main resource listing")
+	}
+	if store.jobs["child-1"].ParentJobID == nil || *store.jobs["child-1"].ParentJobID != "parent-1" {
+		t.Fatalf("child relationship was not retained: %#v", store.jobs["child-1"])
+	}
+	if err := processor.ApplyJobResult(context.Background(), JobResultMessage{
+		JobID: "child-1", Status: "PROCESSING", ResourceID: "child-resource",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := processor.ApplyJobResult(context.Background(), JobResultMessage{
+		JobID: "child-1", Status: "FAILED", ResourceID: "child-resource", ErrorMessage: ptr("bad JSON"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if store.jobs["child-1"].Status != JobFailed || len(store.results) != 1 {
+		t.Fatalf("child failure was not projected: %#v %#v", store.jobs["child-1"], store.results)
+	}
+	if _, exists := store.terminal["child-resource"]; exists {
+		t.Fatal("child terminal state was promoted to the main resource listing")
 	}
 }
 

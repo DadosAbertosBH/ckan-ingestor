@@ -21,7 +21,9 @@ use ckan_ingestor_lib::readers::ckan_reader::CkanReader;
 use ckan_ingestor_lib::readers::csv_reader::CsvReader;
 use ckan_ingestor_lib::readers::datapackage_reader::DatapackageReader;
 use ckan_ingestor_lib::readers::datastore_reader::DatastoreReader;
-use ckan_ingestor_lib::readers::external_resource_crawler_reader::ExternalResourceCrawlerReader;
+use ckan_ingestor_lib::readers::external_resource_crawler_reader::{
+    CrawlError, CrawlFanout, DiscoveredChild, ExternalResourceCrawlerReader,
+};
 use ckan_ingestor_lib::readers::file_reference_reader::FileReferenceReader;
 use ckan_ingestor_lib::readers::json_reader::JsonReader;
 use ckan_ingestor_lib::readers::logfile_reader::LogfileReader;
@@ -30,6 +32,7 @@ use ckan_ingestor_lib::readers::protobuf_reader::ProtobufReader;
 use ckan_ingestor_lib::s3_document_ingestor::S3DocumentIngestor;
 use futures::Stream;
 use reqwest::blocking::Client;
+use source_io::{S3Settings, SourceStorage};
 use std::{env, sync::Arc, time::Duration};
 use tokio::runtime::Runtime;
 
@@ -42,6 +45,7 @@ use message_processor::{MessageProcessor, OutgoingMessage};
 // ---------------------------------------------------------------------------
 
 pub struct JobProcessor {
+    job_destination: String,
     job_result_destination: String,
     s3: S3DocumentIngestor,
     uploader: ParquetUploader,
@@ -50,6 +54,7 @@ pub struct JobProcessor {
 
 impl JobProcessor {
     pub fn new(
+        job_destination: String,
         job_result_destination: String,
         s3: S3DocumentIngestor,
         uploader: ParquetUploader,
@@ -58,6 +63,7 @@ impl JobProcessor {
             .enable_all()
             .build()?;
         Ok(Self {
+            job_destination,
             job_result_destination,
             s3,
             uploader,
@@ -69,6 +75,7 @@ impl JobProcessor {
 impl Clone for JobProcessor {
     fn clone(&self) -> Self {
         Self {
+            job_destination: self.job_destination.clone(),
             job_result_destination: self.job_result_destination.clone(),
             s3: self.s3.clone(),
             uploader: self.uploader.clone(),
@@ -90,33 +97,117 @@ impl MessageProcessor for JobProcessor {
                 "Starting job {} for resource {} (version {})",
                 job.job_id,
                 job.resource_id,
-                if job.source_version.is_empty() { "legacy" } else { &job.source_version },
+                &job.source_version,
             );
             let processing = processing_job(&job);
             yield OutgoingMessage::new(
                 self.job_result_destination.clone(),
                 job.resource_id.clone(),
-                processing
+                WorkerOutput::Result(processing)
             );
 
             let runtime = Arc::clone(&self.runtime);
             let uploader = self.uploader.clone();
             let s3 = self.s3.clone();
             let conversion_job = job.clone();
-            let result = match tokio::task::spawn_blocking(move || {
+            let outcome = match tokio::task::spawn_blocking(move || {
                 run_conversion(&runtime, &uploader, &conversion_job, &s3)
             }).await {
                 Ok(Ok(result)) => result,
-                Ok(Err(error)) => failed_job(&job, error),
-                Err(error) => failed_job(&job, error),
+                Ok(Err(error)) => ConversionOutcome::Result(failed_job(&job, error)),
+                Err(error) => ConversionOutcome::Result(failed_job(&job, error)),
             };
-
-            yield OutgoingMessage::new(
-                self.job_result_destination.clone(),
-                job.resource_id.clone(),
-                result
-            );
+            match outcome {
+                ConversionOutcome::Result(result) => {
+                    yield OutgoingMessage::new(
+                        self.job_result_destination.clone(),
+                        job.resource_id.clone(),
+                        WorkerOutput::Result(result),
+                    );
+                }
+                ConversionOutcome::Children(children) => {
+                    let count = u32::try_from(children.len()).expect("bounded child count");
+                    let mut manifest = processing_job(&job);
+                    manifest.total_child_count = Some(count);
+                    yield OutgoingMessage::new(
+                        self.job_result_destination.clone(),
+                        job.resource_id.clone(),
+                        WorkerOutput::Result(manifest),
+                    );
+                    for (index, child) in children.into_iter().enumerate() {
+                        let child_job = child_job(&job, child, index as u32, count);
+                        let mut pending = JobResultMessage::pending(
+                            &child_job.job_id,
+                            &child_job.resource_id,
+                            job.dataset_name.as_deref().unwrap_or_default(),
+                            job.instance_id.as_deref().unwrap_or_default(),
+                        );
+                        pending.parent_job_id = child_job.parent_job_id.clone();
+                        pending.source_version = Some(child_job.source_version.clone());
+                        pending.parent_resource_id = child_job.parent_resource_id.clone();
+                        pending.child_index = child_job.child_index;
+                        pending.total_child_count = child_job.total_child_count;
+                        pending.resource_name = child_job.resource_name.clone();
+                        pending.resource_url = Some(child_job.resource_url.clone());
+                        pending.resource_format = Some(child_job.resource_format.clone());
+                        pending.ckan_url = Some(job.ckan_url.clone());
+                        yield OutgoingMessage::new(
+                            self.job_result_destination.clone(),
+                            job.resource_id.clone(),
+                            WorkerOutput::Result(pending),
+                        );
+                        yield OutgoingMessage::new(
+                            self.job_destination.clone(),
+                            child_job.resource_id.clone(),
+                            WorkerOutput::Job(child_job),
+                        );
+                    }
+                }
+            }
         }
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(untagged)]
+enum WorkerOutput {
+    Job(JobMessage),
+    Result(JobResultMessage),
+}
+
+enum ConversionOutcome {
+    Result(JobResultMessage),
+    Children(Vec<DiscoveredChild>),
+}
+
+fn child_job(parent: &JobMessage, child: DiscoveredChild, index: u32, count: u32) -> JobMessage {
+    let resource_id = uuid::Uuid::new_v5(
+        &uuid::Uuid::NAMESPACE_URL,
+        format!("{}:{}", parent.resource_id, child.resource_id).as_bytes(),
+    )
+    .to_string();
+    let job_id = uuid::Uuid::new_v5(
+        &uuid::Uuid::NAMESPACE_URL,
+        format!("{}:{resource_id}", parent.job_id).as_bytes(),
+    )
+    .to_string();
+    JobMessage {
+        job_id,
+        resource_id,
+        parent_job_id: Some(parent.job_id.clone()),
+        parent_resource_id: Some(parent.resource_id.clone()),
+        child_index: Some(index),
+        total_child_count: Some(count),
+        source_version: parent.source_version.clone(),
+        package_id: parent.package_id.clone(),
+        ckan_url: parent.ckan_url.clone(),
+        resource_url: child.url,
+        resource_format: child.format,
+        csv_delimiter: parent.csv_delimiter.clone(),
+        datastore_active: false,
+        dataset_name: parent.dataset_name.clone(),
+        instance_id: parent.instance_id.clone(),
+        resource_name: Some(child.source_label),
     }
 }
 
@@ -129,6 +220,10 @@ fn job_result_from_success(
 ) -> JobResultMessage {
     JobResultMessage {
         job_id,
+        parent_job_id: None,
+        parent_resource_id: None,
+        child_index: None,
+        total_child_count: None,
         reader: Some(outcome.reader),
         status: JobStatus::Success,
         rows_processed: i64::try_from(outcome.rows_processed).ok(),
@@ -163,15 +258,21 @@ fn run_conversion(
     uploader: &ParquetUploader,
     job: &JobMessage,
     s3: &S3DocumentIngestor,
-) -> Result<JobResultMessage, anyhow::Error> {
+) -> Result<ConversionOutcome, anyhow::Error> {
     let version = if job.source_version.is_empty() {
         job.job_id.as_str()
     } else {
         job.source_version.as_str()
     };
-    if runtime.block_on(uploader.exists(&job.resource_id, version))? {
-        return Ok(JobResultMessage {
+    if job.parent_job_id.is_none()
+        && runtime.block_on(uploader.exists(&job.resource_id, version))?
+    {
+        return Ok(ConversionOutcome::Result(JobResultMessage {
             job_id: job.job_id.clone(),
+            parent_job_id: job.parent_job_id.clone(),
+            parent_resource_id: job.parent_resource_id.clone(),
+            child_index: job.child_index,
+            total_child_count: job.total_child_count,
             status: JobStatus::Success,
             resource_id: job.resource_id.clone(),
             source_version: Some(version.into()),
@@ -194,7 +295,7 @@ fn run_conversion(
             error_message: None,
             preview: None,
             artifact: None,
-        });
+        }));
     }
     let resource = CkanResource {
         id: job.resource_id.clone(),
@@ -210,6 +311,7 @@ fn run_conversion(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0",
         )
         .build()?;
+    let source_storage = SourceStorage::new(http_client.clone(), S3Settings::from_env())?;
     let reader = MultipleReader::new(vec![
         Box::new(DatastoreReader::new(
             job.ckan_url.clone(),
@@ -226,7 +328,7 @@ fn run_conversion(
         Box::new(FileReferenceReader::new(s3)),
         Box::new(ExternalResourceCrawlerReader::new(
             http_client.clone(),
-            s3,
+            &source_storage,
             vec![
                 Box::new(CsvReader::with_delimiter(
                     http_client.clone(),
@@ -243,32 +345,42 @@ fn run_conversion(
         Ok(result) => {
             let artifact =
                 runtime.block_on(uploader.upload(&job.resource_id, version, &result.parquet))?;
-            Ok(job_result_from_success(
+            let mut result = job_result_from_success(
                 job.job_id.clone(),
                 job.resource_id.clone(),
                 job.source_version.clone(),
                 result,
                 artifact,
-            ))
+            );
+            copy_child_context(job, &mut result);
+            Ok(ConversionOutcome::Result(result))
         }
         Err(failed) => {
-            if failed.is_deleted() {
-                Ok(job_result_from_deleted(
-                    &job.job_id,
-                    &job.resource_id,
-                    job.datastore_active,
-                    failed,
-                ))
-            } else {
-                Ok(job_result_from_failure(
-                    &job.job_id,
-                    &job.resource_id,
-                    job.datastore_active,
-                    failed,
-                ))
+            if let Some(children) = failed
+                .error
+                .downcast_ref::<CrawlError>()
+                .and_then(|error| error.0.downcast_ref::<CrawlFanout>())
+            {
+                return Ok(ConversionOutcome::Children(children.0.clone()));
             }
+            let mut result = if failed.is_deleted() {
+                job_result_from_deleted(&job.job_id, &job.resource_id, job.datastore_active, failed)
+            } else {
+                job_result_from_failure(&job.job_id, &job.resource_id, job.datastore_active, failed)
+            };
+            copy_child_context(job, &mut result);
+            Ok(ConversionOutcome::Result(result))
         }
     }
+}
+
+fn copy_child_context(job: &JobMessage, result: &mut JobResultMessage) {
+    result.parent_job_id = job.parent_job_id.clone();
+    result.parent_resource_id = job.parent_resource_id.clone();
+    result.child_index = job.child_index;
+    result.total_child_count = job.total_child_count;
+    result.resource_name = job.resource_name.clone();
+    result.resource_format = Some(job.resource_format.clone());
 }
 
 fn failed_job(job: &JobMessage, error: impl std::fmt::Display) -> JobResultMessage {
@@ -278,6 +390,10 @@ fn failed_job(job: &JobMessage, error: impl std::fmt::Display) -> JobResultMessa
     JobResultMessage {
         reader: Some(String::new()),
         job_id: job.job_id.clone(),
+        parent_job_id: job.parent_job_id.clone(),
+        parent_resource_id: job.parent_resource_id.clone(),
+        child_index: job.child_index,
+        total_child_count: job.total_child_count,
         status: JobStatus::Failed,
         rows_processed: None,
         expected_rows: None,
@@ -306,6 +422,10 @@ fn processing_job(job: &JobMessage) -> JobResultMessage {
     JobResultMessage {
         reader: Some(String::new()),
         job_id: job.job_id.clone(),
+        parent_job_id: job.parent_job_id.clone(),
+        parent_resource_id: job.parent_resource_id.clone(),
+        child_index: job.child_index,
+        total_child_count: job.total_child_count,
         status: JobStatus::Processing,
         rows_processed: None,
         expected_rows: None,
@@ -339,6 +459,10 @@ fn job_result_from_failure(
     let http_status = failed.http_status();
     JobResultMessage {
         job_id: job_id.into(),
+        parent_job_id: None,
+        parent_resource_id: None,
+        child_index: None,
+        total_child_count: None,
         status: JobStatus::Failed,
         resource_id: resource_id.into(),
         source_version: None,
@@ -376,6 +500,10 @@ fn job_result_from_deleted(
 ) -> JobResultMessage {
     JobResultMessage {
         job_id: job_id.into(),
+        parent_job_id: None,
+        parent_resource_id: None,
+        child_index: None,
+        total_child_count: None,
         status: JobStatus::Deleted,
         resource_id: resource_id.into(),
         source_version: None,
@@ -421,7 +549,9 @@ mod tests {
     use ckan_ingestor_worker_lib::ParquetArtifact;
     use reqwest::StatusCode;
 
-    use super::{job_result_from_deleted, job_result_from_failure, job_result_from_success};
+    use super::{
+        child_job, job_result_from_deleted, job_result_from_failure, job_result_from_success,
+    };
     use crate::messages::JobStatus;
 
     fn successful_result() -> SuccessResult {
@@ -441,6 +571,27 @@ mod tests {
             "50000".into(),
             "test-reader".into(),
         )
+    }
+
+    #[test]
+    fn child_job_id_is_stable_when_discovery_order_changes() {
+        let parent: ckan_ingestor_worker_lib::JobMessage = serde_json::from_value(serde_json::json!({
+            "job_id": "parent-job", "resource_id": "parent-resource", "source_version": "v1",
+            "package_id": "dataset", "ckan_url": "https://example.test", "resource_url": "https://example.test/page",
+            "resource_format": "JSON", "datastore_active": false
+        })).unwrap();
+        let source =
+            || ckan_ingestor_lib::readers::external_resource_crawler_reader::DiscoveredChild {
+                resource_id: "same-file".into(),
+                url: "https://example.test/file.json".into(),
+                source_label: "file.json".into(),
+                format: "JSON".into(),
+                last_modified: String::new(),
+            };
+        let first = child_job(&parent, source(), 0, 2);
+        let reordered = child_job(&parent, source(), 1, 2);
+        assert_eq!(first.job_id, reordered.job_id);
+        assert_eq!(first.resource_id, reordered.resource_id);
     }
 
     #[test]

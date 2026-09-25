@@ -24,7 +24,7 @@ use std::{
 use anyhow::{Context, Result};
 use zip::ZipArchive;
 
-use crate::readers::temp_file_cleanup::TempFileCleanup;
+use source_io::TemporaryPath;
 
 #[derive(Clone, Copy)]
 pub(crate) struct ArchiveLimits {
@@ -157,7 +157,7 @@ where
         }
         let suffix = if nested { ".zip" } else { extension(format) };
         let temp_path = std::env::temp_dir().join(format!("{}{}", uuid::Uuid::new_v4(), suffix));
-        let _cleanup = TempFileCleanup::from_path(temp_path.clone());
+        let _cleanup = TemporaryPath::from_path(temp_path.clone());
         let mut output = File::create(&temp_path)?;
         let copied = io::copy(&mut member.by_ref().take(member_size + 1), &mut output)?;
         anyhow::ensure!(

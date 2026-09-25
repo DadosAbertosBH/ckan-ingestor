@@ -125,6 +125,7 @@ pub async fn run() -> Result<()> {
 
     let s3 = create_s3_ingestor().await?;
     let processor = JobProcessor::new(
+        settings.source_topic.clone(),
         settings.result_topic,
         s3,
         ParquetUploader::new(S3Settings::from_env()),

@@ -35,6 +35,14 @@ impl std::fmt::Display for JobStatus {
 pub struct JobMessage {
     pub job_id: String,
     pub resource_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_job_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_resource_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub child_index: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_child_count: Option<u32>,
     #[serde(default)]
     pub source_version: String,
     #[serde(default)]
@@ -48,11 +56,25 @@ pub struct JobMessage {
     pub csv_delimiter: Option<String>,
     #[serde(default)]
     pub datastore_active: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dataset_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JobResultMessage {
     pub job_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_job_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_resource_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub child_index: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_child_count: Option<u32>,
     pub status: JobStatus,
     pub resource_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -188,6 +210,10 @@ impl JobResultMessage {
     ) -> Self {
         Self {
             job_id: job_id.into(),
+            parent_job_id: None,
+            parent_resource_id: None,
+            child_index: None,
+            total_child_count: None,
             status,
             resource_id: resource_id.into(),
             source_version: None,
@@ -222,6 +248,10 @@ mod artifact_tests {
     fn parquet_artifact_round_trips_through_the_job_result_contract() {
         let message = JobResultMessage {
             job_id: "job-1".into(),
+            parent_job_id: None,
+            parent_resource_id: None,
+            child_index: None,
+            total_child_count: None,
             status: JobStatus::Success,
             resource_id: "resource-1".into(),
             source_version: Some("2026-09-02T12:00:00Z".into()),
@@ -265,5 +295,35 @@ mod artifact_tests {
 
         assert_eq!(decoded.artifact, message.artifact);
         assert_eq!(decoded.http_status, Some(403));
+    }
+}
+
+#[cfg(test)]
+mod child_contract_tests {
+    use super::{JobMessage, JobResultMessage};
+
+    #[test]
+    fn child_fields_round_trip_and_legacy_messages_remain_readable() {
+        let input = serde_json::json!({
+            "job_id": "child-job", "resource_id": "child-resource", "ckan_url": "https://ckan.test",
+            "parent_job_id": "parent-job", "parent_resource_id": "parent-resource",
+            "child_index": 0, "total_child_count": 2
+        });
+        let job: JobMessage = serde_json::from_value(input).unwrap();
+        let output = serde_json::to_value(job).unwrap();
+        assert_eq!(output["parent_job_id"], "parent-job");
+        assert_eq!(output["parent_resource_id"], "parent-resource");
+        assert_eq!(output["child_index"], 0);
+        assert_eq!(output["total_child_count"], 2);
+
+        let legacy: JobResultMessage = serde_json::from_value(serde_json::json!({
+            "job_id": "legacy", "resource_id": "resource", "status": "SUCCESS"
+        }))
+        .unwrap();
+        let output = serde_json::to_value(legacy).unwrap();
+        assert!(output.get("parent_job_id").is_none());
+        assert!(output.get("parent_resource_id").is_none());
+        assert!(output.get("child_index").is_none());
+        assert!(output.get("total_child_count").is_none());
     }
 }

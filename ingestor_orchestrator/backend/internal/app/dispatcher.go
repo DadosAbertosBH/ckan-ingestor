@@ -56,9 +56,15 @@ func (d *Dispatcher) RetryJob(ctx context.Context, jobID string) (*Job, error) {
 		if err != nil {
 			return err
 		}
+		if job.ParentJobID != nil {
+			return fmt.Errorf("%w: retry the parent job %s", ErrInvalidMessage, *job.ParentJobID)
+		}
 		now := d.now()
-		created = &Job{ID: d.newID(), ResourceID: job.ResourceID, ResourceName: job.ResourceName, ResourceURL: job.ResourceURL, ResourceFormat: job.ResourceFormat, DatasetName: job.DatasetName, Status: JobPending, IdempotencyKey: job.IdempotencyKey, InstanceID: job.InstanceID, InstanceName: job.InstanceName, InstanceURL: job.InstanceURL, CKANURL: job.CKANURL, DatastoreActive: job.DatastoreActive, CreatedAt: now, UpdatedAt: now}
-		payload := map[string]any{"job_id": created.ID, "resource_id": created.ResourceID, "ckan_url": created.CKANURL, "resource_url": stringValue(created.ResourceURL), "resource_format": stringValue(created.ResourceFormat), "datastore_active": created.DatastoreActive}
+		created = &Job{ID: d.newID(), SourceVersion: job.SourceVersion, ResourceID: job.ResourceID, ResourceName: job.ResourceName, ResourceURL: job.ResourceURL, ResourceFormat: job.ResourceFormat, DatasetName: job.DatasetName, Status: JobPending, IdempotencyKey: job.IdempotencyKey, InstanceID: job.InstanceID, InstanceName: job.InstanceName, InstanceURL: job.InstanceURL, CKANURL: job.CKANURL, DatastoreActive: job.DatastoreActive, CreatedAt: now, UpdatedAt: now}
+		payload := map[string]any{"job_id": created.ID, "resource_id": created.ResourceID, "ckan_url": created.CKANURL, "resource_url": stringValue(created.ResourceURL), "resource_format": stringValue(created.ResourceFormat), "datastore_active": created.DatastoreActive, "dataset_name": created.DatasetName, "instance_id": created.InstanceID, "resource_name": created.ResourceName}
+		if created.SourceVersion != nil {
+			payload["source_version"] = *created.SourceVersion
+		}
 		if hint, hintErr := tx.CSVHint(ctx, job.ResourceID); hintErr == nil {
 			payload["csv_delimiter"] = *hint
 		} else if !errors.Is(hintErr, ErrNotFound) {

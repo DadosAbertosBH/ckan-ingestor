@@ -32,7 +32,7 @@
                 </div>
                 <div class="actions">
                     <button
-                        v-if="job.status === 'failed'"
+                        v-if="job.status === 'failed' && !job.parent_job_id"
                         class="btn-primary"
                         @click="handleRetry"
                     >
@@ -42,6 +42,10 @@
             </div>
 
             <div class="info-grid">
+                <div v-if="job.parent_job_id" class="info-item">
+                    <span class="info-label">Parent job</span>
+                    <router-link :to="{ name: 'job-detail', params: { id: job.parent_job_id } }">{{ job.parent_job_id }}</router-link>
+                </div>
                 <div class="info-item">
                     <span class="info-label">Status</span>
                     <JobStatusBadge :status="job.status" />
@@ -103,6 +107,21 @@
                         >{{ job.resource_url }}</a
                     >
                 </div>
+            </div>
+
+            <div v-if="job.children?.length" class="results-section">
+                <h2 class="section-title">Child jobs ({{ job.children.length }})</h2>
+                <table class="data-table">
+                    <thead><tr><th>#</th><th>File</th><th>Status</th><th>Rows</th></tr></thead>
+                    <tbody>
+                        <tr v-for="child in job.children" :key="child.id">
+                            <td>{{ (child.child_index ?? 0) + 1 }}</td>
+                            <td><router-link :to="{ name: 'job-detail', params: { id: child.id } }">{{ child.resource_name || child.resource_id }}</router-link></td>
+                            <td><JobStatusBadge :status="child.status" /></td>
+                            <td>{{ child.results?.find((r) => r.success)?.rows_processed ?? '—' }}</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
 
             <div class="results-section">

@@ -28,4 +28,3 @@ pub mod json_reader;
 pub mod logfile_reader;
 pub mod multiple_reader;
 pub mod protobuf_reader;
-pub mod temp_file_cleanup;

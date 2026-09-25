@@ -18,7 +18,6 @@
 use std::{
     fs::File,
     io::{BufRead, BufReader},
-    path::PathBuf,
     sync::Arc,
 };
 
@@ -33,10 +32,7 @@ use reqwest::blocking::Client;
 use crate::{
     ckan_resource::CkanResource,
     parquet_output::ParquetOutput,
-    readers::{
-        ckan_reader::{download_to_temp, CkanReader, FailedResult, ReadResult, SuccessResult},
-        temp_file_cleanup::TempFileCleanup,
-    },
+    readers::ckan_reader::{download_to_temp, CkanReader, FailedResult, ReadResult, SuccessResult},
 };
 
 pub const LOG_FORMAT: &str = "LOG";
@@ -61,15 +57,16 @@ impl LogfileReader {
 
     fn read_batches(&self, resource: &CkanResource) -> ReadResult {
         let is_remote = resource.url.starts_with("http://") || resource.url.starts_with("https://");
-        let path = if is_remote {
-            download_to_temp(&self.client, &resource.url, ".log")?
+        let downloaded = if is_remote {
+            Some(download_to_temp(&self.client, &resource.url, ".log")?)
         } else {
-            resource.url.clone()
+            None
         };
-        let mut cleanup = TempFileCleanup::from_path(PathBuf::from(&path));
-        if !is_remote {
-            cleanup.commit();
-        }
+        let path = downloaded
+            .as_ref()
+            .map(|source| source.path_as_str().map(str::to_owned))
+            .transpose()?
+            .unwrap_or_else(|| resource.url.clone());
 
         let mut reader = BufReader::new(File::open(path)?);
         let mut output = None;

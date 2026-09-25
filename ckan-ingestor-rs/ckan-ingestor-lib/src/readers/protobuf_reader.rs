@@ -28,7 +28,6 @@ use crate::{
     readers::{
         ckan_reader::{download_to_temp, CkanReader, FailedResult, ReadResult, SuccessResult},
         gtfs_realtime::decode_feed_entities,
-        temp_file_cleanup::TempFileCleanup,
     },
 };
 
@@ -62,15 +61,16 @@ impl ProtobufReader {
 
     fn read_batches(&self, resource: &CkanResource) -> ReadResult {
         let is_remote = resource.url.starts_with("http://") || resource.url.starts_with("https://");
-        let path = if is_remote {
-            download_to_temp(&self.client, &resource.url, ".binpb")?
+        let downloaded = if is_remote {
+            Some(download_to_temp(&self.client, &resource.url, ".binpb")?)
         } else {
-            resource.url.clone()
+            None
         };
-        let mut cleanup = TempFileCleanup::from_path(path.clone().into());
-        if !is_remote {
-            cleanup.commit();
-        }
+        let path = downloaded
+            .as_ref()
+            .map(|source| source.path_as_str().map(str::to_owned))
+            .transpose()?
+            .unwrap_or_else(|| resource.url.clone());
         let bytes = std::fs::read(&path)?;
         let entities = decode_feed_entities(&bytes)?;
         let output = entities_to_parquet(entities)?;

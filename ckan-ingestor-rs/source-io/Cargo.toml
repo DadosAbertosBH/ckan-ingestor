@@ -1,0 +1,25 @@
+[package]
+name = "source_io"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+test-support = []
+
+[dependencies]
+tokio = { version = "1.0", features = ["rt", "sync", "macros"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"] }
+uuid = { version = "1.17.0", features = ["v4", "v5"] }
+chrono = "0.4"
+anyhow = "1.0"
+futures = "0.3"
+log = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+object_store = { version = "=0.13.2", default-features = false, features = ["aws", "fs"] }
+bytes = "1.10"
+tempfile = "3"
+url = "2"
+
+[dev-dependencies]
+async-stream = "0.3"

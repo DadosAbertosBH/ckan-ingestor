@@ -143,15 +143,20 @@ fn outdated_resource_messages(
         ckan_url: Some(command.instance_url.clone()),
         datastore_active: Some(candidate.datastore_active),
     };
-    let pending = JobResultMessage::pending_with_metadata(
+    let mut pending = JobResultMessage::pending_with_metadata(
         id.clone(),
         candidate.resource_id.clone(),
         candidate.dataset_name.clone(),
         command.instance_id.clone(),
         metadata,
     );
+    pending.source_version = Some(candidate.source_version.clone());
     let job = JobMessage {
         job_id: id,
+        parent_job_id: None,
+        parent_resource_id: None,
+        child_index: None,
+        total_child_count: None,
         resource_id: candidate.resource_id,
         source_version: candidate.source_version,
         package_id: candidate.package_id,
@@ -160,6 +165,9 @@ fn outdated_resource_messages(
         resource_format: candidate.resource_format.unwrap_or_default(),
         csv_delimiter: None,
         datastore_active: candidate.datastore_active,
+        dataset_name: Some(candidate.dataset_name),
+        instance_id: Some(command.instance_id.clone()),
+        resource_name: candidate.resource_name,
     };
 
     (pending, job)
@@ -306,6 +314,10 @@ mod tests {
         assert_eq!(pending.instance_id, Some(command.instance_id));
         assert_eq!(pending.ckan_url, Some(job.ckan_url));
         assert_eq!(pending.datastore_active, Some(job.datastore_active));
+        assert_eq!(
+            pending.source_version.as_deref(),
+            Some(job.source_version.as_str())
+        );
     }
 
     #[tokio::test]

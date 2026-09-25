@@ -35,10 +35,9 @@ use crate::{
     readers::{
         crawler_aggregate::SchemaAccumulator,
         crawler_archive::{matches_format, visit_zip, ArchiveLimits},
-        temp_file_cleanup::TempFileCleanup,
     },
-    s3_document_ingestor::S3DocumentIngestor,
 };
+use source_io::{DownloadedSource, MediaType, Source, SourceStorage, SourceVersion, TemporaryPath};
 
 const MAX_PAGE_BYTES: u64 = 8 * 1024 * 1024;
 const FOLDER_MIME: &str = "application/vnd.google-apps.folder";
@@ -47,6 +46,25 @@ const MAX_HTML_PAGES: usize = 10_000;
 
 #[derive(Debug)]
 pub struct CrawlError(pub anyhow::Error);
+
+#[derive(Debug, Clone)]
+pub struct DiscoveredChild {
+    pub resource_id: String,
+    pub url: String,
+    pub source_label: String,
+    pub format: String,
+    pub last_modified: String,
+}
+
+#[derive(Debug)]
+pub struct CrawlFanout(pub Vec<DiscoveredChild>);
+
+impl std::fmt::Display for CrawlFanout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} child jobs discovered", self.0.len())
+    }
+}
+impl std::error::Error for CrawlFanout {}
 
 impl std::fmt::Display for CrawlError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -84,7 +102,8 @@ struct DrivePage {
 struct CopiedSource {
     resource: CkanResource,
     source_label: String,
-    _cleanup: Option<TempFileCleanup>,
+    public_url: String,
+    _downloaded: Option<DownloadedSource>,
 }
 
 #[derive(Clone)]
@@ -108,7 +127,7 @@ impl CrawledSource {
 /// then delegates each materialized file to the configured readers.
 pub struct ExternalResourceCrawlerReader<'a> {
     client: Client,
-    ingestor: &'a S3DocumentIngestor,
+    storage: &'a SourceStorage,
     readers: Vec<Box<dyn CkanReader + 'a>>,
     api_key: String,
     api_base: String,
@@ -118,7 +137,7 @@ pub struct ExternalResourceCrawlerReader<'a> {
 impl<'a> ExternalResourceCrawlerReader<'a> {
     pub fn new(
         client: Client,
-        ingestor: &'a S3DocumentIngestor,
+        storage: &'a SourceStorage,
         readers: Vec<Box<dyn CkanReader + 'a>>,
         api_key: String,
     ) -> Self {
@@ -130,7 +149,7 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
         }
         Self {
             client,
-            ingestor,
+            storage,
             readers,
             api_key,
             api_base: "https://www.googleapis.com/drive/v3".into(),
@@ -222,17 +241,36 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
             !sources.is_empty(),
             "no matching files or ZIP archives found"
         );
-        let mut schemas = SchemaAccumulator::new();
-        let mut results = Vec::new();
+        let mut materialized = Vec::new();
         let mut copied =
             Box::pin(self.copy_sources(resource, &sources, ArchiveLimits::from_env()?));
         while let Some(source) = futures::executor::block_on(copied.next()) {
-            let source = source?;
+            materialized.push(source?);
+        }
+        anyhow::ensure!(!materialized.is_empty(), "no matching files found");
+        if materialized.len() > 1 {
+            materialized.sort_by(|left, right| left.resource.id.cmp(&right.resource.id));
+            return Err(CrawlFanout(
+                materialized
+                    .iter()
+                    .map(|source| DiscoveredChild {
+                        resource_id: source.resource.id.clone(),
+                        url: source.public_url.clone(),
+                        source_label: source.source_label.clone(),
+                        format: source.resource.format.clone(),
+                        last_modified: source.resource.last_modified.clone(),
+                    })
+                    .collect(),
+            )
+            .into());
+        }
+        let mut schemas = SchemaAccumulator::new();
+        let mut results = Vec::new();
+        for source in &materialized {
             let result = self.read_child(&source.resource)?;
             schemas.add(&result)?;
             results.push((result, source.source_label.clone()));
         }
-        anyhow::ensure!(!results.is_empty(), "no matching files found");
         let format = resource.format.to_ascii_uppercase();
         let tabular = format.contains("CSV") || format.contains("JSON");
         let mut output = schemas.build(tabular)?;
@@ -392,39 +430,35 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
         let mut copied = Vec::new();
         match source {
             CrawledSource::Http { url } => {
-                let name = source_filename(url, &resource.format);
-                let modified = self.http_modified_time(url);
-                if let Some(cached_url) =
-                    self.ingestor
-                        .current_crawled_file_url(url, &name, modified.as_deref())?
-                {
+                let source = self
+                    .storage
+                    .inspect(Source::from_url_with_format(url, &resource.format));
+                if let Some(cached_url) = self.storage.cached_crawled_url(&source)? {
                     copied.push(CopiedSource {
-                        resource: child_resource(resource, cached_url, url, modified.as_deref()),
+                        resource: child_resource(
+                            resource,
+                            cached_url.clone(),
+                            &source.identity,
+                            source.version.as_str(),
+                        ),
                         source_label: url.clone(),
-                        _cleanup: None,
+                        public_url: cached_url,
+                        _downloaded: None,
                     });
                     return Ok(copied);
                 }
-                let (path, response_modified, content_type) =
-                    self.download_http_file(url, &name, None)?;
-                let cleanup = TempFileCleanup::from_path(path.clone());
-                let modified = modified.or(response_modified);
-                self.ingestor.ingest_crawled_path(
-                    url,
-                    &name,
-                    &path,
-                    &content_type,
-                    modified.as_deref(),
-                )?;
+                let downloaded = self.storage.download(source)?;
+                let public_url = self.storage.store_crawled(&downloaded)?;
                 copied.push(CopiedSource {
                     resource: child_resource(
                         resource,
-                        path.to_string_lossy().into_owned(),
-                        url,
-                        modified.as_deref(),
+                        downloaded.path.to_string_lossy().into_owned(),
+                        &downloaded.source.identity,
+                        downloaded.source.version.as_str(),
                     ),
                     source_label: url.clone(),
-                    _cleanup: Some(cleanup),
+                    public_url,
+                    _downloaded: Some(downloaded),
                 });
             }
             CrawledSource::Drive(file) => {
@@ -432,88 +466,84 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                     .modified_time
                     .as_deref()
                     .context("Drive file missing modifiedTime")?;
-                let identity = format!("drive://{}", file.id);
-                if let Some(cached_url) = self.ingestor.current_crawled_file_url(
-                    &identity,
+                let source = Source::new(
+                    format!("drive://{}", file.id),
+                    format!("{}/files/{}?alt=media", self.api_base, file.id),
                     &file.name,
-                    Some(modified_time),
-                )? {
+                    SourceVersion::known(modified_time),
+                );
+                if let Some(cached_url) = self.storage.cached_crawled_url(&source)? {
                     copied.push(CopiedSource {
                         resource: child_resource(
                             resource,
-                            cached_url,
-                            &identity,
-                            Some(modified_time),
+                            cached_url.clone(),
+                            &source.identity,
+                            source.version.as_str(),
                         ),
                         source_label: format!("drive://{}/{}", file.id, file.name),
-                        _cleanup: None,
+                        public_url: cached_url,
+                        _downloaded: None,
                     });
                     return Ok(copied);
                 }
-                let path = self.download_drive_file(file)?;
-                let cleanup = TempFileCleanup::from_path(path.clone());
-                self.ingestor.ingest_crawled_path(
-                    &identity,
-                    &file.name,
-                    &path,
-                    &file.mime_type,
-                    Some(modified_time),
-                )?;
+                let downloaded = self.download_drive_file(file, source)?;
+                let public_url = self.storage.store_crawled(&downloaded)?;
                 copied.push(CopiedSource {
                     resource: child_resource(
                         resource,
-                        path.to_string_lossy().into_owned(),
-                        &identity,
-                        Some(modified_time),
+                        downloaded.path.to_string_lossy().into_owned(),
+                        &downloaded.source.identity,
+                        downloaded.source.version.as_str(),
                     ),
                     source_label: format!("drive://{}/{}", file.id, file.name),
-                    _cleanup: Some(cleanup),
+                    public_url,
+                    _downloaded: Some(downloaded),
                 });
             }
             CrawledSource::Zip { url } => {
                 let path = download_zip_to_temp(&self.client, url, limits.max_zip_bytes)?;
-                let _cleanup = TempFileCleanup::from_path(path.clone());
+                let _cleanup = TemporaryPath::from_path(path.clone());
                 visit_zip(
                     Path::new(&path),
                     url,
                     &resource.format,
                     limits,
                     &mut |member, source_name, modified| {
-                        let name = source_filename(source_name, &resource.format);
-                        if let Some(cached_url) =
-                            self.ingestor
-                                .current_crawled_file_url(source_name, &name, modified)?
-                        {
+                        let mut source =
+                            Source::from_url_with_format(source_name, &resource.format);
+                        source.version = source_version(modified.map(str::to_owned));
+                        if let Some(cached_url) = self.storage.cached_crawled_url(&source)? {
                             copied.push(CopiedSource {
                                 resource: child_resource(
                                     resource,
-                                    cached_url,
-                                    source_name,
-                                    modified,
+                                    cached_url.clone(),
+                                    &source.identity,
+                                    source.version.as_str(),
                                 ),
                                 source_label: source_name.to_owned(),
-                                _cleanup: None,
+                                public_url: cached_url,
+                                _downloaded: None,
                             });
                             return Ok(());
                         }
-                        self.ingestor.ingest_crawled_path(
-                            source_name,
-                            &name,
-                            member,
-                            content_type_for_format(&resource.format),
-                            modified,
-                        )?;
-                        let retained = temporary_path(&name);
+                        let retained = source.temporary_path();
                         std::fs::rename(member, &retained)?;
+                        let downloaded = DownloadedSource::from_path(
+                            source,
+                            retained,
+                            MediaType::known(content_type_for_format(&resource.format)),
+                        );
+                        let public_url = self.storage.store_crawled(&downloaded)?;
                         copied.push(CopiedSource {
                             resource: child_resource(
                                 resource,
-                                retained.to_string_lossy().into_owned(),
-                                source_name,
-                                modified,
+                                downloaded.path.to_string_lossy().into_owned(),
+                                &downloaded.source.identity,
+                                downloaded.source.version.as_str(),
                             ),
                             source_label: source_name.to_owned(),
-                            _cleanup: Some(TempFileCleanup::from_path(retained)),
+                            public_url,
+                            _downloaded: Some(downloaded),
                         });
                         Ok(())
                     },
@@ -521,55 +551,6 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
             }
         }
         Ok(copied)
-    }
-
-    fn http_modified_time(&self, url: &str) -> Option<String> {
-        self.client
-            .head(url)
-            .send()
-            .ok()?
-            .error_for_status()
-            .ok()?
-            .headers()
-            .get(reqwest::header::LAST_MODIFIED)
-            .and_then(|value| value.to_str().ok())
-            .and_then(http_date_as_rfc3339)
-    }
-
-    fn download_http_file(
-        &self,
-        url: &str,
-        name: &str,
-        max_bytes: Option<u64>,
-    ) -> Result<(PathBuf, Option<String>, String)> {
-        let mut response = self.client.get(url).send()?.error_for_status()?;
-        if let (Some(limit), Some(length)) = (max_bytes, response.content_length()) {
-            anyhow::ensure!(length <= limit, "source exceeds configured size");
-        }
-        let modified = response
-            .headers()
-            .get(reqwest::header::LAST_MODIFIED)
-            .and_then(|value| value.to_str().ok())
-            .and_then(http_date_as_rfc3339);
-        let content_type = response
-            .headers()
-            .get(CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or("application/octet-stream")
-            .to_owned();
-        let path = temporary_path(name);
-        let mut cleanup = TempFileCleanup::from_path(path.clone());
-        let mut output = File::create(&path)?;
-        let copied = match max_bytes {
-            Some(limit) => std::io::copy(&mut response.by_ref().take(limit + 1), &mut output)?,
-            None => std::io::copy(&mut response, &mut output)?,
-        };
-        if let Some(limit) = max_bytes {
-            anyhow::ensure!(copied <= limit, "source exceeds configured size");
-        }
-        output.flush()?;
-        cleanup.commit();
-        Ok((path, modified, content_type))
     }
 
     fn read_child(&self, resource: &CkanResource) -> ReadResult {
@@ -591,14 +572,8 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
         }))
     }
 
-    fn download_drive_file(&self, file: &DriveFile) -> Result<std::path::PathBuf> {
-        let suffix = Path::new(&file.name)
-            .extension()
-            .and_then(|value| value.to_str())
-            .map(|value| format!(".{value}"))
-            .unwrap_or_default();
-        let path = std::env::temp_dir().join(format!("{}{}", uuid::Uuid::new_v4(), suffix));
-        let mut cleanup = TempFileCleanup::from_path(path.clone());
+    fn download_drive_file(&self, file: &DriveFile, source: Source) -> Result<DownloadedSource> {
+        let path = source.temporary_path();
         let mut request = self
             .client
             .get(format!("{}/files/{}", self.api_base, file.id))
@@ -620,8 +595,11 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
         );
         let mut output = std::fs::File::create(&path)?;
         std::io::copy(&mut response, &mut output)?;
-        cleanup.commit();
-        Ok(path)
+        Ok(DownloadedSource::from_path(
+            source,
+            path,
+            MediaType::known(file.mime_type.clone()),
+        ))
     }
 }
 
@@ -639,47 +617,10 @@ fn child_resource(
     }
 }
 
-fn source_filename(source: &str, format: &str) -> String {
-    let name = source
-        .rsplit('/')
-        .next()
-        .filter(|value| !value.is_empty())
-        .unwrap_or("source");
-    if Path::new(name).extension().is_some() {
-        name.to_owned()
-    } else {
-        format!("{name}.{}", extension_for_format(format))
-    }
-}
-
-fn temporary_path(name: &str) -> PathBuf {
-    let suffix = Path::new(name)
-        .extension()
-        .and_then(|value| value.to_str())
-        .map(|value| format!(".{value}"))
-        .unwrap_or_default();
-    std::env::temp_dir().join(format!("{}{}", uuid::Uuid::new_v4(), suffix))
-}
-
-fn extension_for_format(format: &str) -> &'static str {
-    let format = format.to_ascii_uppercase();
-    if format.contains("CSV") {
-        "csv"
-    } else if format.contains("JSON") {
-        "json"
-    } else if format.contains("TIFF") || format.contains("TIF") {
-        "tif"
-    } else if format.contains("PDF") {
-        "pdf"
-    } else if format.contains("DOCX") {
-        "docx"
-    } else if format.contains("MAP") {
-        "map"
-    } else if format.contains("TAB") {
-        "tab"
-    } else {
-        "dat"
-    }
+fn source_version(value: Option<String>) -> SourceVersion {
+    value
+        .map(SourceVersion::known)
+        .unwrap_or(SourceVersion::Unknown)
 }
 
 fn content_type_for_format(format: &str) -> &'static str {
@@ -697,24 +638,16 @@ fn content_type_for_format(format: &str) -> &'static str {
     }
 }
 
-fn http_date_as_rfc3339(value: &str) -> Option<String> {
-    chrono::DateTime::parse_from_rfc2822(value)
-        .ok()
-        .map(|time| time.to_rfc3339())
-}
-
 fn download_zip_to_temp(client: &Client, url: &str, max_bytes: u64) -> Result<PathBuf> {
     let mut response = client.get(url).send()?.error_for_status()?;
     if let Some(length) = response.content_length() {
         anyhow::ensure!(length <= max_bytes, "ZIP exceeds configured size");
     }
     let path = std::env::temp_dir().join(format!("{}.zip", uuid::Uuid::new_v4()));
-    let mut cleanup = TempFileCleanup::from_path(path.clone());
     let mut output = File::create(&path)?;
     let copied = std::io::copy(&mut response.by_ref().take(max_bytes + 1), &mut output)?;
     anyhow::ensure!(copied <= max_bytes, "ZIP exceeds configured size");
     output.flush()?;
-    cleanup.commit();
     Ok(path)
 }
 
@@ -857,7 +790,6 @@ mod tests {
         sync::Arc,
     };
 
-    use arrow::datatypes::DataType;
     use object_store::{memory::InMemory, ObjectStore};
 
     use crate::{
@@ -871,8 +803,9 @@ mod tests {
 
     use super::*;
 
-    fn test_ingestor() -> S3DocumentIngestor {
-        S3DocumentIngestor::new_with_store(
+    fn test_ingestor() -> SourceStorage {
+        SourceStorage::new_with_store(
+            Client::new(),
             "https://files.example/documents".into(),
             Arc::new(InMemory::new()),
         )
@@ -979,7 +912,8 @@ mod tests {
                 .body(r#"[{"id":1}]"#);
         });
         let store = Arc::new(InMemory::new());
-        let ingestor = S3DocumentIngestor::new_with_store(
+        let ingestor = SourceStorage::new_with_store(
+            Client::new(),
             "https://files.example/documents".into(),
             store.clone(),
         );
@@ -1062,7 +996,7 @@ mod tests {
     }
 
     #[test]
-    fn delegates_multiple_json_links_and_unifies_their_schemas() {
+    fn returns_multiple_json_links_as_child_jobs() {
         let server = httpmock::MockServer::start();
         let _page = server.mock(|when, then| {
             when.method(httpmock::Method::GET).path("/listing/");
@@ -1106,29 +1040,17 @@ mod tests {
             last_modified: String::new(),
         };
 
-        let result = reader.read(&resource).expect("crawl succeeds");
-
-        assert_eq!(result.rows_processed, 2);
-        assert_eq!(result.number_of_columns, 4);
-        assert!(result.preview[0].get("__source_file").is_some());
-        assert_eq!(result.preview[0]["shared"], "1");
-        assert_eq!(
-            result
-                .parquet
-                .schema
-                .field_with_name("shared")
-                .unwrap()
-                .data_type(),
-            &DataType::Utf8
-        );
-        assert!(result.parquet.schema.field_with_name("left").is_ok());
-        assert!(result.parquet.schema.field_with_name("right").is_ok());
+        let failure = match reader.read(&resource) {
+            Ok(_) => panic!("multiple files create child jobs"),
+            Err(failure) => failure,
+        };
+        assert!(failure.error.to_string().contains("child jobs"));
         assert_eq!(_one.hits(), 1, "one.json must be downloaded once");
         assert_eq!(_two.hits(), 1, "two.json must be downloaded once");
     }
 
     #[test]
-    fn extracts_and_delegates_every_matching_file_in_a_zip() {
+    fn extracts_every_matching_file_in_a_zip_as_child_jobs() {
         let server = httpmock::MockServer::start();
         let _page = server.mock(|when, then| {
             when.method(httpmock::Method::GET).path("/listing/");
@@ -1165,20 +1087,21 @@ mod tests {
             last_modified: String::new(),
         };
 
-        let result = reader.read(&resource).expect("ZIP crawl succeeds");
-
-        assert_eq!(result.rows_processed, 2);
-        assert_eq!(result.number_of_columns, 2);
-        assert!(result.parquet.schema.field_with_name("id").is_ok());
-        assert!(result
-            .parquet
-            .schema
-            .field_with_name("__source_file")
-            .is_ok());
+        let failure = match reader.read(&resource) {
+            Ok(_) => panic!("ZIP members become child jobs"),
+            Err(failure) => failure,
+        };
+        let crawl = failure.error.downcast_ref::<CrawlError>().unwrap();
+        let fanout = crawl.0.downcast_ref::<CrawlFanout>().unwrap();
+        assert_eq!(fanout.0.len(), 2);
+        assert!(fanout
+            .0
+            .iter()
+            .all(|child| child.url.contains("/crawled-files/")));
     }
 
     #[test]
-    fn rejects_a_mix_of_plain_json_and_geojson() {
+    fn discovers_plain_json_and_geojson_as_separate_child_jobs() {
         let server = httpmock::MockServer::start();
         let _page = server.mock(|when, then| {
             when.method(httpmock::Method::GET).path("/listing/");
@@ -1224,7 +1147,9 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.to_string().contains("GeoJSON and plain JSON"));
+        let crawl = error.error.downcast_ref::<CrawlError>().unwrap();
+        let fanout = crawl.0.downcast_ref::<CrawlFanout>().unwrap();
+        assert_eq!(fanout.0.len(), 2);
     }
 
     #[test]
@@ -1261,14 +1186,19 @@ mod tests {
                 "modifiedTime": "2026-01-01T00:00:00Z"
             }));
         });
-        let ingestor = S3DocumentIngestor::new_with_store(
+        let ingestor = SourceStorage::new_with_store(
+            Client::new(),
+            "https://files.example/documents".into(),
+            Arc::new(InMemory::new()),
+        );
+        let file_reference_ingestor = S3DocumentIngestor::new_with_store(
             "https://files.example/documents".into(),
             Arc::new(InMemory::new()),
         );
         let reader = ExternalResourceCrawlerReader::new(
             Client::new(),
             &ingestor,
-            vec![Box::new(FileReferenceReader::new(&ingestor))],
+            vec![Box::new(FileReferenceReader::new(&file_reference_ingestor))],
             "api-key".into(),
         )
         .with_api_base(format!("{}/drive/v3", server.base_url()));

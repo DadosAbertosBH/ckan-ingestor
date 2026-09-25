@@ -59,16 +59,16 @@ func (s *Store) DeleteInstance(ctx context.Context, id string) error {
 	return err
 }
 
-const jobColumns = `j.id,j.resource_id,j.resource_name,j.resource_url,j.resource_format,j.dataset_name,j.status,j.idempotency_key,j.instance_id,i.name,i.url,j.ckan_url,j.datastore_active,j.created_at,j.updated_at,j.started_at,j.completed_at,j.broker_type,j.message_stream,j.message_topic,j.message_partition,j.message_offset`
+const jobColumns = `j.id,j.resource_id,j.resource_name,j.resource_url,j.resource_format,j.dataset_name,j.status,j.idempotency_key,j.instance_id,i.name,i.url,j.ckan_url,j.datastore_active,j.created_at,j.updated_at,j.started_at,j.completed_at,j.broker_type,j.message_stream,j.message_topic,j.message_partition,j.message_offset,j.parent_job_id,j.parent_resource_id,j.child_index,j.total_child_count,j.source_version`
 
 type scanner interface{ Scan(...any) error }
 
 func scanJob(row scanner) (app.JobView, error) {
 	var v app.JobView
-	var name, url, format, instanceID, instanceName, instanceURL, broker, stream, topic sql.NullString
+	var name, url, format, instanceID, instanceName, instanceURL, broker, stream, topic, parentJob, parentResource, sourceVersion sql.NullString
 	var started, completed sql.NullTime
-	var partition, offset sql.NullInt64
-	err := row.Scan(&v.ID, &v.ResourceID, &name, &url, &format, &v.DatasetName, &v.Status, &v.IdempotencyKey, &instanceID, &instanceName, &instanceURL, &v.CKANURL, &v.DatastoreActive, &v.CreatedAt, &v.UpdatedAt, &started, &completed, &broker, &stream, &topic, &partition, &offset)
+	var partition, offset, childIndex, totalChildren sql.NullInt64
+	err := row.Scan(&v.ID, &v.ResourceID, &name, &url, &format, &v.DatasetName, &v.Status, &v.IdempotencyKey, &instanceID, &instanceName, &instanceURL, &v.CKANURL, &v.DatastoreActive, &v.CreatedAt, &v.UpdatedAt, &started, &completed, &broker, &stream, &topic, &partition, &offset, &parentJob, &parentResource, &childIndex, &totalChildren, &sourceVersion)
 	if err != nil {
 		return v, translateNotFound(err)
 	}
@@ -87,7 +87,21 @@ func scanJob(row scanner) (app.JobView, error) {
 		v.MessagePartition = &p
 	}
 	v.MessageOffset = nullInt64(offset)
-	v.CKANResourceURL = resourceURL(v.InstanceURL, v.DatasetName, v.ResourceID)
+	v.ParentJobID, v.ParentResourceID = nullString(parentJob), nullString(parentResource)
+	v.SourceVersion = nullString(sourceVersion)
+	if childIndex.Valid {
+		index := int(childIndex.Int64)
+		v.ChildIndex = &index
+	}
+	if totalChildren.Valid {
+		count := int(totalChildren.Int64)
+		v.TotalChildCount = &count
+	}
+	ckanResourceID := v.ResourceID
+	if v.ParentResourceID != nil {
+		ckanResourceID = *v.ParentResourceID
+	}
+	v.CKANResourceURL = resourceURL(v.InstanceURL, v.DatasetName, ckanResourceID)
 	v.Labels = []string{}
 	return v, nil
 }
@@ -99,7 +113,7 @@ func resourceURL(base, dataset, resource string) string {
 }
 
 func (s *Store) ListJobs(ctx context.Context, q app.JobQuery) ([]app.JobView, error) {
-	where, args := []string{"1=1"}, []any{}
+	where, args := []string{"j.parent_job_id IS NULL"}, []any{}
 	add := func(column, value string) {
 		if value != "" {
 			where = append(where, column+"=?")
@@ -187,7 +201,40 @@ func (s *Store) GetJob(ctx context.Context, id string) (*app.JobView, error) {
 	}
 	results, resultErr := s.results(ctx, v.ID)
 	v.Results, err = &results, resultErr
+	if err != nil {
+		return &v, err
+	}
+	v.Children, err = s.childJobs(ctx, v.ID)
 	return &v, err
+}
+
+func (s *Store) childJobs(ctx context.Context, parentID string) ([]app.JobView, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+jobColumns+` FROM ckan_data_job j LEFT JOIN ckan_instance i ON i.id=j.instance_id WHERE j.parent_job_id=? ORDER BY j.child_index`, parentID)
+	if err != nil {
+		return nil, err
+	}
+	children := []app.JobView{}
+	for rows.Next() {
+		child, err := scanJob(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		children = append(children, child)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	for index := range children {
+		results, err := s.results(ctx, children[index].ID)
+		if err != nil {
+			return nil, err
+		}
+		children[index].Results = &results
+	}
+	return children, nil
 }
 func (s *Store) results(ctx context.Context, jobID string) ([]app.JobResult, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT id,job_id,success,status,error_message,error_trace,dataset_preview,rows_processed,expected_rows,resource_size,encoding,created_at FROM ckan_data_job_result WHERE job_id=? ORDER BY created_at`, jobID)
@@ -280,6 +327,10 @@ func (s *Store) GetResource(ctx context.Context, id string) (*app.ResourceView, 
 	v.Jobs = jobs
 	if len(jobs) > 0 {
 		latest := jobs[0]
+		latest.Children, err = s.childJobs(ctx, latest.ID)
+		if err != nil {
+			return nil, err
+		}
 		results, resultErr := s.results(ctx, latest.ID)
 		latest.Results, err = &results, resultErr
 		if err != nil {

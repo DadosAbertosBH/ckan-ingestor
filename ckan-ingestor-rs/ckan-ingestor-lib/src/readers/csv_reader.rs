@@ -21,7 +21,6 @@ use crate::jev_csv_sniffer::JevCsvRepairer;
 use crate::readers::ckan_reader::{
     download_to_temp, CkanReader, FailedResult, ReadResult, SuccessResult,
 };
-use crate::readers::temp_file_cleanup::TempFileCleanup;
 use anyhow::{anyhow, Context, Result};
 use arrow::error::ArrowError;
 use arrow_csv::reader::{Format, ReaderBuilder};
@@ -268,31 +267,21 @@ impl CsvReader {
     /// Detect the CSV metadata once, then read it with the detected settings.
     /// Downloads the file first (if remote), matching Swift's approach.
     pub fn read_batches(&self, resource: &CkanResource) -> ReadResult {
-        let is_remote = resource.url.starts_with("http://") || resource.url.starts_with("https://");
-        let csv_path = if is_remote {
-            download_to_temp(
-                &self.client,
-                &resource.url,
-                downloaded_csv_suffix(&resource.url),
-            )?
-        } else {
-            resource.url.clone()
-        };
-
-        let mut cleanup = TempFileCleanup::from_path(PathBuf::from(&csv_path));
-        if !is_remote {
-            cleanup.commit();
-        }
+        let tempfile = download_to_temp(
+            &self.client,
+            &resource.url,
+            downloaded_csv_suffix(&resource.url),
+        )?;
 
         let mut metadata = sniff_metadata(
-            &csv_path,
+            &tempfile.path_as_str()?,
             self.csv_delimiter.as_deref(),
             SampleSize::Records(CSV_READER_INITIAL_SAMPLE_RECORDS),
             false,
         )?;
 
         self.try_read_csv(
-            &csv_path,
+            &tempfile.path_as_str()?,
             &mut metadata,
             true,
             SampleSize::Records(CSV_READER_INITIAL_SAMPLE_RECORDS),
@@ -539,14 +528,15 @@ impl CsvReader {
         metadata: &mut Metadata,
         jev_repair_count: usize,
     ) -> Result<SuccessResult, CsvParserError> {
-        let _cleanup = TempFileCleanup::from_path(repaired_path.clone());
-        self.try_read_csv(
+        let result = self.try_read_csv(
             &repaired_path.to_string_lossy(),
             metadata,
             false,
             SampleSize::All,
             jev_repair_count,
-        )
+        );
+        let _ = std::fs::remove_file(repaired_path);
+        result
     }
 }
 
@@ -773,7 +763,7 @@ mod tests {
     fn sniff_metadata_uses_the_delimiter_hint() -> Result<()> {
         let path =
             std::env::temp_dir().join(format!("csv-delimiter-hint-{}.csv", uuid::Uuid::new_v4()));
-        let _cleanup = TempFileCleanup::from_path(path.clone());
+        let _cleanup = source_io::TemporaryPath::from_path(path.clone());
         std::fs::write(&path, "name;description\nAna;value, with comma\n")?;
 
         let metadata = sniff_metadata(
@@ -945,7 +935,7 @@ mod tests {
             "csv-decimal-using-comma-{}.csv",
             uuid::Uuid::new_v4()
         ));
-        let _cleanup = TempFileCleanup::from_path(path.clone());
+        let _cleanup = source_io::TemporaryPath::from_path(path.clone());
         let header = (0..26)
             .map(|column| format!("column_{column}"))
             .collect::<Vec<_>>()
@@ -986,7 +976,7 @@ mod tests {
             "csv-multiple-decimals-using-comma-{}.csv",
             uuid::Uuid::new_v4()
         ));
-        let _cleanup = TempFileCleanup::from_path(path.clone());
+        let _cleanup = source_io::TemporaryPath::from_path(path.clone());
         let header = (0..26)
             .map(|column| format!("column_{column}"))
             .collect::<Vec<_>>()
@@ -1081,7 +1071,7 @@ mod tests {
             "csv-sniff-memory-test-{}.csv",
             uuid::Uuid::new_v4()
         ));
-        let _cleanup = TempFileCleanup::from_path(path.clone());
+        let _cleanup = source_io::TemporaryPath::from_path(path.clone());
         {
             let mut file = BufWriter::new(File::create(&path)?);
             writeln!(

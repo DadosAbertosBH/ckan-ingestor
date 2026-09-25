@@ -33,6 +33,11 @@ const (
 
 type Job struct {
 	ID               string     `json:"id"`
+	SourceVersion    *string    `json:"source_version,omitempty"`
+	ParentJobID      *string    `json:"parent_job_id,omitempty"`
+	ParentResourceID *string    `json:"parent_resource_id,omitempty"`
+	ChildIndex       *int       `json:"child_index,omitempty"`
+	TotalChildCount  *int       `json:"total_child_count,omitempty"`
 	ResourceID       string     `json:"resource_id"`
 	ResourceName     *string    `json:"resource_name"`
 	ResourceURL      *string    `json:"resource_url"`
@@ -122,28 +127,33 @@ type MetadataSync struct {
 }
 
 type JobResultMessage struct {
-	JobID           string          `json:"job_id"`
-	Status          string          `json:"status"`
-	ResourceID      string          `json:"resource_id"`
-	DatasetName     *string         `json:"dataset_name,omitempty"`
-	ResourceName    *string         `json:"resource_name,omitempty"`
-	ResourceURL     *string         `json:"resource_url,omitempty"`
-	ResourceFormat  *string         `json:"resource_format,omitempty"`
-	InstanceID      *string         `json:"instance_id,omitempty"`
-	CKANURL         *string         `json:"ckan_url,omitempty"`
-	DatastoreActive *bool           `json:"datastore_active,omitempty"`
-	Reader          *string         `json:"reader,omitempty"`
-	RowsProcessed   *int64          `json:"rows_processed,omitempty"`
-	ExpectedRows    *int64          `json:"expected_rows,omitempty"`
-	ResourceSize    *int64          `json:"resource_size,omitempty"`
-	Encoding        *string         `json:"encoding,omitempty"`
-	CSVStrictMode   *bool           `json:"csv_strict_mode,omitempty"`
-	CSVDelimiter    *string         `json:"csv_delimiter,omitempty"`
-	CSVSamples      *string         `json:"csv_samples,omitempty"`
-	ExpectedColumns *int64          `json:"expected_columns,omitempty"`
-	HTTPStatus      *int64          `json:"http_status,omitempty"`
-	ErrorMessage    *string         `json:"error_message,omitempty"`
-	Preview         json.RawMessage `json:"preview,omitempty"`
+	JobID            string          `json:"job_id"`
+	SourceVersion    *string         `json:"source_version,omitempty"`
+	ParentJobID      *string         `json:"parent_job_id,omitempty"`
+	ParentResourceID *string         `json:"parent_resource_id,omitempty"`
+	ChildIndex       *int            `json:"child_index,omitempty"`
+	TotalChildCount  *int            `json:"total_child_count,omitempty"`
+	Status           string          `json:"status"`
+	ResourceID       string          `json:"resource_id"`
+	DatasetName      *string         `json:"dataset_name,omitempty"`
+	ResourceName     *string         `json:"resource_name,omitempty"`
+	ResourceURL      *string         `json:"resource_url,omitempty"`
+	ResourceFormat   *string         `json:"resource_format,omitempty"`
+	InstanceID       *string         `json:"instance_id,omitempty"`
+	CKANURL          *string         `json:"ckan_url,omitempty"`
+	DatastoreActive  *bool           `json:"datastore_active,omitempty"`
+	Reader           *string         `json:"reader,omitempty"`
+	RowsProcessed    *int64          `json:"rows_processed,omitempty"`
+	ExpectedRows     *int64          `json:"expected_rows,omitempty"`
+	ResourceSize     *int64          `json:"resource_size,omitempty"`
+	Encoding         *string         `json:"encoding,omitempty"`
+	CSVStrictMode    *bool           `json:"csv_strict_mode,omitempty"`
+	CSVDelimiter     *string         `json:"csv_delimiter,omitempty"`
+	CSVSamples       *string         `json:"csv_samples,omitempty"`
+	ExpectedColumns  *int64          `json:"expected_columns,omitempty"`
+	HTTPStatus       *int64          `json:"http_status,omitempty"`
+	ErrorMessage     *string         `json:"error_message,omitempty"`
+	Preview          json.RawMessage `json:"preview,omitempty"`
 }
 
 type MetadataSyncResultMessage struct {
@@ -189,6 +199,7 @@ type SyncQuery struct {
 
 type JobView struct {
 	Job
+	Children        []JobView    `json:"children,omitempty"`
 	CKANResourceURL string       `json:"ckan_resource_url"`
 	Labels          []string     `json:"labels"`
 	Results         *[]JobResult `json:"results,omitempty"`

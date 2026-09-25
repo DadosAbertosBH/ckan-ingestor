@@ -29,7 +29,6 @@ use crate::{
     readers::{
         ckan_reader::{download_to_temp, CkanReader, FailedResult, ReadResult, SuccessResult},
         geojson::{geojson_to_record_batch, write_geoparquet},
-        temp_file_cleanup::TempFileCleanup,
     },
 };
 use reqwest::blocking::Client;
@@ -53,15 +52,16 @@ impl JsonReader {
 
     fn read_batches(&self, resource: &CkanResource) -> ReadResult {
         let is_remote = resource.url.starts_with("http://") || resource.url.starts_with("https://");
-        let json_path = if is_remote {
-            download_to_temp(&self.client, &resource.url, ".json")?
+        let downloaded = if is_remote {
+            Some(download_to_temp(&self.client, &resource.url, ".json")?)
         } else {
-            resource.url.clone()
+            None
         };
-        let mut cleanup = TempFileCleanup::from_path(json_path.clone().into());
-        if !is_remote {
-            cleanup.commit();
-        }
+        let json_path = downloaded
+            .as_ref()
+            .map(|source| source.path_as_str().map(str::to_owned))
+            .transpose()?
+            .unwrap_or_else(|| resource.url.clone());
         let output = self.try_read_json(&json_path)?;
         if output.rows == 0 {
             return Err(FailedResult::from_string(

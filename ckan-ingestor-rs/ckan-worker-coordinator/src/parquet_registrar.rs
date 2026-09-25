@@ -21,6 +21,7 @@ use ducklake::{
 };
 
 use crate::ducklake_data_writer::{append_last_update, initialize_last_update_table};
+use crate::{child_jobs::ChildRecord, child_merge::normalize_children};
 
 #[derive(Clone)]
 pub struct ParquetRegistrar {
@@ -108,6 +109,84 @@ impl ParquetRegistrar {
             .await
             .context("committing parquet registration")?;
         Ok(())
+    }
+
+    pub async fn register_children(
+        &self,
+        parent_resource_id: &str,
+        parent_job_id: &str,
+        source_version: &str,
+        children: &[ChildRecord],
+    ) -> Result<u64> {
+        anyhow::ensure!(!children.is_empty(), "no child artifacts to merge");
+        let client = self.factory.client().await?;
+        let name = TableName {
+            schema: "main".into(),
+            name: parent_resource_id.into(),
+        };
+        if client.table_exists(name.clone()).await? {
+            let tags = client.table(name.clone()).await?.tags().await?;
+            let current_version = tags
+                .iter()
+                .find(|tag| tag.key == "source_version")
+                .map(|tag| tag.value.as_str());
+            if current_version.is_some_and(|version| version >= source_version)
+                || tags
+                    .iter()
+                    .any(|tag| tag.key == "source_job_id" && tag.value == parent_job_id)
+            {
+                return Ok(children.iter().map(|child| child.rows as u64).sum());
+            }
+        }
+        let (schema, artifacts) = normalize_children(
+            parent_resource_id,
+            parent_job_id,
+            children,
+            self.factory.storage_options(),
+        )
+        .await?;
+        let columns = schema
+            .fields()
+            .iter()
+            .map(|field| Column::try_from(field.as_ref()))
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let mut transaction = client.transaction().await?;
+        if client.table_exists(name.clone()).await? {
+            transaction.table(name.clone())?.delete()?;
+        }
+        let mut table = transaction.create_table(
+            name,
+            columns,
+            None,
+            None,
+            Some(vec![
+                Tag {
+                    key: "source_job_id".into(),
+                    value: parent_job_id.into(),
+                },
+                Tag {
+                    key: "source_version".into(),
+                    value: source_version.into(),
+                },
+            ]),
+            IfExistsStrategy::Fail,
+        )?;
+        let rows = artifacts.iter().map(|artifact| artifact.num_rows).sum();
+        let files = artifacts
+            .iter()
+            .map(|artifact| {
+                Ok(WriteDataFile {
+                    path: artifact.uri.clone(),
+                    statistics: Some(statistics(artifact)?),
+                    partition_values: None,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        table.write_data_files(files).await?;
+        drop(table);
+        append_last_update(&mut transaction, parent_resource_id, source_version)?;
+        transaction.commit().await?;
+        Ok(rows)
     }
 }
 

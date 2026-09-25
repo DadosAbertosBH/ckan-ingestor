@@ -25,12 +25,12 @@ import (
 )
 
 func (s *txStore) Job(ctx context.Context, id string) (*app.Job, error) {
-	row := s.tx.QueryRowContext(ctx, `SELECT j.id,j.resource_id,j.resource_name,j.resource_url,j.resource_format,j.dataset_name,j.status,j.idempotency_key,j.instance_id,i.name,i.url,j.ckan_url,j.datastore_active,j.created_at,j.updated_at,j.started_at,j.completed_at,j.broker_type,j.message_stream,j.message_topic,j.message_partition,j.message_offset FROM ckan_data_job j LEFT JOIN ckan_instance i ON i.id=j.instance_id WHERE j.id=? FOR UPDATE`, id)
+	row := s.tx.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM ckan_data_job j LEFT JOIN ckan_instance i ON i.id=j.instance_id WHERE j.id=? FOR UPDATE`, id)
 	var v app.Job
-	var name, url, format, instanceName, instanceURL, broker, stream, topic sql.NullString
+	var name, url, format, instanceName, instanceURL, broker, stream, topic, parentJob, parentResource, sourceVersion sql.NullString
 	var started, completed sql.NullTime
-	var partition, offset sql.NullInt64
-	if err := row.Scan(&v.ID, &v.ResourceID, &name, &url, &format, &v.DatasetName, &v.Status, &v.IdempotencyKey, &v.InstanceID, &instanceName, &instanceURL, &v.CKANURL, &v.DatastoreActive, &v.CreatedAt, &v.UpdatedAt, &started, &completed, &broker, &stream, &topic, &partition, &offset); err != nil {
+	var partition, offset, childIndex, totalChildren sql.NullInt64
+	if err := row.Scan(&v.ID, &v.ResourceID, &name, &url, &format, &v.DatasetName, &v.Status, &v.IdempotencyKey, &v.InstanceID, &instanceName, &instanceURL, &v.CKANURL, &v.DatastoreActive, &v.CreatedAt, &v.UpdatedAt, &started, &completed, &broker, &stream, &topic, &partition, &offset, &parentJob, &parentResource, &childIndex, &totalChildren, &sourceVersion); err != nil {
 		return nil, translateNotFound(err)
 	}
 	v.ResourceName, v.ResourceURL, v.ResourceFormat = nullString(name), nullString(url), nullString(format)
@@ -44,15 +44,25 @@ func (s *txStore) Job(ctx context.Context, id string) (*app.Job, error) {
 		v.MessagePartition = &p
 	}
 	v.MessageOffset = nullInt64(offset)
+	v.ParentJobID, v.ParentResourceID = nullString(parentJob), nullString(parentResource)
+	v.SourceVersion = nullString(sourceVersion)
+	if childIndex.Valid {
+		index := int(childIndex.Int64)
+		v.ChildIndex = &index
+	}
+	if totalChildren.Valid {
+		count := int(totalChildren.Int64)
+		v.TotalChildCount = &count
+	}
 	return &v, nil
 }
 
 func (s *txStore) InsertJob(ctx context.Context, v *app.Job) error {
-	_, err := s.tx.ExecContext(ctx, `INSERT INTO ckan_data_job (id,resource_id,resource_name,resource_url,resource_format,dataset_name,status,idempotency_key,instance_id,ckan_url,datastore_active,created_at,updated_at,started_at,completed_at,broker_type,message_stream,message_topic,message_partition,message_offset) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, v.ID, v.ResourceID, v.ResourceName, v.ResourceURL, v.ResourceFormat, v.DatasetName, v.Status, v.IdempotencyKey, v.InstanceID, v.CKANURL, v.DatastoreActive, v.CreatedAt, v.UpdatedAt, v.StartedAt, v.CompletedAt, v.BrokerType, v.MessageStream, v.MessageTopic, v.MessagePartition, v.MessageOffset)
+	_, err := s.tx.ExecContext(ctx, `INSERT INTO ckan_data_job (id,resource_id,resource_name,resource_url,resource_format,dataset_name,status,idempotency_key,instance_id,ckan_url,datastore_active,created_at,updated_at,started_at,completed_at,broker_type,message_stream,message_topic,message_partition,message_offset,parent_job_id,parent_resource_id,child_index,total_child_count,source_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, v.ID, v.ResourceID, v.ResourceName, v.ResourceURL, v.ResourceFormat, v.DatasetName, v.Status, v.IdempotencyKey, v.InstanceID, v.CKANURL, v.DatastoreActive, v.CreatedAt, v.UpdatedAt, v.StartedAt, v.CompletedAt, v.BrokerType, v.MessageStream, v.MessageTopic, v.MessagePartition, v.MessageOffset, v.ParentJobID, v.ParentResourceID, v.ChildIndex, v.TotalChildCount, v.SourceVersion)
 	return err
 }
 func (s *txStore) UpdateJob(ctx context.Context, v *app.Job) error {
-	_, err := s.tx.ExecContext(ctx, `UPDATE ckan_data_job SET status=?,started_at=?,completed_at=?,updated_at=? WHERE id=?`, v.Status, v.StartedAt, v.CompletedAt, v.UpdatedAt, v.ID)
+	_, err := s.tx.ExecContext(ctx, `UPDATE ckan_data_job SET status=?,started_at=?,completed_at=?,updated_at=?,total_child_count=? WHERE id=?`, v.Status, v.StartedAt, v.CompletedAt, v.UpdatedAt, v.TotalChildCount, v.ID)
 	return err
 }
 func (s *txStore) InsertResult(ctx context.Context, v *app.JobResult) error {

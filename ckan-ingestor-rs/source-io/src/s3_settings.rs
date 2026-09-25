@@ -1,0 +1,92 @@
+use serde::Deserialize;
+use std::env;
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(default)]
+pub struct S3Settings {
+    pub protocol: String,
+    pub endpoint: String,
+    pub access_key_id: String,
+    pub secret_access_key: String,
+    pub region: String,
+    pub bucket: String,
+    pub url_style: String,
+    pub use_ssl: bool,
+    pub request_timeout_seconds: u64,
+    pub account_id: Option<String>,
+}
+
+impl Default for S3Settings {
+    fn default() -> Self {
+        Self {
+            protocol: "s3".into(),
+            endpoint: "s3.amazonaws.com".into(),
+            access_key_id: "admin".into(),
+            secret_access_key: "password".into(),
+            region: "us-west-1".into(),
+            bucket: "warehouse".into(),
+            url_style: "vhost".into(),
+            use_ssl: true,
+            request_timeout_seconds: 300,
+            account_id: None,
+        }
+    }
+}
+
+impl S3Settings {
+    pub fn from_env() -> Self {
+        Self::from_getter(|key| env::var(key).ok())
+    }
+
+    pub fn from_getter<F>(get: F) -> Self
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        Self {
+            protocol: get("S3_PROTOCOL").unwrap_or_else(|| "s3".into()),
+            endpoint: get("S3_ENDPOINT").unwrap_or_else(|| "rustfs:9000".into()),
+            bucket: get("S3_BUCKET").unwrap_or_else(|| "warehouse".into()),
+            access_key_id: get("S3_ACCESS_KEY_ID").unwrap_or_else(|| "admin".into()),
+            secret_access_key: get("S3_SECRET_ACCESS_KEY").unwrap_or_else(|| "password".into()),
+            region: get("S3_REGION").unwrap_or_else(|| "us-east-1".into()),
+            url_style: get("S3_URL_STYLE").unwrap_or_else(|| "vhost".into()),
+            use_ssl: get("S3_USE_SSL")
+                .map(|value| value == "true")
+                .unwrap_or(false),
+            request_timeout_seconds: get("S3_REQUEST_TIMEOUT_SECONDS")
+                .and_then(|value| value.parse().ok())
+                .filter(|value| *value > 0)
+                .unwrap_or(300),
+            ..Self::default()
+        }
+    }
+
+    pub fn endpoint_url(&self) -> String {
+        format!(
+            "{}://{}",
+            if self.use_ssl { "https" } else { "http" },
+            self.endpoint
+        )
+    }
+
+    pub fn object_store_options(&self) -> Vec<(String, String)> {
+        vec![
+            ("aws_access_key_id".into(), self.access_key_id.clone()),
+            (
+                "aws_secret_access_key".into(),
+                self.secret_access_key.clone(),
+            ),
+            ("aws_region".into(), self.region.clone()),
+            ("aws_endpoint".into(), self.endpoint_url()),
+            (
+                "aws_virtual_hosted_style_request".into(),
+                (self.url_style != "path").to_string(),
+            ),
+            ("aws_allow_http".into(), (!self.use_ssl).to_string()),
+            (
+                "timeout".into(),
+                format!("{}s", self.request_timeout_seconds),
+            ),
+        ]
+    }
+}

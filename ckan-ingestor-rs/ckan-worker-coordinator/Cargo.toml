@@ -15,7 +15,7 @@ message_processor = { path = "../message-processor" }
 ckan_metadata_ingestor = { path = "../ckan-metadata-ingestor" }
 futures = "0.3"
 async-stream = "0.3"
-tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "macros", "sync", "signal", "time"] }
+tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "macros", "sync", "signal", "time", "fs", "io-util"] }
 serde_json = "1.0"
 serde = "1.0"
 anyhow = "1.0"
@@ -30,6 +30,7 @@ url = "2.5"
 base64 = "0.22"
 rustls = { version = "0.23", features = ["ring"] }
 uuid = { version = "1", features = ["v5"] }
+tempfile = "3"
 
 [dev-dependencies]
 testcontainers = "0.28"

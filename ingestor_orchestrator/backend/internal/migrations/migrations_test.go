@@ -10,10 +10,38 @@ package migrations
 
 import (
 	"context"
+	"database/sql"
 	"github.com/DATA-DOG/go-sqlmock"
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/pressly/goose/v3"
+	"os"
 	"strings"
 	"testing"
 )
+
+func TestChildJobsMigrationAgainstMySQL(t *testing.T) {
+	dsn := os.Getenv("MYSQL_INTEGRATION_DSN")
+	if dsn == "" {
+		t.Skip("MYSQL_INTEGRATION_DSN is not set")
+	}
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Up(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	for _, column := range []string{"parent_job_id", "parent_resource_id", "child_index", "total_child_count", "source_version"} {
+		var count int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ckan_data_job' AND column_name=?`, column).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("migration did not create %s", column)
+		}
+	}
+}
 
 func TestCSVHintMigrationContainsAllLegacySeeds(t *testing.T) {
 	data, err := files.ReadFile("sql/00002_csv_hints.sql")
@@ -29,6 +57,45 @@ func TestCSVHintMigrationContainsAllLegacySeeds(t *testing.T) {
 	}
 	if strings.Count(sql, "CHAR(9)") != 1 {
 		t.Fatal("migration must contain exactly one tab-delimited hint")
+	}
+}
+
+func TestChildJobsMigrationHasGooseUpAndExpectedColumns(t *testing.T) {
+	data, err := files.ReadFile("sql/00004_child_jobs.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := string(data)
+	if !strings.Contains(sql, "-- +goose Up") {
+		t.Fatal("child jobs migration must declare its Goose Up section")
+	}
+	for _, column := range []string{"parent_job_id", "parent_resource_id", "child_index", "total_child_count", "source_version"} {
+		if !strings.Contains(sql, column) {
+			t.Fatalf("missing %s column", column)
+		}
+	}
+}
+
+func TestChildJobsMigrationExecutesThroughGoose(t *testing.T) {
+	goose.SetBaseFS(files)
+	if err := goose.SetDialect("mysql"); err != nil {
+		t.Fatal(err)
+	}
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectBegin()
+	mock.ExpectExec("ALTER TABLE ckan_data_job").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("INSERT INTO goose_db_version").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+	migration := &goose.Migration{Version: 4, Source: "sql/00004_child_jobs.sql"}
+	if err := migration.UpContext(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 

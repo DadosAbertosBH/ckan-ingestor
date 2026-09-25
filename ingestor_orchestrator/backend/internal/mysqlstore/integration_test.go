@@ -113,3 +113,56 @@ func TestQueryStoreAgainstMySQL(t *testing.T) {
 		t.Fatalf("syncs=%+v err=%v", syncs, err)
 	}
 }
+
+func TestChildJobsAppearOnlyUnderTheirParentAgainstMySQL(t *testing.T) {
+	dsn := os.Getenv("MYSQL_INTEGRATION_DSN")
+	if dsn == "" {
+		t.Skip("MYSQL_INTEGRATION_DSN is not set")
+	}
+	store, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.DB.Close()
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	instanceID, parentID, childID := "child-projection-instance", "child-projection-parent", "child-projection-child"
+	defer func() {
+		store.DB.ExecContext(ctx, `DELETE FROM latest_resource_job WHERE resource_id='child-projection-resource'`)
+		store.DB.ExecContext(ctx, `DELETE FROM ckan_data_job WHERE id=?`, childID)
+		store.DB.ExecContext(ctx, `DELETE FROM ckan_data_job WHERE id=?`, parentID)
+		store.DB.ExecContext(ctx, `DELETE FROM ckan_instance WHERE id=?`, instanceID)
+	}()
+	if err := store.CreateInstance(ctx, &app.Instance{ID: instanceID, Name: "Child test", URL: "https://data.test", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	version := "2026-09-01T00:00:00Z"
+	parent := &app.Job{ID: parentID, ResourceID: "child-projection-resource", DatasetName: "dataset", Status: app.JobProcessing, IdempotencyKey: "parent-key", InstanceID: instanceID, SourceVersion: &version, CreatedAt: now, UpdatedAt: now}
+	index, total := 0, 2
+	child := &app.Job{ID: childID, ResourceID: "child-projection-file", DatasetName: "dataset", Status: app.JobCompleted, IdempotencyKey: "child-key", InstanceID: instanceID, ParentJobID: &parentID, ParentResourceID: &parent.ResourceID, ChildIndex: &index, TotalChildCount: &total, SourceVersion: parent.SourceVersion, CreatedAt: now, UpdatedAt: now}
+	if err := store.InTx(ctx, func(tx app.Tx) error {
+		if err := tx.InsertJob(ctx, parent); err != nil {
+			return err
+		}
+		if err := tx.InsertJob(ctx, child); err != nil {
+			return err
+		}
+		return tx.PutLatest(ctx, &app.LatestResource{ResourceID: parent.ResourceID, LatestJobID: parent.ID, InstanceID: instanceID, DatasetName: parent.DatasetName, Status: "processing", CreatedAt: now, UpdatedAt: now})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	listed, err := store.ListJobs(ctx, app.JobQuery{InstanceID: instanceID, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].ID != parentID {
+		t.Fatalf("top-level jobs = %#v", listed)
+	}
+	detail, err := store.GetJob(ctx, parentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.Children) != 1 || detail.Children[0].ID != childID || detail.Children[0].SourceVersion == nil {
+		t.Fatalf("parent children = %#v", detail.Children)
+	}
+}
