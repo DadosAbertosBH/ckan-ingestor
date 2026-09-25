@@ -23,10 +23,22 @@ use object_store::{
 };
 use reqwest::blocking::Client as HttpClient;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path as FsPath;
 use std::sync::Arc;
+use std::time::Duration;
 use url::Url;
+
+const MULTIPART_UPLOAD_ATTEMPTS: usize = 3;
+const MULTIPART_UPLOAD_CONCURRENCY: usize = 2;
+const MULTIPART_BUFFER_BYTES: usize = 5 * 1024 * 1024;
+const SINGLE_PART_UPLOAD_MAX_BYTES: u64 = 100 * 1024 * 1024;
+
+#[derive(Debug, PartialEq, Eq)]
+enum UploadStrategy {
+    SinglePart,
+    Multipart,
+}
 
 #[derive(Clone)]
 pub struct S3DocumentIngestor {
@@ -53,7 +65,7 @@ impl S3DocumentIngestor {
 
     pub fn ingest(&self, filename: &str, download_url: &str, content_type: &str) -> Result<String> {
         let client = HttpClient::new();
-        let resp = client.get(download_url).send()?;
+        let mut resp = client.get(download_url).send()?;
         anyhow::ensure!(
             resp.status().is_success(),
             "document download failed: {}",
@@ -69,28 +81,27 @@ impl S3DocumentIngestor {
                 "resource declared as {content_type} returned HTML"
             );
         }
-        let bytes = resp.bytes()?;
         let object_url = format!("docs/{filename}");
         let mut attributes = Attributes::new();
         attributes.insert(Attribute::ContentType, content_type.to_owned().into());
+        let mut staged = tempfile::NamedTempFile::new()?;
+        std::io::copy(&mut resp, &mut staged)?;
+        staged.flush()?;
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        runtime
-            .block_on(self.store.put_opts(
-                &Path::from(object_url.clone()),
-                bytes.into(),
-                PutOptions {
-                    attributes,
-                    ..Default::default()
-                },
-            ))
-            .with_context(|| {
-                format!(
-                    "error uploading document to S3 endpoint {}",
-                    self.public_url
-                )
-            })?;
+        self.upload_file_with_retry(
+            &runtime,
+            &Path::from(object_url.clone()),
+            attributes,
+            staged.path(),
+        )
+        .with_context(|| {
+            format!(
+                "error uploading document to S3 endpoint {}",
+                self.public_url
+            )
+        })?;
         Ok(format!("{}/{}", self.public_url, object_url))
     }
 
@@ -104,28 +115,71 @@ impl S3DocumentIngestor {
         source_modified: Option<&str>,
     ) -> Result<String> {
         let key = format!("docs/{filename}");
+        self.ingest_path_at_key(&key, source_path, content_type, source_modified)
+    }
+
+    /// Returns the public URL when a crawled object is at least as recent as
+    /// the upstream file. Sources without a modification timestamp are refreshed.
+    pub fn current_crawled_file_url(
+        &self,
+        source_identity: &str,
+        filename: &str,
+        source_modified: Option<&str>,
+    ) -> Result<Option<String>> {
+        let Some(source_modified) = source_modified.filter(|value| !value.is_empty()) else {
+            return Ok(None);
+        };
+        let key = crawled_file_key(source_identity, filename);
         let path = Path::from(key.clone());
         let public_url = format!("{}/{}", self.public_url, key);
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        if let Some(modified) = source_modified.filter(|value| !value.is_empty()) {
-            let source_modified = DateTime::parse_from_rfc3339(modified)
-                .context("source modification time must be RFC 3339")?
-                .with_timezone(&Utc);
-            match runtime.block_on(self.store.get_opts(
-                &path,
-                GetOptions {
-                    head: true,
-                    ..Default::default()
-                },
-            )) {
-                Ok(object) if source_modified <= object.meta.last_modified => {
-                    return Ok(public_url);
-                }
-                Ok(_) | Err(StoreError::NotFound { .. }) => {}
-                Err(error) => return Err(error.into()),
-            }
+        let source_modified = DateTime::parse_from_rfc3339(source_modified)
+            .context("source modification time must be RFC 3339")?
+            .with_timezone(&Utc);
+        match runtime.block_on(self.store.get_opts(
+            &path,
+            GetOptions {
+                head: true,
+                ..Default::default()
+            },
+        )) {
+            Ok(object) if source_modified <= object.meta.last_modified => Ok(Some(public_url)),
+            Ok(_) | Err(StoreError::NotFound { .. }) => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    /// Streams a materialized crawler file to the shared `crawled-files/` namespace.
+    pub fn ingest_crawled_path(
+        &self,
+        source_identity: &str,
+        filename: &str,
+        source_path: &FsPath,
+        content_type: &str,
+        source_modified: Option<&str>,
+    ) -> Result<String> {
+        let key = crawled_file_key(source_identity, filename);
+        self.ingest_path_at_key(&key, source_path, content_type, source_modified)
+    }
+
+    fn ingest_path_at_key(
+        &self,
+        key: &str,
+        source_path: &FsPath,
+        content_type: &str,
+        source_modified: Option<&str>,
+    ) -> Result<String> {
+        let path = Path::from(key);
+        let public_url = format!("{}/{}", self.public_url, key);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        if let Some(url) =
+            self.current_url_for_path(&runtime, &path, &public_url, source_modified)?
+        {
+            return Ok(url);
         }
 
         let mut attributes = Attributes::new();
@@ -136,26 +190,36 @@ impl S3DocumentIngestor {
                 modified.to_owned().into(),
             );
         }
-        let upload = runtime.block_on(self.store.put_multipart_opts(
-            &path,
-            PutMultipartOptions {
-                attributes,
+        self.upload_file_with_retry(&runtime, &path, attributes, source_path)?;
+        Ok(public_url)
+    }
+
+    fn current_url_for_path(
+        &self,
+        runtime: &tokio::runtime::Runtime,
+        path: &Path,
+        public_url: &str,
+        source_modified: Option<&str>,
+    ) -> Result<Option<String>> {
+        let Some(modified) = source_modified.filter(|value| !value.is_empty()) else {
+            return Ok(None);
+        };
+        let source_modified = DateTime::parse_from_rfc3339(modified)
+            .context("source modification time must be RFC 3339")?
+            .with_timezone(&Utc);
+        match runtime.block_on(self.store.get_opts(
+            path,
+            GetOptions {
+                head: true,
                 ..Default::default()
             },
-        ))?;
-        let mut writer = WriteMultipart::new(upload);
-        let mut input = File::open(source_path)?;
-        let mut buffer = vec![0; 5 * 1024 * 1024];
-        loop {
-            let read = input.read(&mut buffer)?;
-            if read == 0 {
-                break;
+        )) {
+            Ok(object) if source_modified <= object.meta.last_modified => {
+                Ok(Some(public_url.to_owned()))
             }
-            writer.write(&buffer[..read]);
-            runtime.block_on(writer.wait_for_capacity(2))?;
+            Ok(_) | Err(StoreError::NotFound { .. }) => Ok(None),
+            Err(error) => Err(error.into()),
         }
-        runtime.block_on(writer.finish())?;
-        Ok(public_url)
     }
 
     /// Stores a Drive file under a key shared by every CKAN resource that links to it.
@@ -164,10 +228,10 @@ impl S3DocumentIngestor {
         file_id: &str,
         modified_time: &str,
         content_type: &str,
-        download: F,
+        mut download: F,
     ) -> Result<String>
     where
-        F: FnOnce() -> Result<R>,
+        F: FnMut() -> Result<R>,
         R: Read,
     {
         anyhow::ensure!(
@@ -205,33 +269,161 @@ impl S3DocumentIngestor {
             Err(error) => return Err(error.into()),
         }
 
-        let mut input = download()?;
         let mut attributes = Attributes::new();
         attributes.insert(Attribute::ContentType, content_type.to_owned().into());
         attributes.insert(
             Attribute::Metadata("drive-modified-time".into()),
             modified_time.to_owned().into(),
         );
+        let mut staged = tempfile::NamedTempFile::new()?;
+        std::io::copy(&mut download()?, &mut staged)?;
+        staged.flush()?;
+        self.upload_file_with_retry(&runtime, &path, attributes, staged.path())?;
+        Ok(public_url)
+    }
+
+    fn upload_file_with_retry(
+        &self,
+        runtime: &tokio::runtime::Runtime,
+        path: &Path,
+        attributes: Attributes,
+        source_path: &FsPath,
+    ) -> Result<()> {
+        match upload_strategy(source_path.metadata()?.len()) {
+            UploadStrategy::SinglePart => {
+                let payload: bytes::Bytes = std::fs::read(source_path)?.into();
+                retry_operation(
+                    MULTIPART_UPLOAD_ATTEMPTS,
+                    || {
+                        runtime
+                            .block_on(self.store.put_opts(
+                                path,
+                                payload.clone().into(),
+                                PutOptions {
+                                    attributes: attributes.clone(),
+                                    ..Default::default()
+                                },
+                            ))
+                            .map(|_| ())
+                            .map_err(Into::into)
+                    },
+                    std::thread::sleep,
+                )
+            }
+            UploadStrategy::Multipart => retry_operation(
+                MULTIPART_UPLOAD_ATTEMPTS,
+                || {
+                    self.upload_multipart_once(
+                        runtime,
+                        path,
+                        attributes.clone(),
+                        File::open(source_path)?,
+                    )
+                },
+                std::thread::sleep,
+            ),
+        }
+    }
+
+    fn upload_multipart_once<R: Read>(
+        &self,
+        runtime: &tokio::runtime::Runtime,
+        path: &Path,
+        attributes: Attributes,
+        mut input: R,
+    ) -> Result<()> {
         let upload = runtime.block_on(self.store.put_multipart_opts(
-            &path,
+            path,
             PutMultipartOptions {
                 attributes,
                 ..Default::default()
             },
         ))?;
         let mut writer = WriteMultipart::new(upload);
-        let mut buffer = vec![0; 5 * 1024 * 1024];
+        let mut buffer = vec![0; MULTIPART_BUFFER_BYTES];
         loop {
-            let read = input.read(&mut buffer)?;
+            let read = match input.read(&mut buffer) {
+                Ok(read) => read,
+                Err(error) => {
+                    abort_upload(runtime, writer);
+                    return Err(error.into());
+                }
+            };
             if read == 0 {
                 break;
             }
             writer.write(&buffer[..read]);
-            runtime.block_on(writer.wait_for_capacity(2))?;
+            if let Err(error) =
+                runtime.block_on(writer.wait_for_capacity(MULTIPART_UPLOAD_CONCURRENCY))
+            {
+                abort_upload(runtime, writer);
+                return Err(error.into());
+            }
+        }
+        if let Err(error) = runtime.block_on(writer.wait_for_capacity(0)) {
+            abort_upload(runtime, writer);
+            return Err(error.into());
         }
         runtime.block_on(writer.finish())?;
-        Ok(public_url)
+        Ok(())
     }
+}
+
+fn upload_strategy(file_size: u64) -> UploadStrategy {
+    if file_size < SINGLE_PART_UPLOAD_MAX_BYTES {
+        UploadStrategy::SinglePart
+    } else {
+        UploadStrategy::Multipart
+    }
+}
+
+fn crawled_file_key(source_identity: &str, filename: &str) -> String {
+    let source_id = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, source_identity.as_bytes());
+    let filename = FsPath::new(filename)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("source");
+    let filename: String = filename
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    format!("crawled-files/{source_id}/{filename}")
+}
+
+fn abort_upload(runtime: &tokio::runtime::Runtime, writer: WriteMultipart) {
+    if let Err(error) = runtime.block_on(writer.abort()) {
+        log::warn!("Failed to abort multipart upload after an error: {error:#}");
+    }
+}
+
+fn retry_operation<T, F, S>(attempts: usize, mut operation: F, mut sleep: S) -> Result<T>
+where
+    F: FnMut() -> Result<T>,
+    S: FnMut(Duration),
+{
+    anyhow::ensure!(attempts > 0, "retry attempts must be positive");
+    for attempt in 1..=attempts {
+        match operation() {
+            Ok(value) => return Ok(value),
+            Err(error) if attempt < attempts => {
+                let delay = Duration::from_secs(1 << (attempt - 1));
+                log::warn!(
+                    "Object upload attempt {attempt}/{attempts} failed; retrying in {}s: {error:#}",
+                    delay.as_secs()
+                );
+                sleep(delay);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    unreachable!("positive attempt count always returns")
 }
 
 fn is_html_content_type(content_type: &str) -> bool {
@@ -243,6 +435,7 @@ fn is_html_content_type(content_type: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use std::{
+        cell::{Cell, RefCell},
         io::Cursor,
         sync::{
             atomic::{AtomicUsize, Ordering},
@@ -253,7 +446,53 @@ mod tests {
     use crate::config::S3Settings;
     use object_store::{memory::InMemory, path::Path, Attribute, ObjectStoreExt};
 
-    use super::S3DocumentIngestor;
+    use super::{
+        retry_operation, upload_strategy, S3DocumentIngestor, UploadStrategy,
+        SINGLE_PART_UPLOAD_MAX_BYTES,
+    };
+
+    #[test]
+    fn uses_single_part_below_one_hundred_mebibytes() {
+        assert_eq!(upload_strategy(0), UploadStrategy::SinglePart);
+        assert_eq!(
+            upload_strategy(SINGLE_PART_UPLOAD_MAX_BYTES - 1),
+            UploadStrategy::SinglePart
+        );
+        assert_eq!(
+            upload_strategy(SINGLE_PART_UPLOAD_MAX_BYTES),
+            UploadStrategy::Multipart
+        );
+    }
+
+    #[test]
+    fn retries_a_transient_multipart_failure_with_exponential_backoff() {
+        let attempts = Cell::new(0);
+        let delays = RefCell::new(Vec::new());
+
+        let result = retry_operation(
+            3,
+            || {
+                let attempt = attempts.get() + 1;
+                attempts.set(attempt);
+                if attempt < 3 {
+                    anyhow::bail!("transient connection reset");
+                }
+                Ok("uploaded")
+            },
+            |delay| delays.borrow_mut().push(delay),
+        )
+        .unwrap();
+
+        assert_eq!(result, "uploaded");
+        assert_eq!(attempts.get(), 3);
+        assert_eq!(
+            delays.into_inner(),
+            [
+                std::time::Duration::from_secs(1),
+                std::time::Duration::from_secs(2)
+            ]
+        );
+    }
 
     #[test]
     fn new_builds_the_public_document_base_url() {

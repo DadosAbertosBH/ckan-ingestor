@@ -226,6 +226,7 @@ fn run_conversion(
         Box::new(FileReferenceReader::new(s3)),
         Box::new(ExternalResourceCrawlerReader::new(
             http_client.clone(),
+            s3,
             vec![
                 Box::new(CsvReader::with_delimiter(
                     http_client.clone(),

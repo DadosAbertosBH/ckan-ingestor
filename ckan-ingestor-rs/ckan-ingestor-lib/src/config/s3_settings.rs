@@ -28,6 +28,7 @@ pub struct S3Settings {
     pub bucket: String,
     pub url_style: String,
     pub use_ssl: bool,
+    pub request_timeout_seconds: u64,
     pub account_id: Option<String>,
 }
 
@@ -42,6 +43,7 @@ impl Default for S3Settings {
             bucket: "warehouse".into(),
             url_style: "vhost".into(),
             use_ssl: true,
+            request_timeout_seconds: 300,
             account_id: None,
         }
     }
@@ -65,6 +67,10 @@ impl S3Settings {
             region: get("S3_REGION").unwrap_or_else(|| "us-east-1".into()),
             url_style: get("S3_URL_STYLE").unwrap_or_else(|| "vhost".into()),
             use_ssl: get("S3_USE_SSL").map(|v| v == "true").unwrap_or(false),
+            request_timeout_seconds: get("S3_REQUEST_TIMEOUT_SECONDS")
+                .and_then(|value| value.parse().ok())
+                .filter(|value| *value > 0)
+                .unwrap_or(300),
             ..Self::default()
         }
     }
@@ -88,6 +94,10 @@ impl S3Settings {
                 (self.url_style != "path").to_string(),
             ),
             ("aws_allow_http".into(), (!self.use_ssl).to_string()),
+            (
+                "timeout".into(),
+                format!("{}s", self.request_timeout_seconds),
+            ),
         ]
     }
 }
@@ -103,5 +113,29 @@ mod tests {
         let settings = S3Settings::from_getter(|key| values.get(key).cloned());
 
         assert_eq!(settings.url_style, "path");
+    }
+
+    #[test]
+    fn object_store_requests_have_a_long_timeout_for_large_r2_parts() {
+        let settings = S3Settings::default();
+
+        assert!(settings
+            .object_store_options()
+            .contains(&("timeout".to_string(), "300s".to_string())));
+    }
+
+    #[test]
+    fn reads_the_s3_request_timeout_from_the_environment() {
+        let values = HashMap::from([(
+            String::from("S3_REQUEST_TIMEOUT_SECONDS"),
+            String::from("900"),
+        )]);
+
+        let settings = S3Settings::from_getter(|key| values.get(key).cloned());
+
+        assert_eq!(settings.request_timeout_seconds, 900);
+        assert!(settings
+            .object_store_options()
+            .contains(&("timeout".to_string(), "900s".to_string())));
     }
 }

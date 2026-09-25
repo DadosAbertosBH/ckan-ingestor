@@ -81,7 +81,7 @@ pub(crate) fn visit_zip<F>(
     visit: &mut F,
 ) -> Result<usize>
 where
-    F: FnMut(&Path, &str) -> Result<()>,
+    F: FnMut(&Path, &str, Option<&str>) -> Result<()>,
 {
     let mut entries = 0;
     let mut expanded = 0;
@@ -108,7 +108,7 @@ fn visit_zip_inner<F>(
     visit: &mut F,
 ) -> Result<usize>
 where
-    F: FnMut(&Path, &str) -> Result<()>,
+    F: FnMut(&Path, &str, Option<&str>) -> Result<()>,
 {
     anyhow::ensure!(
         depth <= limits.max_depth,
@@ -139,6 +139,17 @@ where
             "ZIP expanded size exceeds configured limit"
         );
         let name = member.name().to_owned();
+        let modified = member.last_modified().map(|value| {
+            format!(
+                "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+                value.year(),
+                value.month(),
+                value.day(),
+                value.hour(),
+                value.minute(),
+                value.second()
+            )
+        });
         let lower = name.to_ascii_lowercase();
         let nested = lower.ends_with(".zip");
         if !nested && !matches_format(&lower, format) {
@@ -154,6 +165,7 @@ where
             "ZIP member exceeds its declared size"
         );
         output.flush()?;
+        drop(output);
         let member_source = format!("{source}!/{name}");
         if nested {
             found += visit_zip_inner(
@@ -167,7 +179,7 @@ where
                 visit,
             )?;
         } else {
-            visit(&temp_path, &member_source)?;
+            visit(&temp_path, &member_source, modified.as_deref())?;
             found += 1;
         }
     }
@@ -250,13 +262,9 @@ mod tests {
             ..ArchiveLimits::default()
         };
 
-        let error = visit_zip(
-            file.path(),
-            "source.zip",
-            "JSON",
-            limits,
-            &mut |_, _| Ok(()),
-        )
+        let error = visit_zip(file.path(), "source.zip", "JSON", limits, &mut |_, _, _| {
+            Ok(())
+        })
         .expect_err("cumulative expansion must exceed the limit");
 
         assert!(error.to_string().contains("expanded size"));
