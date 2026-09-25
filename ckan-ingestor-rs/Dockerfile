@@ -27,6 +27,7 @@ WORKDIR /src
 # chef) requires each member to expose a target, so create placeholders that
 # the real source will overwrite in the next stage.
 COPY Cargo.toml Cargo.lock ./
+COPY source-io/Cargo.toml source-io/
 COPY ckan-ingestor-lib/Cargo.toml ckan-ingestor-lib/
 COPY ckan-ingestor-worker-lib/Cargo.toml ckan-ingestor-worker-lib/
 COPY message-processor/Cargo.toml message-processor/
@@ -34,8 +35,9 @@ COPY iggy-processor/Cargo.toml iggy-processor/
 COPY ckan-metadata-ingestor/Cargo.toml ckan-metadata-ingestor/
 COPY ckan-ingestor-consumer/Cargo.toml ckan-ingestor-consumer/
 COPY ckan-worker-coordinator/Cargo.toml ckan-worker-coordinator/
-RUN mkdir -p ckan-ingestor-lib/src ckan-ingestor-worker-lib/src message-processor/src iggy-processor/src ckan-metadata-ingestor/src ckan-ingestor-consumer/src ckan-worker-coordinator/src && \
+RUN mkdir -p source-io/src ckan-ingestor-lib/src ckan-ingestor-worker-lib/src message-processor/src iggy-processor/src ckan-metadata-ingestor/src ckan-ingestor-consumer/src ckan-worker-coordinator/src && \
     for target in \
+        source-io/src/lib.rs \
         ckan-ingestor-lib/src/lib.rs \
         ckan-ingestor-worker-lib/src/lib.rs \
         message-processor/src/lib.rs \
@@ -54,6 +56,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 # Now copy the actual source and build only our crates.
 # The production image only needs the application sources. Keeping tests,
 # fixtures, and local metadata out of this COPY preserves the build cache.
+COPY source-io/src/ source-io/src/
 COPY ckan-ingestor-lib/src/ ckan-ingestor-lib/src/
 # `build.rs` compiles `src/gtfs-realtime.proto` into a descriptor written to
 # `OUT_DIR`, which `src/readers/gtfs_realtime.rs` includes at compile time. It
