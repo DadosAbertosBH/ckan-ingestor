@@ -25,7 +25,10 @@ use std::{
 use anyhow::{Context, Result};
 use futures::{Stream, StreamExt};
 use regex::Regex;
-use reqwest::{blocking::Client, header::CONTENT_TYPE};
+use reqwest::{
+    blocking::{Client, RequestBuilder, Response},
+    header::CONTENT_TYPE,
+};
 use serde::Deserialize;
 use url::Url;
 
@@ -45,6 +48,7 @@ const MAX_PAGE_BYTES: u64 = 8 * 1024 * 1024;
 const FOLDER_MIME: &str = "application/vnd.google-apps.folder";
 const MAX_HTML_DEPTH: usize = 4;
 const MAX_HTML_PAGES: usize = 10_000;
+const MAX_DRIVE_ERROR_BODY_BYTES: u64 = 64 * 1024;
 
 #[derive(Debug)]
 pub struct CrawlError(pub anyhow::Error);
@@ -165,7 +169,7 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
         if let Some(key) = &link.resource_key {
             request = request.header("x-goog-drive-resource-keys", format!("{}/{}", link.id, key));
         }
-        Ok(request.send()?.error_for_status()?.json()?)
+        Ok(drive_response(request)?.json()?)
     }
 
     fn list_folder(&self, folder: &DriveLink) -> Result<Vec<DriveFile>> {
@@ -190,7 +194,7 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                     format!("{}/{}", folder.id, key),
                 );
             }
-            let page: DrivePage = request.send()?.error_for_status()?.json()?;
+            let page: DrivePage = drive_response(request)?.json()?;
             anyhow::ensure!(
                 !page.incomplete_search,
                 "incomplete Drive folder listing: {}",
@@ -464,6 +468,11 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                             Source::from_url_with_format(source_name, &resource.format);
                         source.version = source_version(modified.map(str::to_owned));
                         if let Some(copied_source) = self.storage.cached_crawled(source.clone())? {
+                            log::debug!(
+                                "Reusing cached ZIP member {} from {}",
+                                source_name,
+                                copied_source.url,
+                            );
                             copied.push(child_source(
                                 resource,
                                 copied_source,
@@ -479,6 +488,11 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                             MediaType::known(content_type_for_format(&resource.format)),
                         );
                         let copied_source = self.storage.copy_crawled(downloaded)?;
+                        log::debug!(
+                            "Materialized ZIP member {} at {}",
+                            source_name,
+                            copied_source.url,
+                        );
                         copied.push(child_source(
                             resource,
                             copied_source,
@@ -521,7 +535,7 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
         if let Some(key) = &file.resource_key {
             request = request.header("x-goog-drive-resource-keys", format!("{}/{}", file.id, key));
         }
-        let mut response = request.send()?.error_for_status()?;
+        let mut response = drive_response(request)?;
         anyhow::ensure!(
             !is_html(
                 response
@@ -660,6 +674,30 @@ fn extract_http_links(html: &str, base: &Url) -> Result<Vec<Url>> {
         links.push(url);
     }
     Ok(links)
+}
+
+fn drive_response(request: RequestBuilder) -> Result<Response> {
+    let mut response = request.send()?;
+    let status = response.status();
+    if status.is_success() {
+        return Ok(response);
+    }
+
+    let url = response.url().clone();
+    let mut body = Vec::new();
+    response
+        .by_ref()
+        .take(MAX_DRIVE_ERROR_BODY_BYTES + 1)
+        .read_to_end(&mut body)
+        .context("read Google Drive error response body")?;
+    let truncated = body.len() as u64 > MAX_DRIVE_ERROR_BODY_BYTES;
+    body.truncate(MAX_DRIVE_ERROR_BODY_BYTES as usize);
+    let suffix = if truncated { " (truncated)" } else { "" };
+
+    anyhow::bail!(
+        "Google Drive request failed with HTTP status {status} for {url}; response body{suffix}: {}",
+        String::from_utf8_lossy(&body)
+    );
 }
 
 fn extract_drive_links(html: &str, base: &str) -> Result<Vec<DriveLink>> {
@@ -1139,5 +1177,119 @@ mod tests {
         assert_eq!(result.rows_processed, 1);
         assert_eq!(result.number_of_columns, 2);
         assert_eq!(result.preview[0]["name"], "mapa.tif");
+    }
+
+    #[test]
+    fn includes_drive_download_error_response_body() {
+        let server = httpmock::MockServer::start();
+        let _download = server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/drive/v3/files/file_1")
+                .query_param("alt", "media")
+                .query_param("supportsAllDrives", "true");
+            then.status(403).json_body(serde_json::json!({
+                "error": {
+                    "code": 403,
+                    "message": "The user's Drive storage quota has been exceeded.",
+                    "status": "RESOURCE_EXHAUSTED"
+                }
+            }));
+        });
+        let storage = test_ingestor();
+        let reader = ExternalResourceCrawlerReader::new(
+            Client::new(),
+            &storage,
+            Vec::new(),
+            "api-key".into(),
+        )
+        .with_api_base(format!("{}/drive/v3", server.base_url()));
+        let file = DriveFile {
+            id: "file_1".into(),
+            name: "mapa.tif".into(),
+            mime_type: "image/tiff".into(),
+            modified_time: Some("2026-01-01T00:00:00Z".into()),
+            resource_key: None,
+        };
+        let source = Source::new(
+            "drive://file_1",
+            "https://example.test/file_1",
+            "mapa.tif",
+            SourceVersion::known("2026-01-01T00:00:00Z"),
+        );
+
+        let error = match reader.download_drive_file(&file, source) {
+            Ok(_) => panic!("Drive download should fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains("HTTP status 403"));
+        assert!(error.to_string().contains("RESOURCE_EXHAUSTED"));
+        assert!(error.to_string().contains("storage quota"));
+    }
+
+    #[test]
+    fn includes_drive_folder_listing_error_response_body() {
+        let server = httpmock::MockServer::start();
+        let _listing = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/drive/v3/files");
+            then.status(429).json_body(serde_json::json!({
+                "error": {
+                    "code": 429,
+                    "message": "Rate Limit Exceeded",
+                    "status": "RESOURCE_EXHAUSTED"
+                }
+            }));
+        });
+        let storage = test_ingestor();
+        let reader = ExternalResourceCrawlerReader::new(
+            Client::new(),
+            &storage,
+            Vec::new(),
+            "api-key".into(),
+        )
+        .with_api_base(format!("{}/drive/v3", server.base_url()));
+
+        let error = match reader.list_folder(&DriveLink {
+            id: "folder_1".into(),
+            resource_key: None,
+            folder: true,
+        }) {
+            Ok(_) => panic!("Drive folder listing should fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains("HTTP status 429"));
+        assert!(error.to_string().contains("Rate Limit Exceeded"));
+    }
+
+    #[test]
+    fn truncates_large_drive_error_response_bodies() {
+        let server = httpmock::MockServer::start();
+        let body = format!("{}tail", "x".repeat(MAX_DRIVE_ERROR_BODY_BYTES as usize));
+        let _metadata = server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/drive/v3/files/file_1");
+            then.status(403).body(body);
+        });
+        let storage = test_ingestor();
+        let reader = ExternalResourceCrawlerReader::new(
+            Client::new(),
+            &storage,
+            Vec::new(),
+            "api-key".into(),
+        )
+        .with_api_base(format!("{}/drive/v3", server.base_url()));
+
+        let error = match reader.get_file(&DriveLink {
+            id: "file_1".into(),
+            resource_key: None,
+            folder: false,
+        }) {
+            Ok(_) => panic!("Drive metadata request should fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains("response body (truncated)"));
+        assert!(!error.to_string().contains("tail"));
     }
 }
