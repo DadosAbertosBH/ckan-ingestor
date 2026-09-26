@@ -447,12 +447,22 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                 );
                 let source_label = format!("drive://{}/{}", file.id, file.name);
                 if let Some(copied_source) = self.storage.cached_crawled(source.clone())? {
+                    log::debug!(
+                        "Reusing cached google drive member {} from {}",
+                        source_label,
+                        copied_source.url,
+                    );
                     copied.push(child_source(resource, copied_source, source_label));
                     return Ok(copied);
                 }
                 let copied_source = self
                     .storage
                     .copy_crawled(self.download_drive_file(file, source)?)?;
+                log::debug!(
+                    "Materialized google drive member {} from {}",
+                    source_label,
+                    copied_source.url,
+                );
                 copied.push(child_source(resource, copied_source, source_label));
             }
             CrawledSource::Zip { url } => {
