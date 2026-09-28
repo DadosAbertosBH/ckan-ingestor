@@ -166,7 +166,11 @@ struct MaterializedSnapshot {
     origin_etag: Option<String>,
 }
 
-type CachedMaterialization = (Vec<ChildSource>, MaterializedSnapshot, DateTime<Utc>);
+struct CachedMaterialization {
+    children: Vec<ChildSource>,
+    snapshot: MaterializedSnapshot,
+    uploaded_at: DateTime<Utc>,
+}
 
 /// Discovers files linked by HTML pages, ZIP archives, and public Drive folders,
 /// then delegates each materialized file to the configured readers.
@@ -437,7 +441,11 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                 source_label: entry.source_label.clone(),
             });
         }
-        Ok(Some((children, snapshot, object.uploaded_at)))
+        Ok(Some(CachedMaterialization {
+            children,
+            snapshot,
+            uploaded_at: object.uploaded_at,
+        }))
     }
 
     fn store_materialized(
@@ -738,10 +746,12 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
             }
             CrawledSource::Drive(file) => {
                 let cached = self.cached_materialized(resource, source)?;
-                if let Some((children, snapshot, uploaded_at)) = &cached {
-                    if cache_fresh(*uploaded_at) && snapshot.origin_modified == file.modified_time {
+                if let Some(cached) = &cached {
+                    if cache_fresh(cached.uploaded_at)
+                        && cached.snapshot.origin_modified == file.modified_time
+                    {
                         log::debug!("Reusing materialized Drive file {}", file.id);
-                        return Ok(children.clone());
+                        return Ok(cached.children.clone());
                     }
                 }
                 let fresh_file = if cached.is_some() {
@@ -752,12 +762,12 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                     }) {
                         Ok(file) => file,
                         Err(error) => {
-                            if let Some((children, _, _)) = cached {
+                            if let Some(cached) = cached {
                                 log::warn!(
                                     "Drive metadata failed: {error:#}; using cached file {}",
                                     file.id
                                 );
-                                return Ok(children);
+                                return Ok(cached.children);
                             }
                             return Err(error);
                         }
@@ -765,16 +775,16 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                 } else {
                     file.clone()
                 };
-                if let Some((children, snapshot, _)) = &cached {
-                    if snapshot.origin_modified == fresh_file.modified_time {
+                if let Some(cached) = &cached {
+                    if cached.snapshot.origin_modified == fresh_file.modified_time {
                         self.store_materialized(
                             resource,
                             source,
-                            children,
+                            &cached.children,
                             fresh_file.modified_time.clone(),
                             None,
                         )?;
-                        return Ok(children.clone());
+                        return Ok(cached.children.clone());
                     }
                 }
                 let force_copy = cached.is_some();
@@ -811,12 +821,12 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                 let downloaded = match downloaded {
                     Ok(downloaded) => downloaded,
                     Err(error) => {
-                        if let Some((children, _, _)) = cached {
+                        if let Some(cached) = cached {
                             log::warn!(
                                 "Drive download failed: {error:#}; using cached file {}",
                                 file.id
                             );
-                            return Ok(children);
+                            return Ok(cached.children);
                         }
                         return Err(error);
                     }
@@ -842,7 +852,7 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
             }
             CrawledSource::Zip { url } => {
                 let cached = self.cached_materialized(resource, source)?;
-                if let Some((children, snapshot, uploaded_at)) = &cached {
+                if let Some(cached) = &cached {
                     match self.client.head(url).send() {
                         Ok(response) if response.status().is_success() => {
                             let modified = response
@@ -858,18 +868,18 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                                 .map(str::to_owned);
                             let same_version = (modified.is_some() || etag.is_some())
                                 && modified.as_ref().is_none_or(|value| {
-                                    snapshot.origin_modified.as_ref() == Some(value)
+                                    cached.snapshot.origin_modified.as_ref() == Some(value)
                                 })
                                 && etag.as_ref().is_none_or(|value| {
-                                    snapshot.origin_etag.as_ref() == Some(value)
+                                    cached.snapshot.origin_etag.as_ref() == Some(value)
                                 });
                             if same_version
                                 || (modified.is_none()
                                     && etag.is_none()
-                                    && cache_fresh(*uploaded_at))
+                                    && cache_fresh(cached.uploaded_at))
                             {
                                 log::debug!("Reusing materialized ZIP {url}");
-                                return Ok(children.clone());
+                                return Ok(cached.children.clone());
                             }
                         }
                         Ok(response) => {
@@ -877,13 +887,13 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                                 "ZIP HEAD returned {}; using cached materialization for {url}",
                                 response.status()
                             );
-                            return Ok(children.clone());
+                            return Ok(cached.children.clone());
                         }
                         Err(error) => {
                             log::warn!(
                                 "ZIP HEAD failed: {error}; using cached materialization for {url}"
                             );
-                            return Ok(children.clone());
+                            return Ok(cached.children.clone());
                         }
                     }
                 }
@@ -891,9 +901,9 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                 {
                     Ok(downloaded) => downloaded,
                     Err(error) => {
-                        if let Some((children, _, _)) = cached {
+                        if let Some(cached) = cached {
                             log::warn!("ZIP download failed: {error:#}; using cached materialization for {url}");
-                            return Ok(children);
+                            return Ok(cached.children);
                         }
                         return Err(error);
                     }
