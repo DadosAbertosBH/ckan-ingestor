@@ -116,12 +116,16 @@ pub async fn run() -> Result<()> {
     let admin = connected_client(&connection_string).await?;
     ensure_topology(&admin, &settings).await?;
 
-    let result_producer = admin
-        .producer(&settings.stream, &settings.result_topic)?
-        .direct(DirectConfig::builder().batch_length(1).build())
-        .build();
-    result_producer.init().await?;
-    let publisher = IggyPublisher::single(result_producer);
+    let mut producers = Vec::new();
+    for topic in publisher_topics(&settings) {
+        let producer = admin
+            .producer(&settings.stream, topic)?
+            .direct(DirectConfig::builder().batch_length(1).build())
+            .build();
+        producer.init().await?;
+        producers.push(producer);
+    }
+    let publisher = IggyPublisher::new(producers.into_iter());
 
     let s3 = create_s3_ingestor().await?;
     let processor = JobProcessor::new(
@@ -166,6 +170,10 @@ pub async fn run() -> Result<()> {
     }
     info!("CKAN Iggy consumer stopped");
     Ok(())
+}
+
+fn publisher_topics(settings: &IggySettings) -> Vec<&str> {
+    vec![&settings.source_topic, &settings.result_topic]
 }
 
 async fn connected_client(connection_string: &str) -> Result<IggyClient> {
@@ -231,4 +239,22 @@ fn install_shutdown_handler(shutdown: Arc<Notify>) {
 
 async fn create_s3_ingestor() -> Result<S3DocumentIngestor> {
     S3DocumentIngestor::new(S3Settings::from_env())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{IggySettings, publisher_topics};
+
+    #[test]
+    fn publisher_configures_the_child_job_and_result_topics() {
+        let settings = IggySettings::default();
+
+        assert_eq!(
+            publisher_topics(&settings),
+            vec![
+                settings.source_topic.as_str(),
+                settings.result_topic.as_str()
+            ]
+        );
+    }
 }
