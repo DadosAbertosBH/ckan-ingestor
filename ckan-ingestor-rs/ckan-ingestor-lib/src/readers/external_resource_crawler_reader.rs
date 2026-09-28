@@ -16,20 +16,23 @@
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet, VecDeque},
     fs::File,
     io::{Read, Write},
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
+use flate2::{write::GzEncoder, Compression};
 use futures::{Stream, StreamExt};
 use regex::Regex;
 use reqwest::{
     blocking::{Client, RequestBuilder, Response},
-    header::CONTENT_TYPE,
+    header::{CONTENT_TYPE, LAST_MODIFIED},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{
@@ -49,9 +52,32 @@ const FOLDER_MIME: &str = "application/vnd.google-apps.folder";
 const MAX_HTML_DEPTH: usize = 4;
 const MAX_HTML_PAGES: usize = 10_000;
 const MAX_DRIVE_ERROR_BODY_BYTES: u64 = 64 * 1024;
+const DISCOVERY_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
 #[derive(Debug)]
 pub struct CrawlError(pub anyhow::Error);
+
+#[derive(Debug)]
+struct DriveHttpError(String);
+
+impl std::fmt::Display for DriveHttpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for DriveHttpError {}
+
+#[derive(Debug)]
+struct WarcArchiveError(anyhow::Error);
+
+impl std::fmt::Display for WarcArchiveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "WARC archive failed: {:#}", self.0)
+    }
+}
+
+impl std::error::Error for WarcArchiveError {}
 
 #[derive(Debug, Clone)]
 pub struct DiscoveredChild {
@@ -86,7 +112,7 @@ struct DriveLink {
     folder: bool,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DriveFile {
     id: String,
@@ -105,16 +131,39 @@ struct DrivePage {
     incomplete_search: bool,
 }
 
+#[derive(Clone)]
 struct ChildSource {
     resource: CkanResource,
     source_label: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(tag = "source_type", rename_all = "lowercase")]
 enum CrawledSource {
     Http { url: String },
     Zip { url: String },
     Drive(DriveFile),
+}
+
+#[derive(Serialize, Deserialize)]
+struct DiscoveryManifest {
+    generation: String,
+    order: Vec<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct MaterializedEntry {
+    id: String,
+    url: String,
+    source_label: String,
+    last_modified: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct MaterializedSnapshot {
+    entries: Vec<MaterializedEntry>,
+    origin_modified: Option<String>,
+    origin_etag: Option<String>,
 }
 
 /// Discovers files linked by HTML pages, ZIP archives, and public Drive folders,
@@ -155,6 +204,266 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
     fn with_api_base(mut self, base: String) -> Self {
         self.api_base = base;
         self
+    }
+
+    fn cached_discovery(
+        &self,
+        page_url: &str,
+        format: &str,
+    ) -> Result<Option<(Vec<CrawledSource>, DateTime<Utc>)>> {
+        let base = discovery_key(page_url, format);
+        let Some(manifest) = self
+            .storage
+            .get_cached_object(&format!("discovered-sources/manifest/{base}.json"))?
+        else {
+            return Ok(None);
+        };
+        let Ok(manifest_value) = serde_json::from_slice::<DiscoveryManifest>(&manifest.bytes)
+        else {
+            log::warn!("Invalid discovery manifest for {page_url}");
+            return Ok(None);
+        };
+        let mut groups = HashMap::<&str, VecDeque<CrawledSource>>::new();
+        for kind in ["http", "zip", "drive"] {
+            let key = format!(
+                "discovered-sources/{kind}/{base}/{}.json",
+                manifest_value.generation
+            );
+            let Some(object) = self.storage.get_cached_object(&key)? else {
+                log::warn!("Incomplete discovery cache for {page_url}: {key}");
+                return Ok(None);
+            };
+            let Ok(mut group) = serde_json::from_slice::<Vec<CrawledSource>>(&object.bytes) else {
+                log::warn!("Invalid discovery cache for {page_url}: {key}");
+                return Ok(None);
+            };
+            groups.insert(kind, group.drain(..).collect());
+        }
+        let mut sources = Vec::new();
+        for kind in &manifest_value.order {
+            let Some(source) = groups.get_mut(kind.as_str()).and_then(VecDeque::pop_front) else {
+                log::warn!("Invalid discovery ordering for {page_url}");
+                return Ok(None);
+            };
+            sources.push(source);
+        }
+        if groups.values().any(|group| !group.is_empty()) {
+            log::warn!("Incomplete discovery ordering for {page_url}");
+            return Ok(None);
+        }
+        Ok(Some((sources, manifest.uploaded_at)))
+    }
+
+    fn store_discovery(
+        &self,
+        page_url: &str,
+        format: &str,
+        sources: &[CrawledSource],
+    ) -> Result<()> {
+        let base = discovery_key(page_url, format);
+        let generation = uuid::Uuid::new_v4().to_string();
+        for kind in ["http", "zip", "drive"] {
+            let group = sources
+                .iter()
+                .filter(|source| source_kind(source) == kind)
+                .collect::<Vec<_>>();
+            self.storage.put_cached_object(
+                &format!("discovered-sources/{kind}/{base}/{generation}.json"),
+                serde_json::to_vec(&group)?,
+                "application/json",
+            )?;
+        }
+        self.storage.put_cached_object(
+            &format!("discovered-sources/manifest/{base}.json"),
+            serde_json::to_vec(&DiscoveryManifest {
+                generation,
+                order: sources
+                    .iter()
+                    .map(|source| source_kind(source).to_owned())
+                    .collect(),
+            })?,
+            "application/json",
+        )
+    }
+
+    fn load_or_discover(&self, resource: &CkanResource) -> Result<Vec<CrawledSource>> {
+        let cached = self.cached_discovery(&resource.url, &resource.format)?;
+        if let Some((sources, uploaded_at)) = &cached {
+            match self.client.head(&resource.url).send() {
+                Ok(response) if response.status().is_success() => {
+                    let modified = response
+                        .headers()
+                        .get(LAST_MODIFIED)
+                        .and_then(|value| value.to_str().ok())
+                        .and_then(http_modified);
+                    if modified.is_some_and(|value| value <= *uploaded_at)
+                        || (modified.is_none() && cache_fresh(*uploaded_at))
+                    {
+                        log::debug!("Reusing discovery cache for {}", resource.url);
+                        return Ok(sources.clone());
+                    }
+                }
+                Ok(response) => {
+                    log::warn!(
+                        "HTML page HEAD returned {}; using cached discovery for {}",
+                        response.status(),
+                        resource.url
+                    );
+                    return Ok(sources.clone());
+                }
+                Err(error) => {
+                    log::warn!(
+                        "HTML page HEAD failed: {error}; using cached discovery for {}",
+                        resource.url
+                    );
+                    return Ok(sources.clone());
+                }
+            }
+        }
+        let discovered = (|| -> Result<Vec<CrawledSource>> {
+            let response = self.client.get(&resource.url).send()?.error_for_status()?;
+            anyhow::ensure!(
+                is_html(
+                    response
+                        .headers()
+                        .get(CONTENT_TYPE)
+                        .and_then(|v| v.to_str().ok())
+                ),
+                "resource content is not HTML"
+            );
+            let html = self.archive_html(response).map_err(WarcArchiveError)?;
+            let sources = self.discover_sources(&resource.url, &resource.format, &html)?;
+            self.store_discovery(&resource.url, &resource.format, &sources)?;
+            Ok(sources)
+        })();
+        match (discovered, cached) {
+            (Ok(sources), _) => Ok(sources),
+            (Err(error), Some((sources, _))) if is_origin_error(&error) => {
+                log::warn!(
+                    "Discovery origin failed: {error:#}; using cached discovery for {}",
+                    resource.url
+                );
+                Ok(sources)
+            }
+            (Err(error), _) => Err(error),
+        }
+    }
+
+    fn archive_html(&self, mut response: Response) -> Result<String> {
+        let url = response.url().to_string();
+        let status = response.status();
+        let headers = response.headers().clone();
+        let mut bytes = Vec::new();
+        response
+            .by_ref()
+            .take(MAX_PAGE_BYTES + 1)
+            .read_to_end(&mut bytes)?;
+        anyhow::ensure!(
+            bytes.len() as u64 <= MAX_PAGE_BYTES,
+            "HTML page exceeds crawl limit"
+        );
+        let html = String::from_utf8(bytes.clone()).context("HTML page is not UTF-8")?;
+        let mut http = format!("HTTP/1.1 {}\r\n", status).into_bytes();
+        for (name, value) in &headers {
+            if name == reqwest::header::CONTENT_LENGTH
+                || name == reqwest::header::TRANSFER_ENCODING
+                || name == reqwest::header::CONTENT_ENCODING
+            {
+                continue;
+            }
+            http.extend_from_slice(name.as_str().as_bytes());
+            http.extend_from_slice(b": ");
+            http.extend_from_slice(value.as_bytes());
+            http.extend_from_slice(b"\r\n");
+        }
+        http.extend_from_slice(format!("content-length: {}\r\n\r\n", bytes.len()).as_bytes());
+        http.extend_from_slice(&bytes);
+        let record = format!(
+            "WARC/1.1\r\nWARC-Type: response\r\nWARC-Target-URI: {url}\r\nWARC-Date: {}\r\nWARC-Record-ID: <urn:uuid:{}>\r\nContent-Type: application/http; msgtype=response\r\nContent-Length: {}\r\n\r\n",
+            Utc::now().to_rfc3339(),
+            uuid::Uuid::new_v4(),
+            http.len()
+        );
+        let mut gzip = GzEncoder::new(Vec::new(), Compression::default());
+        gzip.write_all(record.as_bytes())?;
+        gzip.write_all(&http)?;
+        gzip.write_all(b"\r\n\r\n")?;
+        let key = format!(
+            "crawled-pages/{}/{}-{}.warc.gz",
+            stable_id(&url),
+            Utc::now().format("%Y%m%dT%H%M%SZ"),
+            uuid::Uuid::new_v4()
+        );
+        self.storage
+            .put_cached_object(&key, gzip.finish()?, "application/warc")?;
+        Ok(html)
+    }
+
+    fn cached_materialized(
+        &self,
+        parent: &CkanResource,
+        source: &CrawledSource,
+    ) -> Result<Option<(Vec<ChildSource>, MaterializedSnapshot, DateTime<Utc>)>> {
+        let key = materialized_key(source, &parent.format);
+        let Some(object) = self.storage.get_cached_object(&key)? else {
+            return Ok(None);
+        };
+        let Ok(snapshot) = serde_json::from_slice::<MaterializedSnapshot>(&object.bytes) else {
+            log::warn!("Invalid materialized cache at {key}");
+            return Ok(None);
+        };
+        let mut children = Vec::new();
+        for entry in &snapshot.entries {
+            let Some(storage_key) = entry
+                .url
+                .strip_prefix(&format!("{}/", self.storage.public_url))
+            else {
+                log::warn!("Invalid materialized object URL in {key}");
+                return Ok(None);
+            };
+            if !self.storage.cached_object_exists(storage_key)? {
+                log::warn!("Missing materialized object {storage_key}");
+                return Ok(None);
+            }
+            children.push(ChildSource {
+                resource: CkanResource {
+                    id: entry.id.clone(),
+                    url: entry.url.clone(),
+                    last_modified: entry.last_modified.clone(),
+                    ..parent.clone()
+                },
+                source_label: entry.source_label.clone(),
+            });
+        }
+        Ok(Some((children, snapshot, object.uploaded_at)))
+    }
+
+    fn store_materialized(
+        &self,
+        parent: &CkanResource,
+        source: &CrawledSource,
+        copied: &[ChildSource],
+        origin_modified: Option<String>,
+        origin_etag: Option<String>,
+    ) -> Result<()> {
+        let snapshot = MaterializedSnapshot {
+            entries: copied
+                .iter()
+                .map(|child| MaterializedEntry {
+                    id: child.resource.id.clone(),
+                    url: child.resource.url.clone(),
+                    source_label: child.source_label.clone(),
+                    last_modified: child.resource.last_modified.clone(),
+                })
+                .collect(),
+            origin_modified,
+            origin_etag,
+        };
+        self.storage.put_cached_object(
+            &materialized_key(source, &parent.format),
+            serde_json::to_vec(&snapshot)?,
+            "application/json",
+        )
     }
 
     fn get_file(&self, link: &DriveLink) -> Result<DriveFile> {
@@ -211,16 +520,8 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
     fn crawl_delegated(
         &self,
         resource: &CkanResource,
-        response: impl Read,
+        sources: &[CrawledSource],
     ) -> Result<SuccessResult> {
-        let mut bytes = Vec::new();
-        response.take(MAX_PAGE_BYTES + 1).read_to_end(&mut bytes)?;
-        anyhow::ensure!(
-            bytes.len() as u64 <= MAX_PAGE_BYTES,
-            "HTML page exceeds crawl limit"
-        );
-        let html = String::from_utf8(bytes).context("HTML page is not UTF-8")?;
-        let sources = self.discover_sources(&resource.url, &resource.format, &html)?;
         log::info!(
             "External crawler discovered {} source(s) for resource {}",
             sources.len(),
@@ -231,8 +532,7 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
             "no matching files or ZIP archives found"
         );
         let mut materialized = Vec::new();
-        let mut copied =
-            Box::pin(self.copy_sources(resource, &sources, ArchiveLimits::from_env()?));
+        let mut copied = Box::pin(self.copy_sources(resource, sources, ArchiveLimits::from_env()?));
         while let Some(source) = futures::executor::block_on(copied.next()) {
             materialized.push(source?);
         }
@@ -307,7 +607,7 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                     ) {
                         continue;
                     }
-                    limited_html(response)?
+                    self.archive_html(response).map_err(WarcArchiveError)?
                 }
             };
             for url in extract_http_links(&document, &page)? {
@@ -435,61 +735,179 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                 copied.push(child_source(resource, copied_source, url.clone()));
             }
             CrawledSource::Drive(file) => {
-                let modified_time = file
+                let cached = self.cached_materialized(resource, source)?;
+                if let Some((children, snapshot, uploaded_at)) = &cached {
+                    if cache_fresh(*uploaded_at) && snapshot.origin_modified == file.modified_time {
+                        log::debug!("Reusing materialized Drive file {}", file.id);
+                        return Ok(children.clone());
+                    }
+                }
+                let fresh_file = if cached.is_some() {
+                    match self.get_file(&DriveLink {
+                        id: file.id.clone(),
+                        resource_key: file.resource_key.clone(),
+                        folder: false,
+                    }) {
+                        Ok(file) => file,
+                        Err(error) => {
+                            if let Some((children, _, _)) = cached {
+                                log::warn!(
+                                    "Drive metadata failed: {error:#}; using cached file {}",
+                                    file.id
+                                );
+                                return Ok(children);
+                            }
+                            return Err(error);
+                        }
+                    }
+                } else {
+                    file.clone()
+                };
+                if let Some((children, snapshot, _)) = &cached {
+                    if snapshot.origin_modified == fresh_file.modified_time {
+                        self.store_materialized(
+                            resource,
+                            source,
+                            children,
+                            fresh_file.modified_time.clone(),
+                            None,
+                        )?;
+                        return Ok(children.clone());
+                    }
+                }
+                let force_copy = cached.is_some();
+                let modified_time = fresh_file
                     .modified_time
                     .as_deref()
                     .context("Drive file missing modifiedTime")?;
                 let source = Source::new(
-                    format!("drive://{}", file.id),
-                    format!("{}/files/{}?alt=media", self.api_base, file.id),
-                    &file.name,
+                    format!("drive://{}", fresh_file.id),
+                    format!("{}/files/{}?alt=media", self.api_base, fresh_file.id),
+                    &fresh_file.name,
                     SourceVersion::known(modified_time),
                 );
-                let source_label = format!("drive://{}/{}", file.id, file.name);
-                if let Some(copied_source) = self.storage.cached_crawled(source.clone())? {
-                    log::debug!(
-                        "Reusing cached google drive member {} from {}",
-                        source_label,
-                        copied_source.url,
-                    );
-                    copied.push(child_source(resource, copied_source, source_label));
-                    return Ok(copied);
+                let source_label = format!("drive://{}/{}", fresh_file.id, fresh_file.name);
+                if !force_copy {
+                    if let Some(copied_source) = self.storage.cached_crawled(source.clone())? {
+                        log::debug!(
+                            "Reusing cached google drive member {} from {}",
+                            source_label,
+                            copied_source.url,
+                        );
+                        copied.push(child_source(resource, copied_source, source_label));
+                        self.store_materialized(
+                            resource,
+                            &CrawledSource::Drive(file.clone()),
+                            &copied,
+                            fresh_file.modified_time,
+                            None,
+                        )?;
+                        return Ok(copied);
+                    }
                 }
-                let copied_source = self
-                    .storage
-                    .copy_crawled(self.download_drive_file(file, source)?)?;
+                let downloaded = self.download_drive_file(&fresh_file, source);
+                let downloaded = match downloaded {
+                    Ok(downloaded) => downloaded,
+                    Err(error) => {
+                        if let Some((children, _, _)) = cached {
+                            log::warn!(
+                                "Drive download failed: {error:#}; using cached file {}",
+                                file.id
+                            );
+                            return Ok(children);
+                        }
+                        return Err(error);
+                    }
+                };
+                let copied_source = if force_copy {
+                    self.storage.copy_crawled_versioned(downloaded)?
+                } else {
+                    self.storage.copy_crawled(downloaded)?
+                };
                 log::debug!(
                     "Materialized google drive member {} from {}",
                     source_label,
                     copied_source.url,
                 );
                 copied.push(child_source(resource, copied_source, source_label));
+                self.store_materialized(
+                    resource,
+                    &CrawledSource::Drive(file.clone()),
+                    &copied,
+                    fresh_file.modified_time,
+                    None,
+                )?;
             }
             CrawledSource::Zip { url } => {
-                let path = download_zip_to_temp(&self.client, url, limits.max_zip_bytes)?;
+                let cached = self.cached_materialized(resource, source)?;
+                if let Some((children, snapshot, uploaded_at)) = &cached {
+                    match self.client.head(url).send() {
+                        Ok(response) if response.status().is_success() => {
+                            let modified = response
+                                .headers()
+                                .get(LAST_MODIFIED)
+                                .and_then(|value| value.to_str().ok())
+                                .and_then(http_modified)
+                                .map(|value| value.to_rfc3339());
+                            let etag = response
+                                .headers()
+                                .get(reqwest::header::ETAG)
+                                .and_then(|value| value.to_str().ok())
+                                .map(str::to_owned);
+                            let same_version = (modified.is_some() || etag.is_some())
+                                && modified.as_ref().is_none_or(|value| {
+                                    snapshot.origin_modified.as_ref() == Some(value)
+                                })
+                                && etag.as_ref().is_none_or(|value| {
+                                    snapshot.origin_etag.as_ref() == Some(value)
+                                });
+                            if same_version
+                                || (modified.is_none()
+                                    && etag.is_none()
+                                    && cache_fresh(*uploaded_at))
+                            {
+                                log::debug!("Reusing materialized ZIP {url}");
+                                return Ok(children.clone());
+                            }
+                        }
+                        Ok(response) => {
+                            log::warn!(
+                                "ZIP HEAD returned {}; using cached materialization for {url}",
+                                response.status()
+                            );
+                            return Ok(children.clone());
+                        }
+                        Err(error) => {
+                            log::warn!(
+                                "ZIP HEAD failed: {error}; using cached materialization for {url}"
+                            );
+                            return Ok(children.clone());
+                        }
+                    }
+                }
+                let downloaded = match download_zip_to_temp(&self.client, url, limits.max_zip_bytes)
+                {
+                    Ok(downloaded) => downloaded,
+                    Err(error) => {
+                        if let Some((children, _, _)) = cached {
+                            log::warn!("ZIP download failed: {error:#}; using cached materialization for {url}");
+                            return Ok(children);
+                        }
+                        return Err(error);
+                    }
+                };
+                let (path, origin_modified, origin_etag) = downloaded;
                 let _cleanup = TemporaryPath::from_path(path.clone());
+                let zip_revision = Utc::now().to_rfc3339();
                 visit_zip(
                     Path::new(&path),
                     url,
                     &resource.format,
                     limits,
-                    &mut |member, source_name, modified| {
+                    &mut |member, source_name, _modified| {
                         let mut source =
                             Source::from_url_with_format(source_name, &resource.format);
-                        source.version = source_version(modified.map(str::to_owned));
-                        if let Some(copied_source) = self.storage.cached_crawled(source.clone())? {
-                            log::debug!(
-                                "Reusing cached ZIP member {} from {}",
-                                source_name,
-                                copied_source.url,
-                            );
-                            copied.push(child_source(
-                                resource,
-                                copied_source,
-                                source_name.to_owned(),
-                            ));
-                            return Ok(());
-                        }
+                        source.version = SourceVersion::known(&zip_revision);
                         let retained = source.temporary_path();
                         std::fs::rename(member, &retained)?;
                         let downloaded = DownloadedSource::from_path(
@@ -497,7 +915,7 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                             retained,
                             MediaType::known(content_type_for_format(&resource.format)),
                         );
-                        let copied_source = self.storage.copy_crawled(downloaded)?;
+                        let copied_source = self.storage.copy_crawled_versioned(downloaded)?;
                         log::debug!(
                             "Materialized ZIP member {} at {}",
                             source_name,
@@ -511,6 +929,7 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                         Ok(())
                     },
                 )?;
+                self.store_materialized(resource, source, &copied, origin_modified, origin_etag)?;
             }
         }
         Ok(copied)
@@ -592,10 +1011,54 @@ fn child_source(parent: &CkanResource, copied: CopiedSource, source_label: Strin
     }
 }
 
-fn source_version(value: Option<String>) -> SourceVersion {
-    value
-        .map(SourceVersion::known)
-        .unwrap_or(SourceVersion::Unknown)
+fn stable_id(value: &str) -> String {
+    uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, value.as_bytes()).to_string()
+}
+
+fn discovery_key(page_url: &str, format: &str) -> String {
+    stable_id(&format!("{page_url}\n{}", format.to_ascii_uppercase()))
+}
+
+fn source_kind(source: &CrawledSource) -> &'static str {
+    match source {
+        CrawledSource::Http { .. } => "http",
+        CrawledSource::Zip { .. } => "zip",
+        CrawledSource::Drive(_) => "drive",
+    }
+}
+
+fn materialized_key(source: &CrawledSource, format: &str) -> String {
+    let identity = match source {
+        CrawledSource::Zip { url } => url.as_str(),
+        CrawledSource::Drive(file) => file.id.as_str(),
+        CrawledSource::Http { .. } => unreachable!("direct HTTP sources use the existing cache"),
+    };
+    format!(
+        "discovered-resources/{}/{}/{}.json",
+        source_kind(source),
+        stable_id(format),
+        stable_id(identity)
+    )
+}
+
+fn cache_fresh(uploaded_at: DateTime<Utc>) -> bool {
+    Utc::now().signed_duration_since(uploaded_at)
+        < chrono::Duration::from_std(DISCOVERY_TTL).expect("valid cache TTL")
+}
+
+fn http_modified(value: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc2822(value)
+        .ok()
+        .map(|value| value.with_timezone(&Utc))
+}
+
+fn is_origin_error(error: &anyhow::Error) -> bool {
+    if error.chain().any(|cause| cause.is::<WarcArchiveError>()) {
+        return false;
+    }
+    error
+        .chain()
+        .any(|cause| cause.is::<reqwest::Error>() || cause.is::<DriveHttpError>())
 }
 
 fn content_type_for_format(format: &str) -> &'static str {
@@ -613,8 +1076,23 @@ fn content_type_for_format(format: &str) -> &'static str {
     }
 }
 
-fn download_zip_to_temp(client: &Client, url: &str, max_bytes: u64) -> Result<PathBuf> {
+fn download_zip_to_temp(
+    client: &Client,
+    url: &str,
+    max_bytes: u64,
+) -> Result<(PathBuf, Option<String>, Option<String>)> {
     let mut response = client.get(url).send()?.error_for_status()?;
+    let modified = response
+        .headers()
+        .get(LAST_MODIFIED)
+        .and_then(|value| value.to_str().ok())
+        .and_then(http_modified)
+        .map(|value| value.to_rfc3339());
+    let etag = response
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
     if let Some(length) = response.content_length() {
         anyhow::ensure!(length <= max_bytes, "ZIP exceeds configured size");
     }
@@ -623,7 +1101,7 @@ fn download_zip_to_temp(client: &Client, url: &str, max_bytes: u64) -> Result<Pa
     let copied = std::io::copy(&mut response.by_ref().take(max_bytes + 1), &mut output)?;
     anyhow::ensure!(copied <= max_bytes, "ZIP exceeds configured size");
     output.flush()?;
-    Ok(path)
+    Ok((path, modified, etag))
 }
 
 fn is_html(content_type: Option<&str>) -> bool {
@@ -632,19 +1110,6 @@ fn is_html(content_type: Option<&str>) -> bool {
         media_type.eq_ignore_ascii_case("text/html")
             || media_type.eq_ignore_ascii_case("application/xhtml+xml")
     })
-}
-
-fn limited_html(mut response: reqwest::blocking::Response) -> Result<String> {
-    let mut bytes = Vec::new();
-    response
-        .by_ref()
-        .take(MAX_PAGE_BYTES + 1)
-        .read_to_end(&mut bytes)?;
-    anyhow::ensure!(
-        bytes.len() as u64 <= MAX_PAGE_BYTES,
-        "HTML page exceeds crawl limit"
-    );
-    String::from_utf8(bytes).context("HTML page is not UTF-8")
 }
 
 fn directory_prefix(path: &str) -> &str {
@@ -704,10 +1169,11 @@ fn drive_response(request: RequestBuilder) -> Result<Response> {
     body.truncate(MAX_DRIVE_ERROR_BODY_BYTES as usize);
     let suffix = if truncated { " (truncated)" } else { "" };
 
-    anyhow::bail!(
+    Err(DriveHttpError(format!(
         "Google Drive request failed with HTTP status {status} for {url}; response body{suffix}: {}",
         String::from_utf8_lossy(&body)
-    );
+    ))
+    .into())
 }
 
 fn extract_drive_links(html: &str, base: &str) -> Result<Vec<DriveLink>> {
@@ -767,15 +1233,8 @@ impl CkanReader for ExternalResourceCrawlerReader<'_> {
 
     fn do_read(&self, resource: &CkanResource) -> ReadResult {
         let result = (|| -> Result<SuccessResult> {
-            let response = self.client.get(&resource.url).send()?.error_for_status()?;
-            let is_html = is_html(
-                response
-                    .headers()
-                    .get(CONTENT_TYPE)
-                    .and_then(|value| value.to_str().ok()),
-            );
-            anyhow::ensure!(is_html, "resource content is not HTML");
-            self.crawl_delegated(resource, response)
+            let sources = self.load_or_discover(resource)?;
+            self.crawl_delegated(resource, &sources)
         })();
         result.map_err(|error| CrawlError(error).into())
     }
@@ -789,7 +1248,7 @@ mod tests {
         sync::Arc,
     };
 
-    use object_store::{memory::InMemory, ObjectStore};
+    use object_store::{memory::InMemory, ObjectStore, ObjectStoreExt};
 
     use crate::{
         ckan_resource::CkanResource,
@@ -963,7 +1422,79 @@ mod tests {
 
         assert!(first.resource.url.contains("/crawled-files/"));
         assert!(second.resource.url.contains("/crawled-files/"));
-        assert_eq!(_archive.hits(), 2, "ZIP is always extracted again");
+        assert_eq!(_archive.hits(), 1, "ZIP materialization should be cached");
+    }
+
+    #[test]
+    fn changed_zip_replaces_cached_member_bytes() {
+        let server = httpmock::MockServer::start();
+        let mut first_archive = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/records.zip");
+            then.status(200)
+                .header("etag", "v1")
+                .body(zip_bytes(&[("records.json", r#"[{"id":1}]"#)]));
+        });
+        let _head = server.mock(|when, then| {
+            when.method(httpmock::Method::HEAD).path("/records.zip");
+            then.status(200).header("etag", "v2");
+        });
+        let store = Arc::new(InMemory::new());
+        let storage = SourceStorage::new_with_store(
+            Client::new(),
+            "https://files.example/documents".into(),
+            store.clone(),
+        );
+        let reader =
+            ExternalResourceCrawlerReader::new(Client::new(), &storage, Vec::new(), String::new());
+        let resource = CkanResource {
+            id: "resource-id".into(),
+            package_id: "package-id".into(),
+            url: format!("{}/listing", server.base_url()),
+            format: "JSON".into(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+        let source = CrawledSource::Zip {
+            url: format!("{}/records.zip", server.base_url()),
+        };
+        let previous = reader
+            .copy_source(&resource, &source, ArchiveLimits::default())
+            .unwrap();
+        first_archive.delete();
+        let second_archive = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/records.zip");
+            then.status(200)
+                .header("etag", "v2")
+                .body(zip_bytes(&[("records.json", r#"[{"id":2}]"#)]));
+        });
+
+        let copied = reader
+            .copy_source(&resource, &source, ArchiveLimits::default())
+            .unwrap();
+
+        assert_eq!(second_archive.hits(), 1);
+        let key = copied[0]
+            .resource
+            .url
+            .strip_prefix("https://files.example/documents/")
+            .unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let object = runtime
+            .block_on(store.get(&object_store::path::Path::from(key)))
+            .unwrap();
+        let bytes = runtime.block_on(object.bytes()).unwrap();
+        assert_eq!(bytes.as_ref(), br#"[{"id":2}]"#);
+        assert_ne!(previous[0].resource.url, copied[0].resource.url);
+        let old_key = previous[0]
+            .resource
+            .url
+            .strip_prefix("https://files.example/documents/")
+            .unwrap();
+        let old_object = runtime
+            .block_on(store.get(&object_store::path::Path::from(old_key)))
+            .unwrap();
+        let old_bytes = runtime.block_on(old_object.bytes()).unwrap();
+        assert_eq!(old_bytes.as_ref(), br#"[{"id":1}]"#);
     }
 
     #[test]
@@ -1018,6 +1549,394 @@ mod tests {
         assert!(failure.error.to_string().contains("child jobs"));
         assert_eq!(_one.hits(), 1, "one.json must be downloaded once");
         assert_eq!(_two.hits(), 1, "two.json must be downloaded once");
+    }
+
+    #[test]
+    fn archives_each_fetched_html_page_as_warc_gzip() {
+        let server = httpmock::MockServer::start();
+        let _page = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/listing/");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(r#"<a href="sub/">subdirectory</a>"#);
+        });
+        let _subpage = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/listing/sub/");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(r#"<a href="file.json">file</a><a href="other.json">other</a>"#);
+        });
+        let _file = server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/listing/sub/file.json");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"[{"id":1}]"#);
+        });
+        let _other = server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/listing/sub/other.json");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"[{"id":2}]"#);
+        });
+        let store = Arc::new(InMemory::new());
+        let storage = SourceStorage::new_with_store(
+            Client::new(),
+            "https://files.example/documents".into(),
+            store.clone(),
+        );
+        let client = Client::new();
+        let reader = ExternalResourceCrawlerReader::new(
+            client.clone(),
+            &storage,
+            vec![Box::new(JsonReader::with_client(client))],
+            String::new(),
+        );
+        let resource = CkanResource {
+            id: "resource-id".into(),
+            package_id: "package-id".into(),
+            url: format!("{}/listing/", server.base_url()),
+            format: "JSON".into(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let failure = match reader.read(&resource) {
+            Ok(_) => panic!("two files create child jobs"),
+            Err(failure) => failure,
+        };
+        let crawl = failure.error.downcast_ref::<CrawlError>().unwrap();
+        assert!(crawl.0.downcast_ref::<CrawlFanout>().is_some());
+
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let warcs = runtime
+            .block_on(store.list(None).try_collect::<Vec<_>>())
+            .unwrap()
+            .into_iter()
+            .filter(|meta| meta.location.as_ref().starts_with("crawled-pages/"))
+            .collect::<Vec<_>>();
+        assert_eq!(warcs.len(), 2);
+        for meta in warcs {
+            let bytes = runtime.block_on(store.get(&meta.location)).unwrap();
+            let bytes = runtime.block_on(bytes.bytes()).unwrap();
+            let mut content = String::new();
+            flate2::read::GzDecoder::new(bytes.as_ref())
+                .read_to_string(&mut content)
+                .unwrap();
+            assert!(content.starts_with("WARC/1.1\r\n"));
+            assert!(content.contains("WARC-Type: response\r\n"));
+            assert!(content.contains("HTTP/1.1 200 OK\r\n"));
+        }
+    }
+
+    #[test]
+    fn fails_discovery_when_warc_upload_fails() {
+        let server = httpmock::MockServer::start();
+        let _page = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/page");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(r#"<a href="file.json">file</a>"#);
+        });
+        let directory = tempfile::tempdir().unwrap();
+        let store =
+            object_store::local::LocalFileSystem::new_with_prefix(directory.path()).unwrap();
+        std::fs::write(directory.path().join("crawled-pages"), b"occupied").unwrap();
+        let storage = SourceStorage::new_with_store(
+            Client::new(),
+            "https://files.example/documents".into(),
+            Arc::new(store),
+        );
+        let reader =
+            ExternalResourceCrawlerReader::new(Client::new(), &storage, Vec::new(), String::new());
+        let resource = CkanResource {
+            id: "resource-id".into(),
+            package_id: "package-id".into(),
+            url: format!("{}/page", server.base_url()),
+            format: "JSON".into(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let error = match reader.load_or_discover(&resource) {
+            Ok(_) => panic!("WARC upload failure must stop discovery"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains("WARC archive failed"));
+    }
+
+    #[test]
+    fn caches_discovery_in_r2_without_listing_drive_twice() {
+        let server = httpmock::MockServer::start();
+        let page = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/page");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(r#"<a href="https://drive.google.com/drive/folders/folder_1">folder</a>"#);
+        });
+        let _head = server.mock(|when, then| {
+            when.method(httpmock::Method::HEAD).path("/page");
+            then.status(200);
+        });
+        let listing = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/drive/v3/files");
+            then.status(200).json_body(serde_json::json!({
+                "files": [{
+                    "id": "file_1", "name": "mapa.tif", "mimeType": "image/tiff",
+                    "modifiedTime": "2026-01-01T00:00:00Z"
+                }]
+            }));
+        });
+        let storage = test_ingestor();
+        let reader = ExternalResourceCrawlerReader::new(
+            Client::new(),
+            &storage,
+            Vec::new(),
+            "api-key".into(),
+        )
+        .with_api_base(format!("{}/drive/v3", server.base_url()));
+        let resource = CkanResource {
+            id: "resource-id".into(),
+            package_id: "package-id".into(),
+            url: format!("{}/page", server.base_url()),
+            format: "TIF".into(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let first = reader.load_or_discover(&resource).unwrap();
+        let second = reader.load_or_discover(&resource).unwrap();
+
+        assert_eq!(first.len(), 1);
+        assert_eq!(second.len(), 1);
+        assert!(matches!(&second[0], CrawledSource::Drive(file) if file.id == "file_1"));
+        assert_eq!(page.hits(), 1);
+        assert_eq!(listing.hits(), 1);
+    }
+
+    #[test]
+    fn discovery_manifest_preserves_mixed_source_order() {
+        let storage = test_ingestor();
+        let reader =
+            ExternalResourceCrawlerReader::new(Client::new(), &storage, Vec::new(), String::new());
+        let sources = vec![
+            CrawledSource::Zip {
+                url: "https://example.test/a.zip".into(),
+            },
+            CrawledSource::Http {
+                url: "https://example.test/b.json".into(),
+            },
+            CrawledSource::Drive(DriveFile {
+                id: "file_1".into(),
+                name: "c.json".into(),
+                mime_type: "application/json".into(),
+                modified_time: Some("2026-01-01T00:00:00Z".into()),
+                resource_key: None,
+            }),
+        ];
+
+        reader
+            .store_discovery("https://example.test/page", "JSON", &sources)
+            .unwrap();
+        let (cached, _) = reader
+            .cached_discovery("https://example.test/page", "JSON")
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(cached.len(), 3);
+        assert!(matches!(cached[0], CrawledSource::Zip { .. }));
+        assert!(matches!(cached[1], CrawledSource::Http { .. }));
+        assert!(matches!(cached[2], CrawledSource::Drive(_)));
+    }
+
+    #[test]
+    fn incomplete_discovery_generation_is_ignored() {
+        let storage = test_ingestor();
+        let reader =
+            ExternalResourceCrawlerReader::new(Client::new(), &storage, Vec::new(), String::new());
+        let url = "https://example.test/page";
+        let base = discovery_key(url, "JSON");
+        storage
+            .put_cached_object(
+                &format!("discovered-sources/manifest/{base}.json"),
+                serde_json::to_vec(&DiscoveryManifest {
+                    generation: "incomplete".into(),
+                    order: vec!["http".into()],
+                })
+                .unwrap(),
+                "application/json",
+            )
+            .unwrap();
+
+        assert!(reader.cached_discovery(url, "JSON").unwrap().is_none());
+    }
+
+    #[test]
+    fn cache_ttl_is_seven_days() {
+        assert!(cache_fresh(Utc::now() - chrono::Duration::days(6)));
+        assert!(!cache_fresh(Utc::now() - chrono::Duration::days(8)));
+    }
+
+    #[test]
+    fn uses_discovery_cache_when_page_head_fails() {
+        let server = httpmock::MockServer::start();
+        let page = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/page");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(r#"<a href="file.json">file</a>"#);
+        });
+        let _head = server.mock(|when, then| {
+            when.method(httpmock::Method::HEAD).path("/page");
+            then.status(502);
+        });
+        let storage = test_ingestor();
+        let reader =
+            ExternalResourceCrawlerReader::new(Client::new(), &storage, Vec::new(), String::new());
+        let resource = CkanResource {
+            id: "resource-id".into(),
+            package_id: "package-id".into(),
+            url: format!("{}/page", server.base_url()),
+            format: "JSON".into(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        assert_eq!(reader.load_or_discover(&resource).unwrap().len(), 1);
+        assert_eq!(reader.load_or_discover(&resource).unwrap().len(), 1);
+        assert_eq!(page.hits(), 1);
+    }
+
+    #[test]
+    fn newer_html_last_modified_rebuilds_discovery() {
+        let server = httpmock::MockServer::start();
+        let page = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/page");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(r#"<a href="file.json">file</a>"#);
+        });
+        let future_modified = (Utc::now() + chrono::Duration::days(1)).to_rfc2822();
+        let _head = server.mock(|when, then| {
+            when.method(httpmock::Method::HEAD).path("/page");
+            then.status(200).header("last-modified", &future_modified);
+        });
+        let storage = test_ingestor();
+        let reader =
+            ExternalResourceCrawlerReader::new(Client::new(), &storage, Vec::new(), String::new());
+        let resource = CkanResource {
+            id: "resource-id".into(),
+            package_id: "package-id".into(),
+            url: format!("{}/page", server.base_url()),
+            format: "JSON".into(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        reader.load_or_discover(&resource).unwrap();
+        reader.load_or_discover(&resource).unwrap();
+
+        assert_eq!(page.hits(), 2);
+    }
+
+    #[test]
+    fn discovery_cache_falls_back_after_drive_listing_error() {
+        let server = httpmock::MockServer::start();
+        let _page = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/page");
+            then.status(200)
+                .header("content-type", "text/html")
+                .body(r#"<a href="https://drive.google.com/drive/folders/folder_1">folder</a>"#);
+        });
+        let future_modified = (Utc::now() + chrono::Duration::days(1)).to_rfc2822();
+        let _head = server.mock(|when, then| {
+            when.method(httpmock::Method::HEAD).path("/page");
+            then.status(200).header("last-modified", &future_modified);
+        });
+        let mut listing = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/drive/v3/files");
+            then.status(200).json_body(serde_json::json!({
+                "files": [{
+                    "id": "file_1", "name": "mapa.tif", "mimeType": "image/tiff",
+                    "modifiedTime": "2026-01-01T00:00:00Z"
+                }]
+            }));
+        });
+        let storage = test_ingestor();
+        let reader = ExternalResourceCrawlerReader::new(
+            Client::new(),
+            &storage,
+            Vec::new(),
+            "api-key".into(),
+        )
+        .with_api_base(format!("{}/drive/v3", server.base_url()));
+        let resource = CkanResource {
+            id: "resource-id".into(),
+            package_id: "package-id".into(),
+            url: format!("{}/page", server.base_url()),
+            format: "TIF".into(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+        assert_eq!(reader.load_or_discover(&resource).unwrap().len(), 1);
+        listing.delete();
+        let _forbidden = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/drive/v3/files");
+            then.status(403).body("Sorry, automated queries");
+        });
+
+        let fallback = reader.load_or_discover(&resource).unwrap();
+
+        assert!(matches!(&fallback[0], CrawledSource::Drive(file) if file.id == "file_1"));
+    }
+
+    #[test]
+    fn reuses_recent_materialized_drive_file_without_second_download() {
+        let server = httpmock::MockServer::start();
+        let download = server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/drive/v3/files/file_1")
+                .query_param("alt", "media");
+            then.status(200)
+                .header("content-type", "image/tiff")
+                .body("TIFF");
+        });
+        let storage = test_ingestor();
+        let reader = ExternalResourceCrawlerReader::new(
+            Client::new(),
+            &storage,
+            Vec::new(),
+            "api-key".into(),
+        )
+        .with_api_base(format!("{}/drive/v3", server.base_url()));
+        let resource = CkanResource {
+            id: "resource-id".into(),
+            package_id: "package-id".into(),
+            url: format!("{}/page", server.base_url()),
+            format: "TIF".into(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+        let source = CrawledSource::Drive(DriveFile {
+            id: "file_1".into(),
+            name: "mapa.tif".into(),
+            mime_type: "image/tiff".into(),
+            modified_time: Some("2026-01-01T00:00:00Z".into()),
+            resource_key: None,
+        });
+
+        let first = reader
+            .copy_source(&resource, &source, ArchiveLimits::default())
+            .unwrap();
+        let second = reader
+            .copy_source(&resource, &source, ArchiveLimits::default())
+            .unwrap();
+
+        assert_eq!(first[0].resource.id, second[0].resource.id);
+        assert_eq!(first[0].resource.url, second[0].resource.url);
+        assert_eq!(download.hits(), 1);
     }
 
     #[test]

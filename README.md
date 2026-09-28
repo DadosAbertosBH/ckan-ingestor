@@ -181,6 +181,10 @@ O `.gitlab-ci.yml` constrói e publica as imagens no registry do GitLab:
 | `CRAWLER_MAX_ARCHIVE_ENTRIES` | `100000` | Quantidade máxima de entradas em uma árvore de ZIPs |
 | `RUST_LOG` | `info` | Nível de log |
 
+O crawler armazena a descoberta no bucket S3/R2 em `discovered-sources/{http,zip,drive}` e os resultados materializados de ZIP/Drive em `discovered-resources/`. A descoberta usa o `Last-Modified` HTTP da página para revalidação; sem esse cabeçalho, o cache vale por sete dias. Arquivos Drive já descobertos são revalidados após sete dias. Se a origem falhar, o último cache válido é usado com um aviso no log.
+
+Cada página HTML efetivamente recebida pelo crawler é arquivada como uma captura imutável `.warc.gz` em `crawled-pages/`, incluindo status, cabeçalhos e corpo da resposta. Uma falha ao gravar a captura interrompe o crawl. Os arquivos extraídos e baixados continuam em `crawled-files/`; versões novas de ZIP/Drive recebem URLs versionadas para preservar snapshots anteriores.
+
 ### Worker coordinator Rust
 
 O `worker-coordinator` inicializa de forma idempotente o stream e os tópicos Iggy e processa exclusivamente a sincronização de metadata. Ele usa `IGGY_ADDRESS`, `IGGY_USERNAME`, `IGGY_PASSWORD`, `IGGY_STREAM`, `IGGY_TOPIC`, `IGGY_TOPIC_RETRY`, `IGGY_TOPIC_RESULTS`, `IGGY_METADATA_SYNC_TOPIC`, `IGGY_METADATA_SYNC_RESULT_TOPIC`, `IGGY_METADATA_SYNC_GROUP_ID`, `IGGY_JOB_PARTITIONS`, `IGGY_RETRY_PARTITIONS` e `IGGY_RESULT_PARTITIONS`, além da mesma configuração DuckLake/S3 do worker. API e worker preservam sua criação idempotente de topologia como proteção durante a inicialização.

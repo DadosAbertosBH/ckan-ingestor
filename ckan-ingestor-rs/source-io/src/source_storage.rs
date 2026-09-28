@@ -25,8 +25,8 @@ use std::{
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use object_store::{
-    Attribute, Attributes, Error as StoreError, GetOptions, ObjectStore, PutMultipartOptions,
-    PutOptions, WriteMultipart, parse_url_opts, path::Path,
+    Attribute, Attributes, Error as StoreError, GetOptions, ObjectStore, ObjectStoreExt,
+    PutMultipartOptions, PutOptions, WriteMultipart, parse_url_opts, path::Path,
 };
 use reqwest::{
     blocking::Client,
@@ -50,7 +50,62 @@ pub struct SourceStorage {
     store: Arc<dyn ObjectStore>,
 }
 
+pub struct CachedObject {
+    pub bytes: Vec<u8>,
+    pub uploaded_at: DateTime<Utc>,
+}
+
 impl SourceStorage {
+    pub fn get_cached_object(&self, key: &str) -> Result<Option<CachedObject>> {
+        let runtime = runtime()?;
+        let result = match runtime.block_on(self.store.get(&Path::from(key))) {
+            Ok(result) => result,
+            Err(StoreError::NotFound { .. }) => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        let uploaded_at = result.meta.last_modified;
+        let bytes = runtime.block_on(result.bytes())?;
+        Ok(Some(CachedObject {
+            bytes: bytes.to_vec(),
+            uploaded_at,
+        }))
+    }
+
+    pub fn put_cached_object(&self, key: &str, bytes: Vec<u8>, content_type: &str) -> Result<()> {
+        let runtime = runtime()?;
+        let mut attributes = Attributes::new();
+        attributes.insert(Attribute::ContentType, content_type.to_owned().into());
+        retry(RETRIES, || {
+            runtime.block_on(self.store.put_opts(
+                &Path::from(key),
+                bytes.clone().into(),
+                PutOptions {
+                    attributes: attributes.clone(),
+                    ..Default::default()
+                },
+            ))?;
+            Ok(())
+        })
+    }
+
+    pub fn cached_object_exists(&self, key: &str) -> Result<bool> {
+        let runtime = runtime()?;
+        match runtime.block_on(self.store.head(&Path::from(key))) {
+            Ok(_) => Ok(true),
+            Err(StoreError::NotFound { .. }) => Ok(false),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    pub fn cached_object_modified_at(&self, key: &str) -> Result<Option<DateTime<Utc>>> {
+        let runtime = runtime()?;
+        match runtime.block_on(self.store.head(&Path::from(key))) {
+            Ok(meta) => Ok(Some(meta.last_modified)),
+            Err(StoreError::NotFound { .. }) => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+
     pub fn new(client: Client, settings: S3Settings) -> Result<Self> {
         let public_url = format!(
             "{}://{}/{}",
@@ -176,6 +231,14 @@ impl SourceStorage {
 
     pub fn copy_crawled(&self, source: DownloadedSource) -> Result<CopiedSource> {
         let url = self.store_at_key(&crawled_file_key(&source.source), &source)?;
+        Ok(CopiedSource {
+            source: source.source.clone(),
+            url,
+        })
+    }
+
+    pub fn copy_crawled_versioned(&self, source: DownloadedSource) -> Result<CopiedSource> {
+        let url = self.store_at_key(&crawled_versioned_file_key(&source.source)?, &source)?;
         Ok(CopiedSource {
             source: source.source.clone(),
             url,
@@ -339,6 +402,21 @@ fn crawled_file_key(source: &Source) -> String {
         .filter(|value| !value.is_empty())
         .unwrap_or("source");
     format!("crawled-files/{id}/{name}")
+}
+
+fn crawled_versioned_file_key(source: &Source) -> Result<String> {
+    let version = source
+        .version
+        .as_str()
+        .context("versioned crawled source requires a version")?;
+    let source_id = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, source.identity.as_bytes());
+    let version_id = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, version.as_bytes());
+    let name = FsPath::new(&source.filename)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("source");
+    Ok(format!("crawled-files/{source_id}/{version_id}/{name}"))
 }
 
 #[cfg(test)]
