@@ -50,7 +50,7 @@ func (d *Dispatcher) newID() string {
 }
 
 func (d *Dispatcher) RetryJob(ctx context.Context, jobID string) (*Job, error) {
-	var created *Job
+	var retried *Job
 	err := d.Store.InTx(ctx, func(tx Tx) error {
 		job, err := tx.Job(ctx, jobID)
 		if err != nil {
@@ -59,11 +59,10 @@ func (d *Dispatcher) RetryJob(ctx context.Context, jobID string) (*Job, error) {
 		if job.ParentJobID != nil {
 			return fmt.Errorf("%w: retry the parent job %s", ErrInvalidMessage, *job.ParentJobID)
 		}
-		now := d.now()
-		created = &Job{ID: d.newID(), SourceVersion: job.SourceVersion, ResourceID: job.ResourceID, ResourceName: job.ResourceName, ResourceURL: job.ResourceURL, ResourceFormat: job.ResourceFormat, DatasetName: job.DatasetName, Status: JobPending, IdempotencyKey: job.IdempotencyKey, InstanceID: job.InstanceID, InstanceName: job.InstanceName, InstanceURL: job.InstanceURL, CKANURL: job.CKANURL, DatastoreActive: job.DatastoreActive, CreatedAt: now, UpdatedAt: now}
-		payload := map[string]any{"job_id": created.ID, "resource_id": created.ResourceID, "ckan_url": created.CKANURL, "resource_url": stringValue(created.ResourceURL), "resource_format": stringValue(created.ResourceFormat), "datastore_active": created.DatastoreActive, "dataset_name": created.DatasetName, "instance_id": created.InstanceID, "resource_name": created.ResourceName}
-		if created.SourceVersion != nil {
-			payload["source_version"] = *created.SourceVersion
+		retried = job
+		payload := map[string]any{"job_id": job.ID, "resource_id": job.ResourceID, "ckan_url": job.CKANURL, "resource_url": stringValue(job.ResourceURL), "resource_format": stringValue(job.ResourceFormat), "datastore_active": job.DatastoreActive, "dataset_name": job.DatasetName, "instance_id": job.InstanceID, "resource_name": job.ResourceName}
+		if job.SourceVersion != nil {
+			payload["source_version"] = *job.SourceVersion
 		}
 		if hint, hintErr := tx.CSVHint(ctx, job.ResourceID); hintErr == nil {
 			payload["csv_delimiter"] = *hint
@@ -74,23 +73,10 @@ func (d *Dispatcher) RetryJob(ctx context.Context, jobID string) (*Job, error) {
 		if err != nil {
 			return err
 		}
-		routing, err := d.Publisher.Publish(ctx, d.RetryTopic, encoded, created.ResourceID)
-		if err != nil {
-			return err
-		}
-		created.BrokerType, created.MessageStream, created.MessageTopic = new(routing.BrokerType), new(routing.Stream), new(routing.Topic)
-		created.MessagePartition, created.MessageOffset = &routing.Partition, routing.Offset
-		if err := tx.InsertJob(ctx, created); err != nil {
-			return err
-		}
-		processor := Processor{Now: d.Now}
-		status, err := processor.resourceStatus(ctx, tx, created.ResourceID, JobPending)
-		if err != nil {
-			return err
-		}
-		return tx.PutLatest(ctx, latestFromJob(created, status, now))
+		_, err = d.Publisher.Publish(ctx, d.RetryTopic, encoded, job.ResourceID)
+		return err
 	})
-	return created, err
+	return retried, err
 }
 
 func (d *Dispatcher) SyncInstance(ctx context.Context, instanceID string) (*MetadataSync, error) {

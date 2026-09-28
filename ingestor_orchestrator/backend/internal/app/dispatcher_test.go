@@ -38,22 +38,23 @@ func (f *fakePublisher) Publish(_ context.Context, topic string, payload []byte,
 	return f.result, f.err
 }
 
-func TestRetryJobPersistsAttemptAfterPublishingRetryMessage(t *testing.T) {
+func TestRetryJobRequeuesExistingJobAfterPublishingRetryMessage(t *testing.T) {
 	store := newMemoryStore()
 	store.jobs["failed"] = &Job{ID: "failed", ResourceID: "resource", DatasetName: "dataset", InstanceID: "instance", CKANURL: "https://example.test", Status: JobFailed}
+	store.latest["resource"] = &LatestResource{ResourceID: "resource", LatestJobID: "failed", Status: string(JobFailed)}
 	store.hints["resource"] = ";"
 	pub := &fakePublisher{result: Routing{BrokerType: "iggy", Stream: "ckan-ingestor", Topic: "jobs-retry", Partition: 2}}
-	dispatcher := &Dispatcher{Store: store, Publisher: pub, RetryTopic: "jobs-retry", NewID: func() string { return "retry" }}
+	dispatcher := &Dispatcher{Store: store, Publisher: pub, RetryTopic: "jobs-retry"}
 
 	job, err := dispatcher.RetryJob(context.Background(), "failed")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.ID != "retry" || job.Status != JobPending || *job.MessagePartition != 2 {
+	if job.ID != "failed" || job.Status != JobFailed {
 		t.Fatalf("job = %#v", job)
 	}
-	if store.jobs["retry"] == nil || store.latest["resource"] == nil {
-		t.Fatalf("retry attempt was not persisted after publication: jobs=%#v latest=%#v", store.jobs, store.latest)
+	if len(store.jobs) != 1 || store.latest["resource"].LatestJobID != "failed" || store.latest["resource"].Status != string(JobFailed) {
+		t.Fatalf("retry changed the persisted job or resource projection: jobs=%#v latest=%#v", store.jobs, store.latest)
 	}
 	if len(pub.messages) != 1 || pub.messages[0].topic != "jobs-retry" || pub.messages[0].key != "resource" {
 		t.Fatalf("published = %#v", pub.messages)
@@ -62,7 +63,7 @@ func TestRetryJobPersistsAttemptAfterPublishingRetryMessage(t *testing.T) {
 	if err := json.Unmarshal(pub.messages[0].payload, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload["csv_delimiter"] != ";" || payload["job_id"] != "retry" {
+	if payload["csv_delimiter"] != ";" || payload["job_id"] != "failed" {
 		t.Fatalf("payload = %#v", payload)
 	}
 }
@@ -77,7 +78,7 @@ func TestRetryKeepsOriginalSourceVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	pub := &fakePublisher{}
-	dispatcher := &Dispatcher{Store: store, Publisher: pub, RetryTopic: "jobs-retry", NewID: func() string { return "retry" }}
+	dispatcher := &Dispatcher{Store: store, Publisher: pub, RetryTopic: "jobs-retry"}
 	if _, err := dispatcher.RetryJob(context.Background(), "original"); err != nil {
 		t.Fatal(err)
 	}
@@ -109,12 +110,12 @@ func TestRetryJobRequiresTheParentForChildJobs(t *testing.T) {
 func TestRetryJobRequeuesNonFailedJob(t *testing.T) {
 	store := newMemoryStore()
 	store.jobs["completed"] = &Job{ID: "completed", ResourceID: "resource", DatasetName: "dataset", InstanceID: "instance", CKANURL: "https://example.test", Status: JobCompleted}
-	dispatcher := &Dispatcher{Store: store, Publisher: &fakePublisher{}, RetryTopic: "jobs-retry", NewID: func() string { return "retry" }}
+	dispatcher := &Dispatcher{Store: store, Publisher: &fakePublisher{}, RetryTopic: "jobs-retry"}
 	job, err := dispatcher.RetryJob(context.Background(), "completed")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.ID != "retry" || job.Status != JobPending {
+	if job.ID != "completed" || job.Status != JobCompleted {
 		t.Fatalf("job = %#v", job)
 	}
 }
@@ -171,7 +172,7 @@ func TestRetryReturnsNotFoundAndPublishErrors(t *testing.T) {
 	if _, err := dispatcher.RetryJob(context.Background(), "failed"); err == nil {
 		t.Fatal("expected publish error")
 	}
-	if store.jobs["retry"] != nil {
-		t.Fatalf("retry attempt persisted despite publish failure: %#v", store.jobs["retry"])
+	if len(store.jobs) != 1 || store.jobs["failed"].Status != JobFailed {
+		t.Fatalf("retry changed the job despite publish failure: %#v", store.jobs)
 	}
 }
