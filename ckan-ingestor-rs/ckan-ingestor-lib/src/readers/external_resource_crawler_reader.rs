@@ -166,6 +166,8 @@ struct MaterializedSnapshot {
     origin_etag: Option<String>,
 }
 
+type CachedMaterialization = (Vec<ChildSource>, MaterializedSnapshot, DateTime<Utc>);
+
 /// Discovers files linked by HTML pages, ZIP archives, and public Drive folders,
 /// then delegates each materialized file to the configured readers.
 pub struct ExternalResourceCrawlerReader<'a> {
@@ -403,7 +405,7 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
         &self,
         parent: &CkanResource,
         source: &CrawledSource,
-    ) -> Result<Option<(Vec<ChildSource>, MaterializedSnapshot, DateTime<Utc>)>> {
+    ) -> Result<Option<CachedMaterialization>> {
         let key = materialized_key(source, &parent.format);
         let Some(object) = self.storage.get_cached_object(&key)? else {
             return Ok(None);
