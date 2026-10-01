@@ -5,6 +5,7 @@ export interface CkanInstance {
   id: string;
   name: string;
   url: string;
+  source_type?: "ckan" | "sicom";
   last_metadata_synced: string | null;
   dataset_count: number;
   resource_count: number;

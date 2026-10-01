@@ -133,6 +133,28 @@ func (f *fakeQueries) GetSync(_ context.Context, id string) (*app.MetadataSync, 
 	return nil, app.ErrNotFound
 }
 
+func TestCreateSourceTypesDefaultsAndValidation(t *testing.T) {
+	for _, tc := range []struct {
+		body, source string
+		status       int
+	}{
+		{`{"name":"CKAN","url":"https://ckan.test"}`, "ckan", 201},
+		{`{"name":"SICOM","url":"https://dadosabertos.tce.mg.gov.br/","source_type":"sicom"}`, "sicom", 201},
+		{`{"name":"Invalid","url":"https://test","source_type":"unknown"}`, "", 422},
+	} {
+		queries := &fakeQueries{}
+		handler := New(&fakeDispatcher{}, fakePinger{}, fakePinger{}, func() bool { return true }, WithQueries(queries))
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest("POST", "/api/instances", strings.NewReader(tc.body)))
+		if response.Code != tc.status {
+			t.Errorf("status=%d expected=%d", response.Code, tc.status)
+		}
+		if tc.status == 201 && (queries.created == nil || queries.created.SourceType != tc.source) {
+			t.Errorf("created=%+v expected=%s", queries.created, tc.source)
+		}
+	}
+}
+
 func TestRetryRouteReturnsCompatibleJobResponse(t *testing.T) {
 	partition := 2
 	topic := "jobs-retry"

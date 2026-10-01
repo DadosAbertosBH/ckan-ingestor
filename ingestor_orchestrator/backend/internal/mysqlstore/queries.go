@@ -17,8 +17,10 @@ import (
 	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/app"
 )
 
+const instanceColumns = `id,name,url,CASE WHEN source_type='sicom' THEN (SELECT COUNT(DISTINCT dataset_name) FROM latest_resource_job WHERE instance_id=ckan_instance.id) ELSE dataset_count END,CASE WHEN source_type='sicom' THEN (SELECT COUNT(*) FROM latest_resource_job WHERE instance_id=ckan_instance.id) ELSE resource_count END,last_metadata_synced,created_at,updated_at,source_type`
+
 func (s *Store) ListInstances(ctx context.Context) ([]app.Instance, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id,name,url,dataset_count,resource_count,last_metadata_synced,created_at,updated_at FROM ckan_instance ORDER BY created_at DESC`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+instanceColumns+` FROM ckan_instance ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +29,7 @@ func (s *Store) ListInstances(ctx context.Context) ([]app.Instance, error) {
 	for rows.Next() {
 		var v app.Instance
 		var synced sql.NullTime
-		if err := rows.Scan(&v.ID, &v.Name, &v.URL, &v.DatasetCount, &v.ResourceCount, &synced, &v.CreatedAt, &v.UpdatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.Name, &v.URL, &v.DatasetCount, &v.ResourceCount, &synced, &v.CreatedAt, &v.UpdatedAt, &v.SourceType); err != nil {
 			return nil, err
 		}
 		v.LastMetadataSynced = nullTime(synced)
@@ -39,12 +41,15 @@ func (s *Store) ListInstances(ctx context.Context) ([]app.Instance, error) {
 func (s *Store) GetInstance(ctx context.Context, id string) (*app.Instance, error) {
 	var v app.Instance
 	var synced sql.NullTime
-	err := s.DB.QueryRowContext(ctx, `SELECT id,name,url,dataset_count,resource_count,last_metadata_synced,created_at,updated_at FROM ckan_instance WHERE id=?`, id).Scan(&v.ID, &v.Name, &v.URL, &v.DatasetCount, &v.ResourceCount, &synced, &v.CreatedAt, &v.UpdatedAt)
+	err := s.DB.QueryRowContext(ctx, `SELECT `+instanceColumns+` FROM ckan_instance WHERE id=?`, id).Scan(&v.ID, &v.Name, &v.URL, &v.DatasetCount, &v.ResourceCount, &synced, &v.CreatedAt, &v.UpdatedAt, &v.SourceType)
 	v.LastMetadataSynced = nullTime(synced)
 	return &v, translateNotFound(err)
 }
 func (s *Store) CreateInstance(ctx context.Context, v *app.Instance) error {
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO ckan_instance (id,name,url,dataset_count,resource_count,created_at,updated_at) VALUES (?,?,?,0,0,?,?)`, v.ID, v.Name, v.URL, v.CreatedAt, v.UpdatedAt)
+	if v.SourceType == "" {
+		v.SourceType = "ckan"
+	}
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO ckan_instance (id,name,url,dataset_count,resource_count,created_at,updated_at,source_type) VALUES (?,?,?,0,0,?,?,?)`, v.ID, v.Name, v.URL, v.CreatedAt, v.UpdatedAt, v.SourceType)
 	return err
 }
 func (s *Store) DeleteInstance(ctx context.Context, id string) error {
@@ -101,15 +106,12 @@ func scanJob(row scanner) (app.JobView, error) {
 	if v.ParentResourceID != nil {
 		ckanResourceID = *v.ParentResourceID
 	}
-	v.CKANResourceURL = resourceURL(v.InstanceURL, v.DatasetName, ckanResourceID)
+	v.CKANResourceURL = app.SourceResourceURL(v.InstanceURL, v.DatasetName, ckanResourceID)
 	v.Labels = []string{}
 	return v, nil
 }
 func resourceURL(base, dataset, resource string) string {
-	if base == "" {
-		return ""
-	}
-	return strings.TrimRight(base, "/") + "/dataset/" + dataset + "/resource/" + resource
+	return app.SourceResourceURL(base, dataset, resource)
 }
 
 func (s *Store) ListJobs(ctx context.Context, q app.JobQuery) ([]app.JobView, error) {
@@ -376,7 +378,7 @@ func (s *Store) ListDatasets(ctx context.Context, q app.ResourceQuery) ([]app.Da
 		v.InstanceName = nullString(name)
 		v.UpdatedAt, v.InstanceLastSyncedAt = nullTime(updated), nullTime(synced)
 		if url.Valid {
-			v.CKANDatasetURL = strings.TrimRight(url.String, "/") + "/dataset/" + v.DatasetName
+			v.CKANDatasetURL = app.SourceDatasetURL(url.String, v.DatasetName)
 		}
 		out = append(out, v)
 	}

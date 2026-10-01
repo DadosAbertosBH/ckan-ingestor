@@ -1,0 +1,35 @@
+suite: SICOM daily crawler
+templates:
+  - cronjob-sicom-crawler.yaml
+tests:
+  - it: is opt-in
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: schedules an isolated daily run with shared credentials
+    set:
+      sicomCrawler.enabled: true
+      existingSecret: test-credentials
+    asserts:
+      - equal:
+          path: spec.schedule
+          value: "0 3 * * *"
+      - equal:
+          path: spec.timeZone
+          value: America/Sao_Paulo
+      - equal:
+          path: spec.concurrencyPolicy
+          value: Forbid
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].image
+          pattern: "/sicom-crawler:"
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].envFrom
+          content:
+            secretRef:
+              name: test-credentials
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          content:
+            name: IGGY_TOPIC_RESULTS
+            value: job-results

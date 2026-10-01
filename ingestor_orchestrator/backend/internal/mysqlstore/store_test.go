@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/app"
@@ -42,6 +43,26 @@ func TestInTxCommitsSuccess(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("callback was not called")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSICOMInstanceCountsComeFromPublishedResources(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	// SICOM does not run CKAN metadata sync, so its counters are derived from jobs.
+	mock.ExpectQuery("SELECT .*CASE WHEN source_type='sicom'.*COUNT\\(DISTINCT dataset_name\\)").WillReturnRows(sqlmock.NewRows([]string{"id", "name", "url", "dataset_count", "resource_count", "synced", "created", "updated", "source_type"}).AddRow("sicom", "SICOM", "https://dadosabertos.tce.mg.gov.br/", 13, 853, nil, time.Now(), time.Now(), "sicom"))
+	rows, err := (&Store{DB: db}).ListInstances(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].SourceType != "sicom" || rows[0].ResourceCount != 853 || rows[0].DatasetCount != 13 {
+		t.Fatalf("instances=%+v", rows)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

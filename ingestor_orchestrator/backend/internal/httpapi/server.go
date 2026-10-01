@@ -32,6 +32,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/app"
+	sicomidentity "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/sicom-source-identity"
 )
 
 type Dispatcher interface {
@@ -144,15 +145,23 @@ func (s *Server) getInstance(w http.ResponseWriter, r *http.Request, id string) 
 }
 func (s *Server) createInstance(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Name string `json:"name"`
-		URL  string `json:"url"`
+		Name       string `json:"name"`
+		URL        string `json:"url"`
+		SourceType string `json:"source_type"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.URL) == "" {
 		writeError(w, http.StatusUnprocessableEntity, "Invalid request body")
 		return
 	}
 	now := time.Now().UTC()
-	instance := &app.Instance{ID: uuid.NewString(), Name: input.Name, URL: input.URL, CreatedAt: now, UpdatedAt: now}
+	if input.SourceType == "" {
+		input.SourceType = "ckan"
+	}
+	if !oneOf(input.SourceType, "ckan", sicomidentity.SourceType) {
+		writeError(w, 422, "Invalid source_type")
+		return
+	}
+	instance := &app.Instance{ID: uuid.NewString(), Name: input.Name, URL: input.URL, SourceType: input.SourceType, CreatedAt: now, UpdatedAt: now}
 	if err := s.queries.CreateInstance(r.Context(), instance); err != nil {
 		writeAppError(w, err)
 		return
@@ -318,7 +327,7 @@ func (s *Server) handleRetry(w http.ResponseWriter, r *http.Request, id string) 
 		writeAppError(w, err)
 		return
 	}
-	resourceURL := strings.TrimRight(job.InstanceURL, "/") + "/dataset/" + job.DatasetName + "/resource/" + job.ResourceID
+	resourceURL := app.SourceResourceURL(job.InstanceURL, job.DatasetName, job.ResourceID)
 	encoded, _ := json.Marshal(job)
 	var response map[string]any
 	_ = json.Unmarshal(encoded, &response)

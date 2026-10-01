@@ -143,10 +143,10 @@ func (s *txStore) UpdateSync(ctx context.Context, v *app.MetadataSync) error {
 	return err
 }
 func (s *txStore) Instance(ctx context.Context, id string) (*app.Instance, error) {
-	row := s.tx.QueryRowContext(ctx, `SELECT id,name,url,dataset_count,resource_count,last_metadata_synced FROM ckan_instance WHERE id=? FOR UPDATE`, id)
+	row := s.tx.QueryRowContext(ctx, `SELECT id,name,url,dataset_count,resource_count,last_metadata_synced,source_type FROM ckan_instance WHERE id=? FOR UPDATE`, id)
 	var v app.Instance
 	var synced sql.NullTime
-	if err := row.Scan(&v.ID, &v.Name, &v.URL, &v.DatasetCount, &v.ResourceCount, &synced); err != nil {
+	if err := row.Scan(&v.ID, &v.Name, &v.URL, &v.DatasetCount, &v.ResourceCount, &synced, &v.SourceType); err != nil {
 		return nil, translateNotFound(err)
 	}
 	v.LastMetadataSynced = nullTime(synced)

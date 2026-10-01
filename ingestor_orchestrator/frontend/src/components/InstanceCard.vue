@@ -4,6 +4,7 @@
             <span class="instance-name">{{ stats.instance.name }}</span>
             <div class="header-actions">
                 <button
+                    v-if="stats.instance.source_type !== 'sicom'"
                     class="btn-sync"
                     :disabled="syncing"
                     @click="$emit('sync')"
@@ -11,11 +12,12 @@
                 >
                     {{ syncing ? "Syncing…" : "Sync" }}
                 </button>
+                <span v-else class="crawler-schedule">Daily crawler</span>
                 <a
                     :href="stats.instance.url"
                     target="_blank"
                     class="instance-link"
-                    title="Open CKAN instance"
+                    title="Open source portal"
                 >
                     <svg
                         width="14"

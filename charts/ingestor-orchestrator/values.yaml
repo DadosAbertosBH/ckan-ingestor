@@ -73,6 +73,32 @@ workerCoordinator:
     limits:
       memory: 1Gi
 
+# -- SICOM crawler (all published years/categories; immutable ZIP cache)
+sicomCrawler:
+  enabled: false
+  schedule: "0 3 * * *"
+  timeZone: America/Sao_Paulo
+  image:
+    registry: ""
+    repository: sicom-crawler
+    tag: ""
+    pullPolicy: ""
+  # -- Optional public R2/custom-domain URL; defaults to endpoint/bucket like the Rust reader.
+  publicURL: ""
+  orchestratorURL: ""
+  activeDeadlineSeconds: 43200
+  tempStorage: 100Gi
+  formats: "CSV,JSON,GEOJSON"
+  extraEnv: []
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+      ephemeral-storage: 10Gi
+    limits:
+      memory: 2Gi
+      ephemeral-storage: 100Gi
+
 # -- Apache Iggy configuration
 iggy:
   # -- Deploy Apache Iggy using the official chart dependency.

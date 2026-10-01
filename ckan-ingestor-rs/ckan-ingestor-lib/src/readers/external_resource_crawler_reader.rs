@@ -750,7 +750,11 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                     if cache_fresh(cached.uploaded_at)
                         && cached.snapshot.origin_modified == file.modified_time
                     {
-                        log::debug!("Reusing materialized Drive file {}", file.id);
+                        log::debug!(
+                            "Reusing materialized Drive file {} for resource {}",
+                            file.id,
+                            resource.id
+                        );
                         return Ok(cached.children.clone());
                     }
                 }

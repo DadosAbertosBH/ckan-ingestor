@@ -22,6 +22,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	sicomidentity "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/sicom-source-identity"
 )
 
 var ErrConflict = errors.New("conflict")
@@ -87,6 +89,9 @@ func (d *Dispatcher) SyncInstance(ctx context.Context, instanceID string) (*Meta
 		if err != nil {
 			return err
 		}
+		if instance.SourceType == sicomidentity.SourceType {
+			return fmt.Errorf("%w: SICOM uses the dedicated crawler", ErrConflict)
+		}
 		now := d.now()
 		created = &MetadataSync{ID: d.newID(), InstanceID: instance.ID, StartTime: now, Status: "pending"}
 		if err := tx.InsertSync(ctx, created); err != nil {
@@ -124,6 +129,9 @@ func (d *Dispatcher) SyncAll(ctx context.Context) []SyncDispatchResult {
 	}
 	results := make([]SyncDispatchResult, 0, len(instances))
 	for _, instance := range instances {
+		if instance.SourceType == sicomidentity.SourceType {
+			continue
+		}
 		sync, syncErr := d.SyncInstance(ctx, instance.ID)
 		result := SyncDispatchResult{InstanceID: instance.ID}
 		if sync != nil {

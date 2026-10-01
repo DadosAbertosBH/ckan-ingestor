@@ -55,7 +55,7 @@ func (s *Store) InTx(ctx context.Context, fn func(app.Tx) error) error {
 }
 
 func (s *Store) Instances(ctx context.Context) ([]app.Instance, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id,name,url,dataset_count,resource_count,last_metadata_synced FROM ckan_instance ORDER BY id`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,name,url,dataset_count,resource_count,last_metadata_synced,source_type FROM ckan_instance ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (s *Store) Instances(ctx context.Context) ([]app.Instance, error) {
 	for rows.Next() {
 		var value app.Instance
 		var synced sql.NullTime
-		if err := rows.Scan(&value.ID, &value.Name, &value.URL, &value.DatasetCount, &value.ResourceCount, &synced); err != nil {
+		if err := rows.Scan(&value.ID, &value.Name, &value.URL, &value.DatasetCount, &value.ResourceCount, &synced, &value.SourceType); err != nil {
 			return nil, err
 		}
 		value.LastMetadataSynced = nullTime(synced)

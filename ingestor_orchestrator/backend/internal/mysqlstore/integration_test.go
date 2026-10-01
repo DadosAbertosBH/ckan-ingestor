@@ -71,8 +71,17 @@ func TestQueryStoreAgainstMySQL(t *testing.T) {
 		t.Fatal(err)
 	}
 	instances, err := store.ListInstances(ctx)
-	if err != nil || len(instances) != 1 {
+	if err != nil {
 		t.Fatalf("instances=%+v err=%v", instances, err)
+	}
+	foundInstance := false
+	for _, listed := range instances {
+		if listed.ID == instance.ID {
+			foundInstance = listed.SourceType == "ckan"
+		}
+	}
+	if !foundInstance {
+		t.Fatal("integration instance missing among seeded CKAN/SICOM sources")
 	}
 	jobs, err := store.ListJobs(ctx, app.JobQuery{Tags: "empty", Limit: 50})
 	if err != nil || len(jobs) != 1 {
@@ -95,8 +104,17 @@ func TestQueryStoreAgainstMySQL(t *testing.T) {
 		t.Fatalf("datasets=%+v err=%v", datasets, err)
 	}
 	stats, err := store.Dashboard(ctx)
-	if err != nil || len(stats) != 1 || stats[0].Completed != 1 {
+	if err != nil {
 		t.Fatalf("stats=%+v err=%v", stats, err)
+	}
+	foundStats := false
+	for _, stat := range stats {
+		if stat.Instance.ID == instance.ID {
+			foundStats = stat.Completed == 1
+		}
+	}
+	if !foundStats {
+		t.Fatalf("integration stats missing: %+v", stats)
 	}
 	syncs, err := store.ListSyncs(ctx, app.SyncQuery{InstanceID: instance.ID, Limit: 50})
 	if err != nil || len(syncs) < 1 {

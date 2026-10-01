@@ -79,6 +79,42 @@ func TestDefaultCKANInstancesAreSeeded(t *testing.T) {
 	}
 }
 
+func TestSICOMMigrationPreservesCKANDefaultAndSeedsDedicatedSource(t *testing.T) {
+	data, err := files.ReadFile("sql/00006_sicom_source.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"DEFAULT 'ckan'", "TCE-MG SICOM", "https://dadosabertos.tce.mg.gov.br/", "'sicom'", "-- +goose Up", "-- +goose Down"} {
+		if !strings.Contains(string(data), required) {
+			t.Fatalf("migration missing %q", required)
+		}
+	}
+}
+
+func TestSICOMMigrationExecutesThroughGoose(t *testing.T) {
+	goose.SetBaseFS(files)
+	if err := goose.SetDialect("mysql"); err != nil {
+		t.Fatal(err)
+	}
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectBegin()
+	mock.ExpectExec("ALTER TABLE ckan_instance ADD COLUMN source_type").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("INSERT IGNORE INTO ckan_instance").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO goose_db_version").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+	migration := &goose.Migration{Version: 6, Source: "sql/00006_sicom_source.sql"}
+	if err := migration.UpContext(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestChildJobsMigrationHasGooseUpAndExpectedColumns(t *testing.T) {
 	data, err := files.ReadFile("sql/00004_child_jobs.sql")
 	if err != nil {

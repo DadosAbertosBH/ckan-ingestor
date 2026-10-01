@@ -23,6 +23,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	jobmessage "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/ingestor-job-message-contracts"
 )
 
 func ptr[T any](value T) *T { return &value }
@@ -463,6 +465,18 @@ func TestPendingUsesPreviousTerminalProjection(t *testing.T) {
 		if store.latest["resource"].Status != item.expected {
 			t.Fatalf("status = %q", store.latest["resource"].Status)
 		}
+	}
+}
+
+func TestWorkerJobPendingContractIsAcceptedByTheOrchestrator(t *testing.T) {
+	store := newMemoryStore()
+	job := jobmessage.WorkerJob{JobID: "job", ResourceID: "resource", DatasetName: "SICOM 2026", InstanceID: "sicom", CKANURL: "https://dadosabertos.tce.mg.gov.br/", ResourceURL: "https://files.test/pessoal.csv", ResourceFormat: "CSV", SourceVersion: "109822"}
+	if err := fixedProcessor(store).ApplyJobResult(context.Background(), jobmessage.Pending(job)); err != nil {
+		t.Fatal(err)
+	}
+	persisted := store.jobs[job.JobID]
+	if persisted == nil || persisted.ResourceID != job.ResourceID || persisted.DatasetName != job.DatasetName || persisted.InstanceID != job.InstanceID || persisted.SourceVersion == nil || *persisted.SourceVersion != job.SourceVersion {
+		t.Fatalf("persisted job=%+v", persisted)
 	}
 }
 
