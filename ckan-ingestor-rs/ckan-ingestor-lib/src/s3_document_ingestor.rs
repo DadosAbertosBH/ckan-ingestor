@@ -44,10 +44,11 @@ enum UploadStrategy {
 pub struct S3DocumentIngestor {
     pub public_url: String,
     store: Arc<dyn ObjectStore>,
+    client: HttpClient,
 }
 
 impl S3DocumentIngestor {
-    pub fn new(settings: S3Settings) -> Result<Self> {
+    pub fn new(settings: S3Settings, client: HttpClient) -> Result<Self> {
         let protocol = if settings.use_ssl { "https" } else { "http" };
         let public_url = format!("{}://{}/{}", protocol, settings.endpoint, settings.bucket);
         let uri = Url::parse(&format!("s3://{}", settings.bucket))?;
@@ -55,17 +56,29 @@ impl S3DocumentIngestor {
         Ok(Self {
             public_url,
             store: store.into(),
+            client,
         })
     }
 
+    pub fn http_client(&self) -> HttpClient {
+        self.client.clone()
+    }
+
     #[cfg(test)]
-    pub(crate) fn new_with_store(public_url: String, store: Arc<dyn ObjectStore>) -> Self {
-        Self { public_url, store }
+    pub(crate) fn new_with_store(
+        public_url: String,
+        store: Arc<dyn ObjectStore>,
+        client: HttpClient,
+    ) -> Self {
+        Self {
+            public_url,
+            store,
+            client,
+        }
     }
 
     pub fn ingest(&self, filename: &str, download_url: &str, content_type: &str) -> Result<String> {
-        let client = HttpClient::new();
-        let mut resp = client.get(download_url).send()?;
+        let mut resp = self.client.get(download_url).send()?;
         anyhow::ensure!(
             resp.status().is_success(),
             "document download failed: {}",
@@ -453,6 +466,7 @@ mod tests {
 
     use crate::config::S3Settings;
     use object_store::{memory::InMemory, path::Path, Attribute, ObjectStoreExt};
+    use reqwest::blocking::Client as HttpClient;
 
     use super::{
         retry_operation, upload_strategy, S3DocumentIngestor, UploadStrategy,
@@ -511,7 +525,8 @@ mod tests {
             ..S3Settings::default()
         };
 
-        let ingestor = S3DocumentIngestor::new(settings).expect("valid S3 settings");
+        let ingestor =
+            S3DocumentIngestor::new(settings, HttpClient::new()).expect("valid S3 settings");
 
         assert_eq!(ingestor.public_url, "http://rustfs.local:9000/documents");
     }
@@ -522,6 +537,7 @@ mod tests {
         let ingestor = S3DocumentIngestor::new_with_store(
             "https://files.example/documents".into(),
             store.clone(),
+            HttpClient::new(),
         );
         let server = httpmock::MockServer::start();
         let _download = server.mock(|when, then| {
@@ -556,8 +572,11 @@ mod tests {
     #[test]
     fn reuses_the_same_drive_revision_across_resources() {
         let store = Arc::new(InMemory::new());
-        let ingestor =
-            S3DocumentIngestor::new_with_store("https://files.example/bucket".into(), store);
+        let ingestor = S3DocumentIngestor::new_with_store(
+            "https://files.example/bucket".into(),
+            store,
+            HttpClient::new(),
+        );
         let downloads = AtomicUsize::new(0);
         let download = || {
             downloads.fetch_add(1, Ordering::SeqCst);
@@ -576,8 +595,11 @@ mod tests {
     #[test]
     fn replaces_a_drive_object_when_the_source_is_newer_than_its_upload() {
         let store = Arc::new(InMemory::new());
-        let ingestor =
-            S3DocumentIngestor::new_with_store("https://files.example/bucket".into(), store);
+        let ingestor = S3DocumentIngestor::new_with_store(
+            "https://files.example/bucket".into(),
+            store,
+            HttpClient::new(),
+        );
         let downloads = AtomicUsize::new(0);
         let download = || {
             downloads.fetch_add(1, Ordering::SeqCst);
@@ -599,6 +621,7 @@ mod tests {
         let ingestor = S3DocumentIngestor::new_with_store(
             "https://files.example/bucket".into(),
             store.clone(),
+            HttpClient::new(),
         );
         let source = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(source.path(), b"first").unwrap();

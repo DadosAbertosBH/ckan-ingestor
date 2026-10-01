@@ -127,7 +127,7 @@ pub async fn run() -> Result<()> {
     }
     let publisher = IggyPublisher::new(producers.into_iter());
 
-    let s3 = create_s3_ingestor().await?;
+    let s3 = create_s3_ingestor(job_processor::http_client()?).await?;
     let processor = JobProcessor::new(
         settings.source_topic.clone(),
         settings.result_topic,
@@ -237,8 +237,8 @@ fn install_shutdown_handler(shutdown: Arc<Notify>) {
     });
 }
 
-async fn create_s3_ingestor() -> Result<S3DocumentIngestor> {
-    S3DocumentIngestor::new(S3Settings::from_env())
+async fn create_s3_ingestor(client: reqwest::blocking::Client) -> Result<S3DocumentIngestor> {
+    S3DocumentIngestor::new(S3Settings::from_env(), client)
 }
 
 #[cfg(test)]

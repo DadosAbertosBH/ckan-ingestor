@@ -44,6 +44,6 @@ pub fn dummy_s3_ingestor() -> &'static ckan_ingestor_lib::s3_document_ingestor::
             url_style: "path".into(),
             ..S3Settings::default()
         };
-        S3DocumentIngestor::new(settings).unwrap()
+        S3DocumentIngestor::new(settings, reqwest::blocking::Client::new()).unwrap()
     })
 }

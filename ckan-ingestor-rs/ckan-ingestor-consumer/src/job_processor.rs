@@ -40,6 +40,15 @@ use crate::messages::{JobMessage, JobResultMessage, JobStatus};
 use crate::parquet_uploader::ParquetUploader;
 use message_processor::{MessageProcessor, OutgoingMessage};
 
+pub(crate) fn http_client() -> Result<Client, reqwest::Error> {
+    Client::builder()
+        .timeout(Duration::from_secs(1200))
+        .user_agent(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0",
+        )
+        .build()
+}
+
 // ---------------------------------------------------------------------------
 // RealJobProcessor — production implementation
 // ---------------------------------------------------------------------------
@@ -307,12 +316,7 @@ fn run_conversion(
         datastore_active: job.datastore_active,
         last_modified: job.source_version.clone(),
     };
-    let http_client = Client::builder()
-        .timeout(Duration::from_secs(1200))
-        .user_agent(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0",
-        )
-        .build()?;
+    let http_client = s3.http_client();
     let source_storage = SourceStorage::new(http_client.clone(), S3Settings::from_env())?;
     let reader = MultipleReader::new(vec![
         Box::new(DatastoreReader::new(

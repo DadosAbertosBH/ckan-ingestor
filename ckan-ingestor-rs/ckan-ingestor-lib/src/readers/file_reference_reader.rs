@@ -115,12 +115,23 @@ mod tests {
         s3_document_ingestor::S3DocumentIngestor,
     };
     use object_store::memory::InMemory;
+    use reqwest::blocking::Client;
 
     use super::FileReferenceReader;
 
+    fn client() -> Client {
+        Client::builder()
+            .user_agent(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0",
+            )
+            .build()
+            .expect("valid HTTP client")
+    }
+
     #[test]
     fn supports_file_reference_resources() {
-        let ingestor = S3DocumentIngestor::new(S3Settings::default()).expect("valid S3 settings");
+        let ingestor =
+            S3DocumentIngestor::new(S3Settings::default(), client()).expect("valid S3 settings");
         let reader = FileReferenceReader::new(&ingestor);
 
         assert_eq!(
@@ -131,7 +142,8 @@ mod tests {
 
     #[test]
     fn reads_lowercase_file_reference_formats() {
-        let ingestor = S3DocumentIngestor::new(S3Settings::default()).expect("valid S3 settings");
+        let ingestor =
+            S3DocumentIngestor::new(S3Settings::default(), client()).expect("valid S3 settings");
         let reader = FileReferenceReader::new(&ingestor);
         let resource = CkanResource {
             id: "resource-id".to_string(),
@@ -150,6 +162,7 @@ mod tests {
         let ingestor = S3DocumentIngestor::new_with_store(
             "https://files.example/documents".into(),
             Arc::new(InMemory::new()),
+            client(),
         );
         let reader = FileReferenceReader::new(&ingestor);
         let resource = CkanResource {
@@ -180,6 +193,7 @@ mod tests {
         let ingestor = S3DocumentIngestor::new_with_store(
             "https://files.example/documents".into(),
             Arc::new(InMemory::new()),
+            client(),
         );
         let resource = CkanResource {
             id: "resource-id".into(),
@@ -194,12 +208,52 @@ mod tests {
     }
 
     #[test]
+    fn downloads_documents_with_the_configured_user_agent() {
+        let server = httpmock::MockServer::start();
+        let _document = server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/document.pdf")
+                .header(
+                    "user-agent",
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0",
+                );
+            then.status(200)
+                .header("content-type", "application/pdf")
+                .body("PDF");
+        });
+        let ingestor = S3DocumentIngestor::new_with_store(
+            "https://files.example/documents".into(),
+            Arc::new(InMemory::new()),
+            client(),
+        );
+        let resource = CkanResource {
+            id: "resource-id".into(),
+            package_id: "package-id".into(),
+            url: format!("{}/document.pdf", server.base_url()),
+            format: "PDF".into(),
+            datastore_active: false,
+            last_modified: String::new(),
+        };
+
+        let result = FileReferenceReader::new(&ingestor)
+            .read(&resource)
+            .expect("the configured user agent downloads the document");
+
+        assert_eq!(result.rows_processed, 1);
+        assert_eq!(
+            result.preview[0]["url"],
+            "https://files.example/documents/docs/resource-id.pdf"
+        );
+    }
+
+    #[test]
     fn ingests_a_local_file_discovered_by_the_crawler() {
         let source = tempfile::NamedTempFile::with_suffix(".tif").expect("temporary TIFF");
         std::fs::write(source.path(), b"TIFF").expect("write TIFF");
         let ingestor = S3DocumentIngestor::new_with_store(
             "https://files.example/documents".into(),
             Arc::new(InMemory::new()),
+            client(),
         );
         let resource = CkanResource {
             id: "drive-file-id".into(),

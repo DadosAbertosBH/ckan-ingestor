@@ -37,7 +37,7 @@ fn ingest_includes_s3_url_when_put_object_fails() -> Result<()> {
         url_style: "path".to_string(),
         ..S3Settings::default()
     };
-    let ingestor = S3DocumentIngestor::new(settings)?;
+    let ingestor = S3DocumentIngestor::new(settings, reqwest::blocking::Client::new())?;
     let download_url = format!("{}/document.pdf", server.base_url());
 
     let error = ingestor

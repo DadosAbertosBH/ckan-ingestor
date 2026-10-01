@@ -2101,6 +2101,7 @@ mod tests {
         let file_reference_ingestor = S3DocumentIngestor::new_with_store(
             "https://files.example/documents".into(),
             Arc::new(InMemory::new()),
+            Client::new(),
         );
         let reader = ExternalResourceCrawlerReader::new(
             Client::new(),
