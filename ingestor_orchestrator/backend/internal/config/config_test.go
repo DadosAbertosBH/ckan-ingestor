@@ -88,3 +88,12 @@ func TestConfigDoesNotExposeRetryPartitionCount(t *testing.T) {
 		t.Fatal("RetryPartitions must be selected by Iggy through the message key")
 	}
 }
+
+func TestSICOMCanBeEnabledExplicitly(t *testing.T) {
+	for _, value := range []string{"", "false", "true"} {
+		t.Setenv("INGEST_ORCH_SICOM_ENABLED", value)
+		if got := Load().SICOMEnabled; got != (value == "true") {
+			t.Fatalf("SICOM enabled for %q = %v", value, got)
+		}
+	}
+}

@@ -175,11 +175,9 @@ test-ingestion-message-modules:
         --tag "$CI_REGISTRY_IMAGE/lightpanda-runtime:$CI_COMMIT_SHORT_SHA-$TARGET_ARCH" \
         --file ingestor_orchestrator/lightpanda-runtime/Dockerfile \
         --push .
+  # Temporarily paused while the SICOM source is disabled.
   rules:
-    - if: $CI_COMMIT_TAG
-    - changes:
-        - "ingestor_orchestrator/lightpanda-runtime/**/*"
-        - ".gitlab-ci.yml"
+    - when: never
 
 test-sicom-chart:
   stage: test
@@ -228,23 +226,17 @@ build-lightpanda-runtime:
         "$CI_REGISTRY_IMAGE/lightpanda-runtime:$CI_COMMIT_SHORT_SHA-amd64" \
         "$CI_REGISTRY_IMAGE/lightpanda-runtime:$CI_COMMIT_SHORT_SHA-arm64"
   rules:
-    - if: $CI_COMMIT_TAG
-    - changes:
-        - "ingestor_orchestrator/lightpanda-runtime/**/*"
-        - ".gitlab-ci.yml"
+    - when: never
 
 build-source-sync-worker:
   stage: build
   image: docker
-  needs:
-    - build-lightpanda-runtime
   script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" "$CI_REGISTRY" --password-stdin
     - docker buildx create --use
     - |
       docker buildx build \
-        --platform linux/amd64,linux/arm64 \
-        --build-arg LIGHTPANDA_RUNTIME_IMAGE="$CI_REGISTRY_IMAGE/lightpanda-runtime:$CI_COMMIT_SHORT_SHA" \
+        --platform linux/arm64 \
         --tag "$CI_REGISTRY_IMAGE/source-sync-worker:${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}" \
         --tag "$CI_REGISTRY_IMAGE/source-sync-worker:latest" \
         --file ingestor_orchestrator/source-sync-worker/Dockerfile \
@@ -364,6 +356,9 @@ build-orchestrator-amd64:
     TARGET_ARCH: amd64
   tags:
     - saas-linux-medium-amd64
+  # AMD64 image generation is temporarily paused.
+  rules:
+    - when: never
 
 build-orchestrator-arm64:
   extends: .build-orchestrator-base
@@ -377,25 +372,21 @@ build-orchestrator:
   image: docker
   timeout: 2h
   needs:
-    - build-orchestrator-amd64
     - build-orchestrator-arm64
   script:
     - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
     - docker context create builder
     - docker buildx create builder --use
     - |
-      AMD64="$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA-amd64"
       ARM64="$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA-arm64"
       docker buildx imagetools create \
         --tag "$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA" \
         --tag "$CI_REGISTRY_IMAGE/orchestrator:latest" \
-        "$AMD64" \
         "$ARM64"
     - |
       if [ -n "$CI_COMMIT_TAG" ]; then
         docker buildx imagetools create \
           --tag "$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_TAG" \
-          "$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA-amd64" \
           "$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA-arm64"
       fi
   rules:

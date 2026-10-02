@@ -1,6 +1,4 @@
 # syntax=docker/dockerfile:1
-ARG LIGHTPANDA_RUNTIME_IMAGE=registry.gitlab.com/pedalin/ckan-ingestor/lightpanda-runtime:latest
-FROM ${LIGHTPANDA_RUNTIME_IMAGE} AS lightpanda-runtime
 
 FROM golang:1.26-bookworm AS builder
 WORKDIR /src/ingestor_orchestrator
@@ -18,7 +16,6 @@ RUN go mod download && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out
 FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tini && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /out/source-sync-worker /usr/local/bin/source-sync-worker
-COPY --from=lightpanda-runtime /usr/local/bin/lightpanda /usr/local/bin/lightpanda
-ENV LIGHTPANDA_DISABLE_TELEMETRY=true LIGHTPANDA_DISABLE_CORE_DUMP=true XDG_CACHE_HOME=/tmp XDG_DATA_HOME=/tmp TINI_SUBREAPER=true
+ENV XDG_CACHE_HOME=/tmp XDG_DATA_HOME=/tmp TINI_SUBREAPER=true
 USER 10001
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/source-sync-worker"]

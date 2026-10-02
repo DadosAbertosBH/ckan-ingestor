@@ -88,7 +88,7 @@ func run() error {
 	}
 
 	processor := &app.Processor{Store: store, NewID: uuid.NewString}
-	dispatcher := &app.Dispatcher{Store: store, Publisher: bus, RetryTopic: cfg.RetryTopic, MetadataTopic: cfg.MetadataTopic, NewID: uuid.NewString}
+	dispatcher := &app.Dispatcher{Store: store, Publisher: bus, RetryTopic: cfg.RetryTopic, MetadataTopic: cfg.MetadataTopic, NewID: uuid.NewString, SICOMEnabled: cfg.SICOMEnabled}
 	consumers := runtimeapp.NewConsumers(bus, processor, cfg)
 	consumerCtx, stopConsumers := context.WithCancel(ctx)
 	consumers.Start(consumerCtx)

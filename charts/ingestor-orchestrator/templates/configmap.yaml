@@ -5,6 +5,7 @@ metadata:
   labels:
     {{- include "ingestor-orchestrator.labels" . | nindent 4 }}
 data:
+  INGEST_ORCH_SICOM_ENABLED: {{ .Values.sicom.enabled | quote }}
   INGEST_ORCH_MYSQL_HOST: {{ .Values.mysql.host | quote }}
   INGEST_ORCH_MYSQL_PORT: {{ .Values.mysql.port | quote }}
   INGEST_ORCH_MYSQL_USER: {{ .Values.mysql.user | quote }}

@@ -24,6 +24,7 @@ import (
 )
 
 type Config struct {
+	SICOMEnabled        bool
 	HTTPAddress         string
 	StaticDir           string
 	MySQLDSN            string
@@ -53,6 +54,7 @@ func Load() Config {
 	database := env("INGEST_ORCH_MYSQL_DATABASE", "ingestor_orchestrator")
 
 	return Config{
+		SICOMEnabled:        env("INGEST_ORCH_SICOM_ENABLED", "false") == "true",
 		HTTPAddress:         env("INGEST_ORCH_GO_ADDRESS", ":8000"),
 		StaticDir:           env("INGEST_ORCH_STATIC_DIR", "/app/frontend"),
 		MySQLDSN:            fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&loc=UTC", user, password, host, port, database),

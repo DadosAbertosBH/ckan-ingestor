@@ -28,11 +28,36 @@ type published struct {
 	payload    []byte
 }
 
+func TestSICOMSyncIsPausedByDefault(t *testing.T) {
+	store := newMemoryStore()
+	store.instances["sicom"] = &Instance{ID: "sicom", SourceType: "sicom"}
+	pub := &fakePublisher{}
+	d := &Dispatcher{Store: store, Publisher: pub, MetadataTopic: "sync"}
+	if _, err := d.SyncInstance(context.Background(), "sicom"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected paused source conflict, got %v", err)
+	}
+	if len(pub.messages) != 0 || len(store.syncs) != 0 {
+		t.Fatal("paused SICOM source created work")
+	}
+}
+
+func TestSyncAllSkipsPausedSICOMAndKeepsCKAN(t *testing.T) {
+	store := newMemoryStore()
+	store.instances["sicom"] = &Instance{ID: "sicom", SourceType: "sicom"}
+	store.instances["ckan"] = &Instance{ID: "ckan", SourceType: "ckan"}
+	pub := &fakePublisher{}
+	d := &Dispatcher{Store: store, Publisher: pub, MetadataTopic: "sync"}
+	results := d.SyncAll(context.Background())
+	if len(results) != 1 || results[0].InstanceID != "ckan" || len(pub.messages) != 1 {
+		t.Fatalf("expected CKAN only, got %+v", results)
+	}
+}
+
 func TestSICOMSyncUsesTheUnifiedCommand(t *testing.T) {
 	store := newMemoryStore()
 	store.instances["sicom"] = &Instance{ID: "sicom", Name: "TCE-MG", URL: "https://dadosabertos.tce.mg.gov.br/", SourceType: "sicom"}
 	pub := &fakePublisher{}
-	d := &Dispatcher{Store: store, Publisher: pub, MetadataTopic: "sync", NewID: func() string { return "sync-id" }}
+	d := &Dispatcher{Store: store, Publisher: pub, MetadataTopic: "sync", NewID: func() string { return "sync-id" }, SICOMEnabled: true}
 	if _, err := d.SyncInstance(context.Background(), "sicom"); err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +213,7 @@ func TestSyncAllIncludesBothSourceTypes(t *testing.T) {
 	store.instances["sicom"] = &sicom
 	store.instances["ckan"] = &Instance{ID: "ckan", Name: "CKAN", URL: "https://ckan.test"}
 	publisher := &fakePublisher{}
-	dispatcher := &Dispatcher{Store: store, Publisher: publisher, MetadataTopic: "metadata", NewID: func() string { return "sync" }}
+	dispatcher := &Dispatcher{Store: store, Publisher: publisher, MetadataTopic: "metadata", NewID: func() string { return "sync" }, SICOMEnabled: true}
 	if _, err := dispatcher.SyncInstance(context.Background(), "sicom"); err != nil {
 		t.Fatal(err)
 	}

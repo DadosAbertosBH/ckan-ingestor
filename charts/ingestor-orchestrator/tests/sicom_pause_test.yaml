@@ -1,0 +1,16 @@
+suite: SICOM source pause
+templates:
+  - templates/configmap.yaml
+tests:
+  - it: pauses SICOM by default
+    asserts:
+      - equal:
+          path: data.INGEST_ORCH_SICOM_ENABLED
+          value: "false"
+  - it: allows explicitly enabling SICOM after restoring its runtime
+    set:
+      sicom.enabled: true
+    asserts:
+      - equal:
+          path: data.INGEST_ORCH_SICOM_ENABLED
+          value: "true"
