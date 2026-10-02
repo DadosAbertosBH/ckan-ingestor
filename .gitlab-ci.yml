@@ -259,8 +259,7 @@ build-source-sync-worker:
         - "ingestor_orchestrator/iggy-message-transport/**/*"
         - ".gitlab-ci.yml"
 
-test-rust:
-  stage: test
+.rust-ci-base:
   image: $CKAN_BUILDER_IMAGE
   tags:
     - noctcloud-k8s
@@ -268,6 +267,8 @@ test-rust:
     CARGO_INCREMENTAL: "0"
     CARGO_PROFILE_DEV_DEBUG: "0"
     CARGO_PROFILE_TEST_DEBUG: "0"
+    CARGO_PROFILE_DEV_STRIP: "symbols"
+    CARGO_PROFILE_TEST_STRIP: "symbols"
     # RUSTC_WRAPPER: "kache"
     KACHE_CACHE_DIR: "$CI_PROJECT_DIR/.kache"
     KACHE_RUNTIME_DIR: "$CI_PROJECT_DIR/.kache-runtime"
@@ -275,27 +276,66 @@ test-rust:
     CACHE_COMPRESSION_LEVEL: "fastest"
     FF_USE_PARALLEL_CACHE_TRANSFER: "false" # Breaks in R2
     CARGO_HOME: "$CI_PROJECT_DIR/.cargo-home"
-    TESTCONTAINERS_HOST_OVERRIDE: "docker"
     RAYON_NUM_THREADS: "1"
   cache:
-    - key: ckan-rust-v2
+    - key:
+        prefix: ckan-rust-downloads-v3
+        files:
+          - ckan-ingestor-rs/Cargo.lock
       paths:
-        - .cargo-home/
-        # - .kache/
-  script:
-    - until curl -fsS http://docker:2375/_ping; do sleep 1; done
+        - .cargo-home/registry/index/
+        - .cargo-home/registry/cache/
+        - .cargo-home/git/db/
+  before_script:
+    - &rust-disk-usage |
+      disk_usage() {
+        echo "Disk usage: $1"
+        df -h "$CI_PROJECT_DIR" /tmp || true
+        for directory in "$CI_PROJECT_DIR/ckan-ingestor-rs/target" "$CARGO_HOME" /tmp; do
+          if [ -d "$directory" ]; then
+            du -sh "$directory" || true
+          fi
+        done
+        if [ "${CI_JOB_NAME:-}" = "test-rust" ]; then
+          echo "Docker disk usage (/system/df):"
+          curl --fail --silent --show-error --max-time 10 \
+            "http://${DOCKER_HOST#tcp://}/system/df" || true
+          echo
+        fi
+      }
+    - disk_usage "after cache restore"
     - cd ckan-ingestor-rs
-    - cargo fmt --all -- --check
-    - cargo clippy --all-targets -- -D warnings
-    - cargo test --all --no-run
-    # Iggy integration tests run serially against their Testcontainers instance.
-    - cargo test --all -- --include-ignored --test-threads=1
   after_script:
-    - kache report --last-build
+    - *rust-disk-usage
+    - disk_usage "after job"
   rules:
     - if: $CI_COMMIT_TAG
     - changes:
         - "ckan-ingestor-rs/**/*"
+        - ".gitlab-ci.yml"
+
+lint-rust:
+  extends: .rust-ci-base
+  stage: lint
+  services: []
+  script:
+    - cargo fmt --all -- --check
+    - disk_usage "after fmt"
+    - cargo clippy --all-targets -- -D warnings
+    - disk_usage "after clippy"
+
+test-rust:
+  extends: .rust-ci-base
+  stage: test
+  variables:
+    TESTCONTAINERS_HOST_OVERRIDE: "docker"
+  script:
+    - until curl -fsS http://docker:2375/_ping; do sleep 1; done
+    - cargo test --all --no-run
+    - disk_usage "after test compilation"
+    # Iggy integration tests run serially against their Testcontainers instance.
+    - cargo test --all -- --include-ignored --test-threads=1
+    - disk_usage "after tests"
 
 .build-orchestrator-base:
   stage: build
