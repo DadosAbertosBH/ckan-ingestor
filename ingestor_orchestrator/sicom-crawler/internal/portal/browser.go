@@ -5,9 +5,11 @@ package portal
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -21,10 +23,28 @@ import (
 const LoginURL = "https://arabiasaudita.tce.mg.gov.br:8443/TCEMG-proxy-web/login/captcha.jsf?sistema=DADOS_ABERTOS&url=https://dadosabertos.tce.mg.gov.br/"
 const DownloadPage = sicomidentity.DownloadPageURL
 
+var ErrCAPTCHAIntervention = errors.New("portal displayed an interactive image CAPTCHA; complete it in a visual CDP browser using --interactive and retry")
+
+// Redirect URLs may contain authorization tokens. Preserve the cause while
+// keeping URLs and JWTs out of the error displayed by the worker.
+var browserErrorCredentials = regexp.MustCompile(`(?:https?|wss?)://\S+|eyJ[A-Za-z0-9_.-]+`)
+
+type browserNavigationError struct {
+	stage string
+	cause error
+}
+
+func (e *browserNavigationError) Error() string {
+	return fmt.Sprintf("CDP %s navigation failed: %s", e.stage, browserErrorCredentials.ReplaceAllString(e.cause.Error(), "[redacted]"))
+}
+
+func (e *browserNavigationError) Unwrap() error { return e.cause }
+
 type Browser struct {
-	CDPURL  string
-	HTTP    *http.Client
-	Timeout time.Duration
+	CDPURL      string
+	HTTP        *http.Client
+	Timeout     time.Duration
+	Interactive bool
 }
 
 func (b *Browser) Authenticate(ctx context.Context) (Session, error) {
@@ -51,10 +71,10 @@ func (b *Browser) Authenticate(ctx context.Context) (Session, error) {
 		}
 	})
 	if err := chromedp.Run(tab, network.Enable(), chromedp.Navigate(sicomidentity.PortalURL)); err != nil {
-		return Session{}, errors.New("CDP portal navigation failed")
+		return Session{}, &browserNavigationError{stage: "portal", cause: err}
 	}
 	if err := chromedp.Run(tab, chromedp.Evaluate(`localStorage.clear()`, nil), chromedp.Navigate(LoginURL)); err != nil {
-		return Session{}, errors.New("CDP authentication navigation failed")
+		return Session{}, &browserNavigationError{stage: "authentication", cause: err}
 	}
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -62,10 +82,26 @@ func (b *Browser) Authenticate(ctx context.Context) (Session, error) {
 	for token == "" {
 		select {
 		case <-ctx.Done():
-			return Session{}, errors.New("portal authentication needs intervention or exceeded timeout; complete CAPTCHA in an interactive CDP browser and retry")
+			return Session{}, fmt.Errorf("portal authorization token was not received: %w", ctx.Err())
 		case <-ticker.C:
 			// Navigations may temporarily remove the execution context; keep waiting for the portal redirect.
-			_ = chromedp.Run(tab, chromedp.Evaluate(`location.hostname === 'dadosabertos.tce.mg.gov.br' ? (localStorage.getItem('tokenRequestAuthorizationProxy') || localStorage.getItem('tokenAuthorizationProxy') || '') : ''`, &token))
+			var state struct {
+				Token         string `json:"token"`
+				ManualCAPTCHA bool   `json:"manualCaptcha"`
+			}
+			if err := chromedp.Run(tab, chromedp.Evaluate(`(() => {
+				if (location.hostname === 'dadosabertos.tce.mg.gov.br') {
+					return {token: localStorage.getItem('tokenRequestAuthorizationProxy') || localStorage.getItem('tokenAuthorizationProxy') || '', manualCaptcha: false};
+				}
+				const panel = document.getElementById('painelCaptchaImagem');
+				return {token: '', manualCaptcha: !!panel && !panel.classList.contains('ui-helper-hidden') && !!panel.querySelector('input[type="text"]')};
+			})()`, &state)); err != nil {
+				continue
+			}
+			if state.ManualCAPTCHA && !b.Interactive {
+				return Session{}, ErrCAPTCHAIntervention
+			}
+			token = state.Token
 		}
 	}
 	// Load the SICOM lazy bundle even when Angular animations are unsupported by Lightpanda.

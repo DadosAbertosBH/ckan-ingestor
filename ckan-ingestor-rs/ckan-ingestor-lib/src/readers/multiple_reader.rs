@@ -171,6 +171,7 @@ impl CkanReader for MultipleReader<'_> {
         let resolved = self.resolved_resource(resource);
         let resource = resolved.as_ref().unwrap_or(resource);
         let mut last_failure = None;
+        let mut failures = Vec::new();
         for reader in &self.readers {
             if !reader.can_read(resource) {
                 continue;
@@ -185,21 +186,26 @@ impl CkanReader for MultipleReader<'_> {
                 Ok(result) => {
                     return Ok(result);
                 }
-                Err(error) => {
+                Err(mut error) => {
                     info!(
                         "reader {} failed to read CKAN resource {}: {}",
                         reader.reader_name(),
                         resource.id,
                         error.error
                     );
+                    failures.push(format!("{}: {:#}", reader.reader_name(), error.error));
                     if is_not_found(&error.error) {
+                        error.error = error.error.context(failures.join("\n"));
                         return Err(error.into_deleted());
                     }
                     last_failure = Some(error);
                 }
             };
         }
-        if let Some(failure) = last_failure {
+        if let Some(mut failure) = last_failure {
+            // Keep the final typed error in the chain for HTTP status and
+            // crawler fanout handling while exposing every failed attempt.
+            failure.error = failure.error.context(failures.join("\n"));
             return Err(failure);
         }
         let error = format!(
@@ -321,6 +327,132 @@ mod tests {
     }
 
     struct CannotReadReader;
+
+    struct NamedFailureReader {
+        name: &'static str,
+        failure: Box<dyn Fn() -> FailedResult>,
+    }
+
+    impl CkanReader for NamedFailureReader {
+        fn supported_formats(&self) -> &[String] {
+            &[]
+        }
+
+        fn can_read(&self, _: &CkanResource) -> bool {
+            true
+        }
+
+        fn reader_name(&self) -> &'static str {
+            self.name
+        }
+
+        fn do_read(&self, _: &CkanResource) -> ReadResult {
+            Err((self.failure)())
+        }
+    }
+
+    fn named_failure(name: &'static str, message: &'static str) -> Box<dyn CkanReader> {
+        Box::new(NamedFailureReader {
+            name,
+            failure: Box::new(move || FailedResult::from_string(message, name.into())),
+        })
+    }
+
+    #[test]
+    fn aggregates_reader_failures_in_attempt_order_and_skips_ineligible_readers() {
+        let reader = MultipleReader::new(vec![
+            named_failure("CsvReader", "Jev is disable"),
+            Box::new(CannotReadReader),
+            named_failure("Crawler", "resource content is not HTML"),
+        ]);
+        let failure = reader
+            .do_read(&resource("CSV"))
+            .err()
+            .expect("reader failure");
+        assert_eq!(
+            failure.error.to_string(),
+            "CsvReader: Jev is disable\nCrawler: resource content is not HTML"
+        );
+        assert_eq!(failure.reader, "Crawler");
+    }
+
+    #[test]
+    fn identifies_a_single_failure_and_includes_its_error_chain() {
+        let reader = MultipleReader::new(vec![Box::new(NamedFailureReader {
+            name: "CsvReader",
+            failure: Box::new(|| {
+                FailedResult::from(anyhow::anyhow!("root cause").context("parse failed"))
+            }),
+        })]);
+        let failure = reader
+            .do_read(&resource("CSV"))
+            .err()
+            .expect("reader failure");
+        assert_eq!(
+            failure.error.to_string(),
+            "CsvReader: parse failed: root cause"
+        );
+    }
+
+    #[test]
+    fn aggregates_failures_before_a_terminal_404_and_preserves_metadata() {
+        let reader = MultipleReader::new(vec![
+            named_failure("DatastoreReader", "No data"),
+            Box::new(NamedFailureReader {
+                name: "CsvReader",
+                failure: Box::new(|| {
+                    let mut failure = FailedResult::from(anyhow::Error::new(HttpStatusError::new(
+                        reqwest::StatusCode::NOT_FOUND,
+                        "missing resource",
+                    )));
+                    failure.reader = "CsvReader".into();
+                    failure.expected_rows = Some(12);
+                    failure.expected_columns = Some(9);
+                    failure
+                }),
+            }),
+            Box::new(TestReader::with_data(&["CSV"])),
+        ]);
+        let failure = reader
+            .do_read(&resource("CSV"))
+            .err()
+            .expect("reader failure");
+        assert!(failure.is_deleted());
+        assert_eq!(failure.http_status(), Some(404));
+        assert_eq!(failure.expected_rows, Some(12));
+        assert_eq!(failure.expected_columns, Some(9));
+        assert!(failure
+            .error
+            .to_string()
+            .starts_with("DatastoreReader: No data\nCsvReader: "));
+    }
+
+    #[test]
+    fn preserves_crawl_fanout_downcasts_after_aggregation() {
+        use crate::readers::external_resource_crawler_reader::{CrawlError, CrawlFanout};
+        let reader = MultipleReader::new(vec![
+            named_failure("CsvReader", "parse failed"),
+            Box::new(NamedFailureReader {
+                name: "Crawler",
+                failure: Box::new(|| CrawlError(anyhow::Error::new(CrawlFanout(vec![]))).into()),
+            }),
+        ]);
+        let failure = reader
+            .do_read(&resource("CSV"))
+            .err()
+            .expect("reader failure");
+        assert!(failure
+            .error
+            .to_string()
+            .starts_with("CsvReader: parse failed\nCrawler: "));
+        assert!(failure
+            .error
+            .downcast_ref::<CrawlError>()
+            .unwrap()
+            .0
+            .downcast_ref::<CrawlFanout>()
+            .is_some());
+    }
 
     impl CkanReader for CannotReadReader {
         fn supported_formats(&self) -> &[String] {

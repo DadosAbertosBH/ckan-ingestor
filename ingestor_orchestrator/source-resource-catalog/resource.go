@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+
 	"github.com/google/uuid"
 	jobmessage "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/ingestor-job-message-contracts"
 )
@@ -46,19 +48,16 @@ func Job(r Resource) jobmessage.WorkerJob {
 	return jobmessage.WorkerJob{JobID: jobID, ResourceID: r.ID, InstanceID: r.SourceID, PackageID: r.ParentID, DatasetName: r.DatasetName, ResourceName: r.Title, ResourceURL: r.URL, ResourceFormat: r.Format, SourceVersion: r.Version, DatastoreActive: r.DatastoreActive, ExternalResourceID: r.ID}
 }
 func (w *Worker) Sync(ctx context.Context, syncID, sourceID, sourceType string) error {
+	slog.InfoContext(ctx, "source sync started", "sync_id", syncID, "source_id", sourceID, "source_type", sourceType)
 	source, err := w.Catalog.Source(ctx, sourceID)
 	if err != nil {
 		return err
 	}
-	if locker, ok := w.Catalog.(interface {
-		Lock(context.Context, string) (func(), error)
-	}); ok {
-		unlock, err := locker.Lock(ctx, source.ID)
-		if err != nil {
-			return err
-		}
-		defer unlock()
+	unlock, err := w.Catalog.Lock(ctx, source.ID)
+	if err != nil {
+		return err
 	}
+	defer unlock()
 	if source.Type != sourceType {
 		return fmt.Errorf("source type mismatch: configured %s, requested %s", source.Type, sourceType)
 	}

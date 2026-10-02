@@ -102,6 +102,22 @@ binary is cross-compiled. `.gitlab-ci.yml` runs tests and publishes a multiarch 
 
 Optional read-only live test against an already running CDP browser:
 
+The CDP browser needs the same trusted certificate chain as the crawler. For
+Lightpanda on macOS, start it from this module directory with:
+
+```sh
+lightpanda serve --host 127.0.0.1 --port 9222 \
+  --ca-cert /etc/ssl/cert.pem \
+  --ca-cert internal/portal/certificates/sectigo-chain.pem \
+  --load-resources iframe --load-resources worker
+```
+
+On Debian, use `/etc/ssl/certs/ca-certificates.crt` for the system CA file.
+The crawler configures this trust store automatically for its owned Lightpanda
+process. A visible image CAPTCHA is reported as requiring intervention; use a
+visual CDP browser with `--interactive` to allow manual completion. Timeouts and
+navigation errors are reported separately.
+
 ```sh
 SICOM_LIVE_CDP=http://127.0.0.1:9222 \
   go test ./internal/portal -run TestLive -v -count=1

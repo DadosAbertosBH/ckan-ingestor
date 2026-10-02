@@ -20,6 +20,7 @@ type testRepo struct {
 }
 
 func (r *testRepo) Source(context.Context, string) (Source, error) { return r.source, nil }
+func (r *testRepo) Lock(context.Context, string) (func(), error)   { return func() {}, nil }
 func (r *testRepo) ObserveBatch(_ context.Context, _ string, values []Resource) error {
 	r.observeCalls++
 	r.observed = append(r.observed, values...)

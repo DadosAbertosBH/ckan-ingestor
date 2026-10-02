@@ -16,6 +16,7 @@ type fakeRepository struct {
 func (r *fakeRepository) Source(context.Context, string) (catalog.Source, error) {
 	return r.source, nil
 }
+func (r *fakeRepository) Lock(context.Context, string) (func(), error)                   { return func() {}, nil }
 func (r *fakeRepository) ObserveBatch(context.Context, string, []catalog.Resource) error { return nil }
 func (r *fakeRepository) Complete(context.Context, string, catalog.Source) (catalog.Counts, []catalog.Outgoing, error) {
 	r.calls++

@@ -80,7 +80,7 @@ func runObserved(ctx context.Context, discover, interactive bool, year int, cate
 	if interactive {
 		authTimeout = 30 * time.Minute
 	}
-	browser := &portal.Browser{CDPURL: endpoint, HTTP: client, Timeout: authTimeout}
+	browser := &portal.Browser{CDPURL: endpoint, HTTP: client, Timeout: authTimeout, Interactive: interactive}
 	api := &portal.Client{HTTP: client, Authenticate: browser.Authenticate}
 	source := &filteredPortal{Client: api, year: year, category: category}
 	if emit != nil {

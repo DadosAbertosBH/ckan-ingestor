@@ -183,6 +183,7 @@ function truncate(val: string, max = 60): string {
 }
 
 .error-message {
+    white-space: pre-wrap;
     background: rgba(239, 68, 68, 0.1);
     border: 1px solid rgba(239, 68, 68, 0.3);
     border-radius: 6px;

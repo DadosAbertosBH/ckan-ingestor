@@ -659,6 +659,15 @@ mod tests {
     }
 
     #[test]
+    fn preserves_aggregated_reader_messages_in_the_job_result() {
+        let message = "CsvReader: Jev is disable\nCrawler: resource content is not HTML";
+        let failed = FailedResult::from_string(message, "Crawler".into());
+        let result = job_result_from_failure("job-1", "resource-1", false, failed);
+        assert_eq!(result.error_message.as_deref(), Some(message));
+        assert_eq!(result.reader.as_deref(), Some("Crawler"));
+    }
+
+    #[test]
     fn maps_deleted_conversion_to_the_protocol_deleted_status() {
         let deleted = FailedResult::from_string(
             "resource download failed with HTTP status 404 Not Found",
