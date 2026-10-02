@@ -73,22 +73,19 @@ workerCoordinator:
     limits:
       memory: 1Gi
 
-# -- SICOM crawler (all published years/categories; immutable ZIP cache)
-sicomCrawler:
-  enabled: false
-  schedule: "0 3 * * *"
-  timeZone: America/Sao_Paulo
+# -- Source discovery and catalog worker for CKAN and SICOM.
+sourceSyncWorker:
+  enabled: true
+  replicaCount: 1
   image:
     registry: ""
-    repository: sicom-crawler
+    repository: source-sync-worker
     tag: ""
     pullPolicy: ""
-  # -- Optional public R2/custom-domain URL; defaults to endpoint/bucket like the Rust reader.
+  groupId: source-sync-worker
   publicURL: ""
-  orchestratorURL: ""
-  activeDeadlineSeconds: 43200
-  tempStorage: 100Gi
   formats: "CSV,JSON,GEOJSON"
+  tempStorage: 100Gi
   extraEnv: []
   resources:
     requests:

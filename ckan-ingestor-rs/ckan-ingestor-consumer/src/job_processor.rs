@@ -205,6 +205,7 @@ fn child_job(parent: &JobMessage, child: DiscoveredChild, index: u32, count: u32
     JobMessage {
         job_id,
         resource_id,
+        external_resource_id: None,
         parent_job_id: Some(parent.job_id.clone()),
         parent_resource_id: Some(parent.resource_id.clone()),
         child_index: Some(index),
@@ -309,7 +310,10 @@ fn run_conversion(
         }));
     }
     let resource = CkanResource {
-        id: job.resource_id.clone(),
+        id: job
+            .external_resource_id
+            .clone()
+            .unwrap_or_else(|| job.resource_id.clone()),
         package_id: job.package_id.clone(),
         url: job.resource_url.clone(),
         format: job.resource_format.clone(),

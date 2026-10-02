@@ -57,13 +57,7 @@ async fn coordinator_creates_the_complete_approved_topology() -> anyhow::Result<
         .context("timed out while creating the Iggy test topology")??;
 
     let stream = settings.stream.as_str().try_into()?;
-    for topic_name in [
-        settings.job_topic,
-        settings.retry_topic,
-        settings.result_topic,
-        settings.metadata_sync_topic,
-        settings.metadata_sync_result_topic,
-    ] {
+    for topic_name in [settings.result_topic, settings.parquet_result_topic] {
         let topic = topic_name.as_str().try_into()?;
         assert!(client.get_topic(&stream, &topic).await?.is_some());
     }

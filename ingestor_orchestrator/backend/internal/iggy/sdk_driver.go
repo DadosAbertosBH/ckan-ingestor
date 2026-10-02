@@ -80,86 +80,25 @@ func (d *SDKDriver) Send(ctx context.Context, topicName, key string, payload []b
 	return d.transport.Send(ctx, topicName, key, payload)
 }
 
-func (d *SDKDriver) Join(ctx context.Context, topicName, groupName string) error {
-	stream, err := identifier(d.stream)
-	if err != nil {
-		return err
-	}
-	topic, err := identifier(topicName)
-	if err != nil {
-		return err
-	}
-	group, err := identifier(groupName)
-	if err != nil {
-		return err
-	}
-	if _, err := d.client.GetConsumerGroup(ctx, stream, topic, group); err != nil {
-		if _, createErr := d.client.CreateConsumerGroup(ctx, stream, topic, groupName); createErr != nil {
-			if _, getErr := d.client.GetConsumerGroup(ctx, stream, topic, group); getErr != nil {
-				return createErr
-			}
-		}
-	}
-	return d.client.JoinConsumerGroup(ctx, stream, topic, group)
+func (d *SDKDriver) Join(ctx context.Context, topic, group string) error {
+	return d.transport.Join(ctx, topic, group)
 }
-
-func (d *SDKDriver) Leave(ctx context.Context, topicName, groupName string) error {
-	stream, err := identifier(d.stream)
-	if err != nil {
-		return err
-	}
-	topic, err := identifier(topicName)
-	if err != nil {
-		return err
-	}
-	group, err := identifier(groupName)
-	if err != nil {
-		return err
-	}
-	return d.client.LeaveConsumerGroup(ctx, stream, topic, group)
+func (d *SDKDriver) Leave(ctx context.Context, topic, group string) error {
+	return d.transport.Leave(ctx, topic, group)
 }
-
-func (d *SDKDriver) Poll(ctx context.Context, topicName, groupName string, count int) ([]Message, error) {
-	stream, err := identifier(d.stream)
+func (d *SDKDriver) Poll(ctx context.Context, topic, group string, count int) ([]Message, error) {
+	values, err := d.transport.Poll(ctx, topic, group, count)
 	if err != nil {
 		return nil, err
 	}
-	topic, err := identifier(topicName)
-	if err != nil {
-		return nil, err
-	}
-	group, err := identifier(groupName)
-	if err != nil {
-		return nil, err
-	}
-	polled, err := d.client.PollMessages(ctx, stream, topic, iggcon.NewGroupConsumer(group), iggcon.NextPollingStrategy(), uint32(count), false, nil)
-	if err != nil {
-		return nil, err
-	}
-	if polled == nil {
-		return nil, nil
-	}
-	messages := make([]Message, 0, len(polled.Messages))
-	for _, message := range polled.Messages {
-		messages = append(messages, Message{Payload: message.Payload, Offset: message.Header.Offset, Partition: polled.PartitionId})
+	messages := make([]Message, len(values))
+	for i, m := range values {
+		messages[i] = Message{Payload: m.Payload, Offset: m.Offset, Partition: m.Partition}
 	}
 	return messages, nil
 }
-
-func (d *SDKDriver) Commit(ctx context.Context, topicName, groupName string, partition uint32, offset uint64) error {
-	stream, err := identifier(d.stream)
-	if err != nil {
-		return err
-	}
-	topic, err := identifier(topicName)
-	if err != nil {
-		return err
-	}
-	group, err := identifier(groupName)
-	if err != nil {
-		return err
-	}
-	return d.client.StoreConsumerOffset(ctx, iggcon.NewGroupConsumer(group), stream, topic, offset, &partition)
+func (d *SDKDriver) Commit(ctx context.Context, topic, group string, partition uint32, offset uint64) error {
+	return d.transport.Commit(ctx, topic, group, partition, offset)
 }
 
 func (d *SDKDriver) Ping(ctx context.Context) error { return d.client.Ping(ctx) }

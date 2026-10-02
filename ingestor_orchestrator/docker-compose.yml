@@ -237,9 +237,6 @@ services:
       IGGY_TOPIC: jobs
       IGGY_TOPIC_RETRY: jobs-retry
       IGGY_TOPIC_RESULTS: job-results
-      IGGY_METADATA_SYNC_TOPIC: ckan_metadata_sync
-      IGGY_METADATA_SYNC_RESULT_TOPIC: ckan_metadata_sync_result
-      IGGY_METADATA_SYNC_GROUP_ID: ckan-metadata-sync-worker
       IGGY_PARTITIONS: "10"
       INGEST_ORCH_MYSQL_HOST: mysql
       INGEST_ORCH_MYSQL_PORT: "3306"
@@ -255,6 +252,61 @@ services:
       S3_USE_SSL: "false"
       S3_URL_STYLE: path
       RUST_LOG: "info,memory_profile=info"
+    networks:
+      - orchestrator_net
+
+  lightpanda-runtime:
+    image: ckan-ingestor/lightpanda-runtime:local
+    build:
+      context: ..
+      dockerfile: ingestor_orchestrator/lightpanda-runtime/Dockerfile
+    networks:
+      - orchestrator_net
+
+  source-sync-worker:
+    image: ckan-ingestor/source-sync-worker:local
+    build:
+      context: ..
+      dockerfile: ingestor_orchestrator/source-sync-worker/Dockerfile
+      additional_contexts:
+        lightpanda-runtime: service:lightpanda-runtime
+      args:
+        LIGHTPANDA_RUNTIME_IMAGE: lightpanda-runtime
+    init: true
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      iggy:
+        condition: service_healthy
+      rustfs-setup:
+        condition: service_completed_successfully
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      INGEST_ORCH_MYSQL_HOST: mysql
+      INGEST_ORCH_MYSQL_PORT: "3306"
+      INGEST_ORCH_MYSQL_USER: root
+      INGEST_ORCH_MYSQL_PASSWORD: ${INGEST_ORCH_MYSQL_PASSWORD:-ckan_orch_pass}
+      INGEST_ORCH_MYSQL_DATABASE: ${INGEST_ORCH_MYSQL_DATABASE:-ingestor_orchestrator}
+      IGGY_ADDRESS: iggy:8090
+      IGGY_USERNAME: iggy
+      IGGY_PASSWORD: iggy
+      IGGY_STREAM: ckan-ingestor
+      IGGY_TOPIC: jobs
+      IGGY_TOPIC_RESULTS: job-results
+      IGGY_METADATA_SYNC_TOPIC: ckan_metadata_sync
+      IGGY_METADATA_SYNC_RESULT_TOPIC: ckan_metadata_sync_result
+      IGGY_METADATA_SYNC_GROUP_ID: source-sync-worker
+      S3_ENDPOINT: rustfs:9000
+      S3_BUCKET: warehouse
+      S3_ACCESS_KEY_ID: admin
+      S3_SECRET_ACCESS_KEY: password
+      S3_USE_SSL: "false"
+      S3_URL_STYLE: path
+      S3_PUBLIC_URL: http://rustfs:9000
+      SICOM_LIGHTPANDA_BIN: /usr/local/bin/lightpanda
+      SICOM_ORCHESTRATOR_URL: http://api:8000
     networks:
       - orchestrator_net
 

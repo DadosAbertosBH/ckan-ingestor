@@ -19,6 +19,33 @@ import (
 	"testing"
 )
 
+func TestSourceCatalogMigrationHasScopedVersionsAndDurableOutbox(t *testing.T) {
+	data, err := files.ReadFile("sql/00007_source_resource_catalog.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"CREATE TABLE source_resource", "CREATE TABLE source_resource_version", "CREATE TABLE source_sync_outbox", "parent_resource_id", "source_id", "source_version", "delivered_at"} {
+		if !strings.Contains(string(data), required) {
+			t.Fatalf("missing %s", required)
+		}
+	}
+}
+func TestSourceCatalogUsesCompositeIdentityAndNormalizedMetadata(t *testing.T) {
+	data, err := files.ReadFile("sql/00007_source_resource_catalog.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := strings.Split(string(data), "CREATE TABLE source_resource_version")[0]
+	if !strings.Contains(catalog, "PRIMARY KEY(source_id,id)") {
+		t.Fatal("catalog needs source-scoped primary key")
+	}
+	for _, column := range []string{"external_id", "worker_resource_id", "worker_job_id", "attributes", "metadata_hash"} {
+		if strings.Contains(catalog, column) {
+			t.Fatalf("catalog retains %s", column)
+		}
+	}
+}
+
 func TestChildJobsMigrationAgainstMySQL(t *testing.T) {
 	dsn := os.Getenv("MYSQL_INTEGRATION_DSN")
 	if dsn == "" {

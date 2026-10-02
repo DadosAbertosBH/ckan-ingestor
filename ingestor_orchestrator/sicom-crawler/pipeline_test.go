@@ -1,6 +1,6 @@
 // Copyright (C) 2026 Noctcloud Desenvolvimento LTDA
 // Licensed under the GNU Affero General Public License, version 3 or later.
-package main
+package sicomcrawler
 
 import (
 	"archive/zip"

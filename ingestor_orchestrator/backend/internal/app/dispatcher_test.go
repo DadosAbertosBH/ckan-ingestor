@@ -27,6 +27,24 @@ type published struct {
 	topic, key string
 	payload    []byte
 }
+
+func TestSICOMSyncUsesTheUnifiedCommand(t *testing.T) {
+	store := newMemoryStore()
+	store.instances["sicom"] = &Instance{ID: "sicom", Name: "TCE-MG", URL: "https://dadosabertos.tce.mg.gov.br/", SourceType: "sicom"}
+	pub := &fakePublisher{}
+	d := &Dispatcher{Store: store, Publisher: pub, MetadataTopic: "sync", NewID: func() string { return "sync-id" }}
+	if _, err := d.SyncInstance(context.Background(), "sicom"); err != nil {
+		t.Fatal(err)
+	}
+	var command map[string]string
+	if err := json.Unmarshal(pub.messages[0].payload, &command); err != nil {
+		t.Fatal(err)
+	}
+	if command["source_type"] != "sicom" {
+		t.Fatalf("command=%v", command)
+	}
+}
+
 type fakePublisher struct {
 	messages []published
 	result   Routing
@@ -161,7 +179,7 @@ func TestSyncAllReturnsOneResultPerInstance(t *testing.T) {
 	}
 }
 
-func TestSICOMSourceUsesItsCrawlerInsteadOfCKANMetadata(t *testing.T) {
+func TestSyncAllIncludesBothSourceTypes(t *testing.T) {
 	store := newMemoryStore()
 	var sicom Instance
 	if err := json.Unmarshal([]byte(`{"id":"sicom","name":"SICOM","url":"https://dadosabertos.tce.mg.gov.br/","source_type":"sicom"}`), &sicom); err != nil {
@@ -171,11 +189,11 @@ func TestSICOMSourceUsesItsCrawlerInsteadOfCKANMetadata(t *testing.T) {
 	store.instances["ckan"] = &Instance{ID: "ckan", Name: "CKAN", URL: "https://ckan.test"}
 	publisher := &fakePublisher{}
 	dispatcher := &Dispatcher{Store: store, Publisher: publisher, MetadataTopic: "metadata", NewID: func() string { return "sync" }}
-	if _, err := dispatcher.SyncInstance(context.Background(), "sicom"); err == nil {
-		t.Fatal("SICOM must use its dedicated crawler")
+	if _, err := dispatcher.SyncInstance(context.Background(), "sicom"); err != nil {
+		t.Fatal(err)
 	}
 	results := dispatcher.SyncAll(context.Background())
-	if len(results) != 1 || results[0].InstanceID != "ckan" {
+	if len(results) != 2 {
 		t.Fatalf("sync results=%+v", results)
 	}
 }

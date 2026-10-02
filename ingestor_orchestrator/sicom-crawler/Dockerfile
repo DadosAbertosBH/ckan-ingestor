@@ -2,10 +2,15 @@
 FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS go-builder
 ARG TARGETOS
 ARG TARGETARCH
-WORKDIR /src
-COPY ingestor_orchestrator/sicom-crawler/go.mod ingestor_orchestrator/sicom-crawler/go.sum ./
+WORKDIR /src/ingestor_orchestrator
+COPY ingestor_orchestrator/iggy-message-transport ./iggy-message-transport
+COPY ingestor_orchestrator/ingestor-job-message-contracts ./ingestor-job-message-contracts
+COPY ingestor_orchestrator/sicom-source-identity ./sicom-source-identity
+COPY ingestor_orchestrator/source-resource-catalog ./source-resource-catalog
+COPY ingestor_orchestrator/sicom-crawler/go.mod ingestor_orchestrator/sicom-crawler/go.sum ./sicom-crawler/
+WORKDIR /src/ingestor_orchestrator/sicom-crawler
 RUN go mod download
-COPY ingestor_orchestrator/sicom-crawler/ ./
+COPY ingestor_orchestrator/sicom-crawler ./
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/sicom-crawler ./cmd/sicom-crawler
 
 # Build natively for each target platform: V8 snapshots are architecture-specific.

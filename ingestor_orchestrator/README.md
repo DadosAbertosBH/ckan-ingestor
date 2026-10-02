@@ -18,6 +18,28 @@ O frontend usa paths relativos `/api`; HTTP e HTTPS são terminados pelo mesmo
 origin, incluindo ambientes expostos pelo OrbStack. A aplicação publica apenas
 a porta `8000`.
 
+O `source-sync-worker` descobre CKAN e SICOM e persiste os recursos no catálogo.
+Consulta o histórico de jobs da API para selecionar versões ainda não concluídas
+e publica diretamente no Iggy, com IDs estáveis. A API persiste os jobs ao consumir
+as mensagens. O resultado de sucesso do sync é publicado depois da confirmação
+de todas as mensagens de jobs; só então o consumidor confirma o comando de sync.
+Uma falha de publicação mantém o comando disponível para reentrega e republicação
+idempotente, incluindo os anúncios de recursos removidos.
+
+O catálogo identifica cada recurso por `(source_id, id)`. No CKAN, `id` é o
+identificador original do package/resource; no SICOM, o adapter fornece uma
+identidade determinística. O catálogo persiste apenas os campos normalizados,
+compara esses campos para contabilizar alterações e calcula os IDs de jobs a
+partir de fonte, recurso e versão durante a publicação.
+
+A migration 7 foi atualizada antes da publicação. Bases locais que já aplicaram
+a definição anterior precisam de adequação do catálogo antes de executar esta
+versão; o Goose considera essa migration já aplicada e preserva o schema antigo.
+
+O fluxo usa `ckan_data_job` como histórico de processamento. As tabelas legadas
+`source_sync_outbox`, `source_resource_version` e `source_sync_run`, criadas pela
+migration 7, ficam preservadas em bancos existentes e sem uso pelo novo fluxo.
+
 ## Docker
 
 ```bash

@@ -35,6 +35,10 @@ impl std::fmt::Display for JobStatus {
 pub struct JobMessage {
     pub job_id: String,
     pub resource_id: String,
+    /// Original CKAN resource identity used by the DataStore API. The
+    /// catalog's source-scoped resource id remains the job identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_resource_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_job_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

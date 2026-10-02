@@ -10,6 +10,15 @@
 use ckan_ingestor_worker_lib::{JobDiscoveryMetadata, JobResultMessage, JobStatus};
 
 #[test]
+fn namespaced_job_preserves_ckan_datastore_identity() {
+    let job: ckan_ingestor_worker_lib::JobMessage = serde_json::from_value(serde_json::json!({
+        "job_id":"job", "resource_id":"namespaced", "external_resource_id":"original-ckan-id", "ckan_url":"https://portal.test", "datastore_active":true
+    })).unwrap();
+    let encoded = serde_json::to_value(job).unwrap();
+    assert_eq!(encoded["external_resource_id"], "original-ckan-id");
+}
+
+#[test]
 fn pending_result_carries_the_mysql_job_fields() {
     let message = JobResultMessage::pending("job-1", "resource-1", "dataset", "instance-1");
     assert_eq!(message.status, JobStatus::Pending);

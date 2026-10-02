@@ -81,10 +81,10 @@ not bucket administration. Existing Iggy topology is created by the coordinator.
 
 ## Deployment and tests
 
-The Helm chart exposes `sicomCrawler`; enabled defaults to false. Enable it via
-GitOps after deploying the backend migration and image. Schedule defaults to
-03:00 America/Sao_Paulo daily, with `Forbid`, one retry, a 12-hour deadline and
-100-GiB temporary volume. Credentials come from the existing chart Secret.
+SICOM discovery runs in `source-sync-worker`, using the same metadata-sync
+trigger and scheduling path as every other source instance. Configure the
+shared worker through `sourceSyncWorker` in the Helm chart. Credentials come
+from the existing chart Secret.
 No production uploads or queue publications occur during tests.
 
 ```sh

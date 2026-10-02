@@ -14,19 +14,6 @@ fn defaults_cover_the_complete_iggy_topology() {
     let settings = IggySettings::default();
 
     assert_eq!(settings.stream, "ckan-ingestor");
-    assert_eq!(settings.job_topic, "jobs");
-    assert_eq!(settings.retry_topic, "jobs-retry");
     assert_eq!(settings.result_topic, "job-results");
-    assert_eq!(settings.metadata_sync_topic, "ckan_metadata_sync");
-    assert_eq!(
-        settings.metadata_sync_result_topic,
-        "ckan_metadata_sync_result"
-    );
-    assert_eq!(
-        settings.metadata_consumer_group,
-        "ckan-metadata-sync-worker"
-    );
-    assert_eq!(settings.job_partitions, 10);
-    assert_eq!(settings.retry_partitions, 10);
     assert_eq!(settings.result_partitions, 1);
 }

@@ -1,0 +1,22 @@
+suite: Source sync worker
+templates:
+  - templates/deployment-source-sync-worker.yaml
+tests:
+  - it: deploys one worker for both source adapters
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: source-sync-worker
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: IGGY_METADATA_SYNC_GROUP_ID
+            value: source-sync-worker
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: IGGY_METADATA_SYNC_TOPIC
+            value: ckan_metadata_sync

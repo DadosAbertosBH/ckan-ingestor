@@ -86,3 +86,28 @@ func TestInTxRollsBackError(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestJobStatePersistsOnlyInAPIJobLedger(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectBegin()
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	mock.ExpectExec("UPDATE ckan_data_job SET status").WithArgs(app.JobCompleted, nil, &now, now, nil, "job").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	if err := (&txStore{tx: tx}).UpdateJob(context.Background(), &app.Job{ID: "job", Status: app.JobCompleted, CompletedAt: &now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

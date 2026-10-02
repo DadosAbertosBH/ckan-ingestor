@@ -21,17 +21,18 @@ import "encoding/json"
 
 // WorkerJob is the wire format published to the Iggy jobs topic.
 type WorkerJob struct {
-	JobID           string `json:"job_id"`
-	ResourceID      string `json:"resource_id"`
-	PackageID       string `json:"package_id,omitempty"`
-	CKANURL         string `json:"ckan_url"`
-	InstanceID      string `json:"instance_id"`
-	DatasetName     string `json:"dataset_name"`
-	ResourceName    string `json:"resource_name"`
-	ResourceURL     string `json:"resource_url"`
-	ResourceFormat  string `json:"resource_format"`
-	SourceVersion   string `json:"source_version"`
-	DatastoreActive bool   `json:"datastore_active"`
+	ExternalResourceID string `json:"external_resource_id,omitempty"`
+	JobID              string `json:"job_id"`
+	ResourceID         string `json:"resource_id"`
+	PackageID          string `json:"package_id,omitempty"`
+	CKANURL            string `json:"ckan_url"`
+	InstanceID         string `json:"instance_id"`
+	DatasetName        string `json:"dataset_name"`
+	ResourceName       string `json:"resource_name"`
+	ResourceURL        string `json:"resource_url"`
+	ResourceFormat     string `json:"resource_format"`
+	SourceVersion      string `json:"source_version"`
+	DatastoreActive    bool   `json:"datastore_active"`
 }
 
 // JobResult is the wire format accepted from the Iggy job-results topic.
