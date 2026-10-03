@@ -52,7 +52,7 @@ const FOLDER_MIME: &str = "application/vnd.google-apps.folder";
 const MAX_HTML_DEPTH: usize = 4;
 const MAX_HTML_PAGES: usize = 10_000;
 const MAX_DRIVE_ERROR_BODY_BYTES: u64 = 64 * 1024;
-const DISCOVERY_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+const DISCOVERY_TTL: Duration = Duration::from_secs(31 * 24 * 60 * 60);
 
 #[derive(Debug)]
 pub struct CrawlError(pub anyhow::Error);
@@ -166,10 +166,36 @@ struct MaterializedSnapshot {
     origin_etag: Option<String>,
 }
 
+trait CacheFreshness {
+    fn uploaded_at(&self) -> DateTime<Utc>;
+
+    fn is_fresh(&self) -> bool {
+        Utc::now().signed_duration_since(self.uploaded_at())
+            < chrono::Duration::from_std(DISCOVERY_TTL).expect("valid cache TTL")
+    }
+}
+
+struct CachedDiscovery {
+    sources: Vec<CrawledSource>,
+    uploaded_at: DateTime<Utc>,
+}
+
+impl CacheFreshness for CachedDiscovery {
+    fn uploaded_at(&self) -> DateTime<Utc> {
+        self.uploaded_at
+    }
+}
+
 struct CachedMaterialization {
     children: Vec<ChildSource>,
     snapshot: MaterializedSnapshot,
     uploaded_at: DateTime<Utc>,
+}
+
+impl CacheFreshness for CachedMaterialization {
+    fn uploaded_at(&self) -> DateTime<Utc> {
+        self.uploaded_at
+    }
 }
 
 /// Discovers files linked by HTML pages, ZIP archives, and public Drive folders,
@@ -212,11 +238,7 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
         self
     }
 
-    fn cached_discovery(
-        &self,
-        page_url: &str,
-        format: &str,
-    ) -> Result<Option<(Vec<CrawledSource>, DateTime<Utc>)>> {
+    fn cached_discovery(&self, page_url: &str, format: &str) -> Result<Option<CachedDiscovery>> {
         let base = discovery_key(page_url, format);
         let Some(manifest) = self
             .storage
@@ -257,7 +279,10 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
             log::warn!("Incomplete discovery ordering for {page_url}");
             return Ok(None);
         }
-        Ok(Some((sources, manifest.uploaded_at)))
+        Ok(Some(CachedDiscovery {
+            sources,
+            uploaded_at: manifest.uploaded_at,
+        }))
     }
 
     fn store_discovery(
@@ -294,7 +319,17 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
 
     fn load_or_discover(&self, resource: &CkanResource) -> Result<Vec<CrawledSource>> {
         let cached = self.cached_discovery(&resource.url, &resource.format)?;
-        if let Some((sources, uploaded_at)) = &cached {
+        if let Some(cached) = &cached {
+            // If cache is fresh, let's just use it
+            if cached.is_fresh() {
+                log::debug!(
+                    "fresh discovery cache found for {} found {} resources",
+                    resource.url,
+                    cached.sources.len()
+                );
+                return Ok(cached.sources.clone());
+            }
+            // Else let's see check if cached is up to date with LAST_MODIFIED
             match self.client.head(&resource.url).send() {
                 Ok(response) if response.status().is_success() => {
                     let modified = response
@@ -302,11 +337,15 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                         .get(LAST_MODIFIED)
                         .and_then(|value| value.to_str().ok())
                         .and_then(http_modified);
-                    if modified.is_some_and(|value| value <= *uploaded_at)
-                        || (modified.is_none() && cache_fresh(*uploaded_at))
+                    if modified.is_some_and(|value| value <= cached.uploaded_at)
+                        || (modified.is_none())
                     {
-                        log::debug!("Reusing discovery cache for {}", resource.url);
-                        return Ok(sources.clone());
+                        log::debug!(
+                            "Reusing discovery cache for {} found {} resources",
+                            resource.url,
+                            cached.sources.len()
+                        );
+                        return Ok(cached.sources.clone());
                     }
                 }
                 Ok(response) => {
@@ -315,14 +354,14 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                         response.status(),
                         resource.url
                     );
-                    return Ok(sources.clone());
+                    return Ok(cached.sources.clone());
                 }
                 Err(error) => {
                     log::warn!(
                         "HTML page HEAD failed: {error}; using cached discovery for {}",
                         resource.url
                     );
-                    return Ok(sources.clone());
+                    return Ok(cached.sources.clone());
                 }
             }
         }
@@ -344,12 +383,12 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
         })();
         match (discovered, cached) {
             (Ok(sources), _) => Ok(sources),
-            (Err(error), Some((sources, _))) if is_origin_error(&error) => {
+            (Err(error), Some(cached)) if is_origin_error(&error) => {
                 log::warn!(
                     "Discovery origin failed: {error:#}; using cached discovery for {}",
                     resource.url
                 );
-                Ok(sources)
+                Ok(cached.sources)
             }
             (Err(error), _) => Err(error),
         }
@@ -747,9 +786,7 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
             CrawledSource::Drive(file) => {
                 let cached = self.cached_materialized(resource, source)?;
                 if let Some(cached) = &cached {
-                    if cache_fresh(cached.uploaded_at)
-                        && cached.snapshot.origin_modified == file.modified_time
-                    {
+                    if cached.is_fresh() && cached.snapshot.origin_modified == file.modified_time {
                         log::debug!(
                             "Reusing materialized Drive file {} for resource {}",
                             file.id,
@@ -878,9 +915,7 @@ impl<'a> ExternalResourceCrawlerReader<'a> {
                                     cached.snapshot.origin_etag.as_ref() == Some(value)
                                 });
                             if same_version
-                                || (modified.is_none()
-                                    && etag.is_none()
-                                    && cache_fresh(cached.uploaded_at))
+                                || (modified.is_none() && etag.is_none() && cached.is_fresh())
                             {
                                 log::debug!("Reusing materialized ZIP {url}");
                                 return Ok(cached.children.clone());
@@ -1055,11 +1090,6 @@ fn materialized_key(source: &CrawledSource, format: &str) -> String {
         stable_id(format),
         stable_id(identity)
     )
-}
-
-fn cache_fresh(uploaded_at: DateTime<Utc>) -> bool {
-    Utc::now().signed_duration_since(uploaded_at)
-        < chrono::Duration::from_std(DISCOVERY_TTL).expect("valid cache TTL")
 }
 
 fn http_modified(value: &str) -> Option<DateTime<Utc>> {
@@ -1756,15 +1786,16 @@ mod tests {
         reader
             .store_discovery("https://example.test/page", "JSON", &sources)
             .unwrap();
-        let (cached, _) = reader
+        let cached = reader
             .cached_discovery("https://example.test/page", "JSON")
             .unwrap()
             .unwrap();
 
-        assert_eq!(cached.len(), 3);
-        assert!(matches!(cached[0], CrawledSource::Zip { .. }));
-        assert!(matches!(cached[1], CrawledSource::Http { .. }));
-        assert!(matches!(cached[2], CrawledSource::Drive(_)));
+        assert_eq!(cached.sources.len(), 3);
+        assert!(matches!(cached.sources[0], CrawledSource::Zip { .. }));
+        assert!(matches!(cached.sources[1], CrawledSource::Http { .. }));
+        assert!(matches!(cached.sources[2], CrawledSource::Drive(_)));
+        assert!(cached.is_fresh());
     }
 
     #[test]
@@ -1790,9 +1821,32 @@ mod tests {
     }
 
     #[test]
-    fn cache_ttl_is_seven_days() {
-        assert!(cache_fresh(Utc::now() - chrono::Duration::days(6)));
-        assert!(!cache_fresh(Utc::now() - chrono::Duration::days(8)));
+    fn materialized_cache_freshness_uses_seven_day_ttl() {
+        let mut cached = CachedMaterialization {
+            children: Vec::new(),
+            snapshot: MaterializedSnapshot {
+                entries: Vec::new(),
+                origin_modified: None,
+                origin_etag: None,
+            },
+            uploaded_at: Utc::now() - chrono::Duration::days(6),
+        };
+        assert!(CacheFreshness::is_fresh(&cached));
+
+        cached.uploaded_at = Utc::now() - chrono::Duration::days(8);
+        assert!(!CacheFreshness::is_fresh(&cached));
+    }
+
+    #[test]
+    fn discovery_cache_freshness_uses_seven_day_ttl() {
+        let mut cached = CachedDiscovery {
+            sources: Vec::new(),
+            uploaded_at: Utc::now() - chrono::Duration::days(6),
+        };
+        assert!(CacheFreshness::is_fresh(&cached));
+
+        cached.uploaded_at = Utc::now() - chrono::Duration::days(8);
+        assert!(!CacheFreshness::is_fresh(&cached));
     }
 
     #[test]
