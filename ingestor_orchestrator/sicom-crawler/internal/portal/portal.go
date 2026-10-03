@@ -17,11 +17,11 @@ import (
 	"strings"
 )
 
-const APIURL = "https://arabiasaudita.tce.mg.gov.br:8443/TCEMG-proxy-web/publico/wso2amgw/dados-abertos/dadosAbertos/"
+const APIURL = "https://arabiasaudita.tce.mg.gov.br:8443/TCEMG-proxy-web/publico/apimoci/dados-abertos/dadosAbertos/"
 
 type Session struct {
-	ProxyToken, Bearer string
-	Years              []int
+	ProxyToken string
+	Years      []int
 }
 type Authenticate func(context.Context) (Session, error)
 type Client struct {
@@ -33,7 +33,6 @@ type Client struct {
 
 var yearList = regexp.MustCompile(`(?s)\.listaExercicio\s*=\s*\[([^\]]+)\]`)
 var yearValue = regexp.MustCompile(`descExercicio\s*:\s*["']([0-9]{4})["']`)
-var bearerValue = regexp.MustCompile(`bearer\s*:\s*["']([^"']+)["']`)
 
 func ParseYears(script string) ([]int, error) {
 	list := yearList.FindStringSubmatch(script)
@@ -54,20 +53,13 @@ func ParseYears(script string) ([]int, error) {
 	}
 	return years, nil
 }
-func ParseBearer(script string) string {
-	m := bearerValue.FindStringSubmatch(script)
-	if len(m) == 2 {
-		return m[1]
-	}
-	return ""
-}
 func (c *Client) refresh(ctx context.Context) error {
 	session, err := c.Authenticate(ctx)
 	if err != nil {
 		return err
 	}
-	if session.ProxyToken == "" || session.Bearer == "" || len(session.Years) == 0 {
-		return errors.New("portal session missing credentials or years")
+	if session.ProxyToken == "" || len(session.Years) == 0 {
+		return errors.New("portal session missing proxy token or years")
 	}
 	c.session = session
 	return nil
@@ -89,7 +81,6 @@ func (c *Client) request(ctx context.Context, target string) (*http.Response, er
 		if err != nil {
 			return nil, errors.New("invalid portal API URL")
 		}
-		req.Header.Set("Authorization", "Bearer "+c.session.Bearer)
 		token := c.session.ProxyToken
 		if !strings.HasPrefix(token, "token ") {
 			token = "token " + token

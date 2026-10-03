@@ -46,6 +46,9 @@ func TestHTTPPipelineCachesNestedZIPAndRepublishesCompatibleJobs(t *testing.T) {
 		if r.Header.Get("AuthorizationProxy") != "token session" {
 			t.Error("portal request missing authentication")
 		}
+		if r.Header.Get("Authorization") != "" {
+			t.Error("portal request includes obsolete bearer authentication")
+		}
 		switch r.URL.Path {
 		case "/buscarCategoriaDownload":
 			fmt.Fprint(w, `[{"seqZip":109822,"categoria":"Despesas com pessoal"}]`)
@@ -90,7 +93,7 @@ func TestHTTPPipelineCachesNestedZIPAndRepublishesCompatibleJobs(t *testing.T) {
 		t.Fatal(e)
 	}
 	source := &portal.Client{HTTP: api.Client(), BaseURL: api.URL + "/", Authenticate: func(context.Context) (portal.Session, error) {
-		return portal.Session{ProxyToken: "session", Bearer: "app", Years: []int{2026}}, nil
+		return portal.Session{ProxyToken: "session", Years: []int{2026}}, nil
 	}}
 	topics := []string{}
 	messages := []crawler.Job{}

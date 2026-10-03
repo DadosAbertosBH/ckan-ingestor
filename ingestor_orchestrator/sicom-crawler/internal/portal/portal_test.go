@@ -20,18 +20,23 @@ func TestParseSICOMYearsRatherThanCAPMG(t *testing.T) {
 	if _, e := ParseYears("changed bundle"); e == nil {
 		t.Fatal("expected changed portal diagnostic")
 	}
-	if got := ParseBearer(`captchaPublicUrl:"url",bearer:"public-app-token"`); got != "public-app-token" {
-		t.Fatalf("bearer=%s", got)
+}
+
+func TestDefaultAPIURLUsesCurrentPublicGateway(t *testing.T) {
+	want := "https://arabiasaudita.tce.mg.gov.br:8443/TCEMG-proxy-web/publico/apimoci/dados-abertos/dadosAbertos/"
+	if APIURL != want {
+		t.Fatalf("APIURL=%q want %q", APIURL, want)
 	}
 }
-func TestAuthorizedListingRenewsOnceAndIncludesOrigin(t *testing.T) {
+
+func TestAuthorizedListingRenewsOnceWithProxyToken(t *testing.T) {
 	calls, auth := 0, 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		if r.URL.Path != "/buscarCategoriaDownload" || r.URL.Query().Get("origem") != "SICOM" || r.URL.Query().Get("exercicio") != "2026" {
 			t.Errorf("request=%s", r.URL)
 		}
-		if r.Header.Get("Authorization") != "Bearer app" || r.Header.Get("Origin") != "https://dadosabertos.tce.mg.gov.br" {
+		if r.Header.Get("Authorization") != "" || r.Header.Get("Origin") != "https://dadosabertos.tce.mg.gov.br" {
 			t.Errorf("headers=%v", r.Header)
 		}
 		if calls == 1 {
@@ -50,7 +55,7 @@ func TestAuthorizedListingRenewsOnceAndIncludesOrigin(t *testing.T) {
 		if auth == 2 {
 			token = "renewed"
 		}
-		return Session{ProxyToken: token, Bearer: "app", Years: []int{2026}}, nil
+		return Session{ProxyToken: token, Years: []int{2026}}, nil
 	}}
 	if _, e := c.Years(context.Background()); e != nil {
 		t.Fatal(e)
@@ -67,7 +72,7 @@ func TestOriginErrorsRedactTokens(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(403); fmt.Fprint(w, "secret-token") }))
 	defer server.Close()
 	c := &Client{HTTP: server.Client(), BaseURL: server.URL + "/", Authenticate: func(context.Context) (Session, error) {
-		return Session{ProxyToken: "secret-token", Bearer: "app", Years: []int{2026}}, nil
+		return Session{ProxyToken: "secret-token", Years: []int{2026}}, nil
 	}}
 	_, err := c.List(context.Background(), 2026)
 	if err == nil || strings.Contains(err.Error(), "secret-token") {

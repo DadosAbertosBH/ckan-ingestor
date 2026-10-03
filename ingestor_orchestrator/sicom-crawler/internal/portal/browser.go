@@ -108,10 +108,10 @@ func (b *Browser) Authenticate(ctx context.Context) (Session, error) {
 	_ = chromedp.Run(tab, chromedp.Evaluate(`localStorage.setItem('filtroCategorias',JSON.stringify({origem:'SICOM',exercicio:new Date().getFullYear()}))`, nil), chromedp.Navigate(DownloadPage))
 	session := Session{ProxyToken: token}
 	fetched := map[string]bool{}
-	for len(session.Years) == 0 || session.Bearer == "" {
+	for len(session.Years) == 0 {
 		select {
 		case <-ctx.Done():
-			return Session{}, errors.New("portal scripts changed: could not discover SICOM years and application credentials")
+			return Session{}, errors.New("portal scripts changed: could not discover SICOM years")
 		case <-ticker.C:
 			mu.Lock()
 			urls := []string{}
@@ -138,9 +138,6 @@ func (b *Browser) Authenticate(ctx context.Context) (Session, error) {
 				}
 				fetched[u] = true
 				script := string(data)
-				if session.Bearer == "" {
-					session.Bearer = ParseBearer(script)
-				}
 				if len(session.Years) == 0 {
 					session.Years, _ = ParseYears(script)
 				}
