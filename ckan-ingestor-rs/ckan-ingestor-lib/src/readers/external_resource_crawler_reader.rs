@@ -52,7 +52,7 @@ const FOLDER_MIME: &str = "application/vnd.google-apps.folder";
 const MAX_HTML_DEPTH: usize = 4;
 const MAX_HTML_PAGES: usize = 10_000;
 const MAX_DRIVE_ERROR_BODY_BYTES: u64 = 64 * 1024;
-const DISCOVERY_TTL: Duration = Duration::from_secs(31 * 24 * 60 * 60);
+const DISCOVERY_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
 #[derive(Debug)]
 pub struct CrawlError(pub anyhow::Error);
@@ -1880,7 +1880,7 @@ mod tests {
     }
 
     #[test]
-    fn newer_html_last_modified_rebuilds_discovery() {
+    fn fresh_discovery_cache_skips_head_request() {
         let server = httpmock::MockServer::start();
         let page = server.mock(|when, then| {
             when.method(httpmock::Method::GET).path("/page");
@@ -1889,7 +1889,7 @@ mod tests {
                 .body(r#"<a href="file.json">file</a>"#);
         });
         let future_modified = (Utc::now() + chrono::Duration::days(1)).to_rfc2822();
-        let _head = server.mock(|when, then| {
+        let head = server.mock(|when, then| {
             when.method(httpmock::Method::HEAD).path("/page");
             then.status(200).header("last-modified", &future_modified);
         });
@@ -1908,7 +1908,8 @@ mod tests {
         reader.load_or_discover(&resource).unwrap();
         reader.load_or_discover(&resource).unwrap();
 
-        assert_eq!(page.hits(), 2);
+        assert_eq!(page.hits(), 1);
+        assert_eq!(head.hits(), 0);
     }
 
     #[test]
