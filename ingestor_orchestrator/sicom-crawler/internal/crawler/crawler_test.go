@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"os"
 	"reflect"
 	"strconv"
@@ -107,6 +108,40 @@ func fixture(t *testing.T) (*Runner, *fakePortal, *memoryStorage, *fakePublisher
 	q := &fakePublisher{}
 	return &Runner{Portal: p, Storage: s, Publisher: q, InstanceID: "instance", TempDir: t.TempDir()}, p, s, q
 }
+
+func TestCategoryCompleteLogIncludesCategoryName(t *testing.T) {
+	r, _, _, _ := fixture(t)
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	if err := r.publish(context.Background(), Category{Year: 2026, SeqZip: 109823, Name: "Despesas com pessoal"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(logs.String(), "category=\"Despesas com pessoal\"") {
+		t.Fatalf("log does not include category name: %s", logs.String())
+	}
+}
+
+func TestCategoryLifecycleLogsIncludeCategoryIdentity(t *testing.T) {
+	r, _, _, _ := fixture(t)
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range []string{"category started", "download started", "download completed", "processing started", "category complete"} {
+		expected := "msg=\"" + message + "\" year=2026 category=\"Despesas com pessoal\" seq_zip=2026"
+		if !strings.Contains(logs.String(), expected) {
+			t.Fatalf("log does not include %q identity: %s", message, logs.String())
+		}
+	}
+}
+
 func TestNestedZIPCacheAndDailyReplay(t *testing.T) {
 	r, p, s, q := fixture(t)
 	ctx := context.Background()

@@ -106,6 +106,7 @@ func (r *Runner) limits() Limits {
 	return l
 }
 func (r *Runner) process(ctx context.Context, c Category) error {
+	slog.Info("category started", "year", c.Year, "category", c.Name, "seq_zip", c.SeqZip)
 	origin := r.Portal.DownloadURL(c)
 	archiveKey := "crawled-files/" + sicomidentity.StableID(origin) + "/archive.zip"
 	manifestKey := "crawled-discovery/sicom/" + sicomidentity.StableID(origin) + "/members.json"
@@ -139,6 +140,7 @@ func (r *Runner) process(ctx context.Context, c Category) error {
 					}
 				}
 				if complete {
+					slog.Info("processing started", "year", c.Year, "category", c.Name, "seq_zip", c.SeqZip)
 					return r.publish(ctx, c, m.Jobs)
 				}
 			}
@@ -151,6 +153,7 @@ func (r *Runner) process(ctx context.Context, c Category) error {
 	if cached {
 		body, err = r.Storage.Get(ctx, archiveKey)
 	} else {
+		slog.Info("download started", "year", c.Year, "category", c.Name, "seq_zip", c.SeqZip)
 		body, err = r.Portal.Download(ctx, c)
 	}
 	if err != nil {
@@ -161,11 +164,15 @@ func (r *Runner) process(ctx context.Context, c Category) error {
 	if err != nil {
 		return err
 	}
+	if !cached {
+		slog.Info("download completed", "year", c.Year, "category", c.Name, "seq_zip", c.SeqZip)
+	}
 	defer removeTemp(tmp)
 	info, err := tmp.Stat()
 	if err != nil {
 		return err
 	}
+	slog.Info("processing started", "year", c.Year, "category", c.Name, "seq_zip", c.SeqZip)
 	z, err := zip.NewReader(tmp, info.Size())
 	if err != nil {
 		return fmt.Errorf("invalid ZIP: %w", err)
@@ -198,7 +205,7 @@ func (r *Runner) publish(ctx context.Context, c Category, jobs []Job) error {
 			return err
 		}
 	}
-	slog.Info("category complete", "year", c.Year, "seq_zip", c.SeqZip, "jobs", len(jobs))
+	slog.Info("category complete", "year", c.Year, "category", c.Name, "seq_zip", c.SeqZip, "jobs", len(jobs))
 	return nil
 }
 func (r *Runner) memberKey(origin, name string) string {

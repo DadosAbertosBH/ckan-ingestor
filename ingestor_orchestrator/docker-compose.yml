@@ -195,7 +195,7 @@ services:
       IGGY_TOPIC_RETRY: jobs-retry
       IGGY_TOPIC_RESULTS: job-results
       IGGY_GROUP_ID: ckan-worker
-      IGGY_PARTITIONS: "10"
+      IGGY_PARTITIONS: "3"
       DUCKLAKE_DATABASE: ":memory:"
       DUCKLAKE_CATALOG_URI: "postgres:dbname=ducklake_catalog host=postgres user=postgres password=postgres"
       S3_ENDPOINT: rustfs:9000
@@ -255,23 +255,11 @@ services:
     networks:
       - orchestrator_net
 
-  lightpanda-runtime:
-    image: ckan-ingestor/lightpanda-runtime:local
-    build:
-      context: ..
-      dockerfile: ingestor_orchestrator/lightpanda-runtime/Dockerfile
-    networks:
-      - orchestrator_net
-
   source-sync-worker:
     image: ckan-ingestor/source-sync-worker:local
     build:
       context: ..
       dockerfile: ingestor_orchestrator/source-sync-worker/Dockerfile
-      additional_contexts:
-        lightpanda-runtime: service:lightpanda-runtime
-      args:
-        LIGHTPANDA_RUNTIME_IMAGE: lightpanda-runtime
     init: true
     restart: unless-stopped
     depends_on:

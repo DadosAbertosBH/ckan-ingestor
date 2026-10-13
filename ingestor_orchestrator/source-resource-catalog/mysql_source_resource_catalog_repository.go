@@ -7,8 +7,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	jobmessage "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/ingestor-job-message-contracts"
 	"strings"
+
+	jobmessage "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/ingestor-job-message-contracts"
 )
 
 // MySQLSourceResourceCatalogRepository persists source snapshots and reads the API job ledger.
@@ -57,8 +58,8 @@ func (r *MySQLSourceResourceCatalogRepository) ObserveBatch(ctx context.Context,
 		return err
 	}
 	defer tx.Rollback()
-	// Compare before assigning fields; <=> also compares nullable parent identities.
-	query := `INSERT INTO source_resource (id,source_id,parent_resource_id,kind,title,description,page_url,content_url,format,source_version,dataset_name,datastore_active,first_seen_sync,last_changed_sync,last_seen_sync,created_at,updated_at) VALUES ` + strings.Join(rows, ",") + ` ON DUPLICATE KEY UPDATE last_changed_sync=IF(NOT(parent_resource_id<=>VALUES(parent_resource_id) AND BINARY kind<=>BINARY VALUES(kind) AND BINARY title<=>BINARY VALUES(title) AND BINARY description<=>BINARY VALUES(description) AND BINARY page_url<=>BINARY VALUES(page_url) AND BINARY content_url<=>BINARY VALUES(content_url) AND BINARY format<=>BINARY VALUES(format) AND BINARY source_version<=>BINARY VALUES(source_version) AND BINARY dataset_name<=>BINARY VALUES(dataset_name) AND datastore_active<=>VALUES(datastore_active)) OR deleted_at IS NOT NULL,VALUES(last_changed_sync),last_changed_sync),parent_resource_id=VALUES(parent_resource_id),kind=VALUES(kind),title=VALUES(title),description=VALUES(description),page_url=VALUES(page_url),content_url=VALUES(content_url),format=VALUES(format),source_version=VALUES(source_version),dataset_name=VALUES(dataset_name),datastore_active=VALUES(datastore_active),last_seen_sync=VALUES(last_seen_sync),deleted_at=NULL,updated_at=UTC_TIMESTAMP()`
+	// Compare versions and restoration state before assigning the new fields.
+	query := `INSERT INTO source_resource (id,source_id,parent_resource_id,kind,title,description,page_url,content_url,format,source_version,dataset_name,datastore_active,first_seen_sync,last_changed_sync,last_seen_sync,created_at,updated_at) VALUES ` + strings.Join(rows, ",") + ` ON DUPLICATE KEY UPDATE last_changed_sync=IF(NOT(BINARY source_version<=>BINARY VALUES(source_version)) OR deleted_at IS NOT NULL,VALUES(last_changed_sync),last_changed_sync),parent_resource_id=VALUES(parent_resource_id),kind=VALUES(kind),title=VALUES(title),description=VALUES(description),page_url=VALUES(page_url),content_url=VALUES(content_url),format=VALUES(format),source_version=VALUES(source_version),dataset_name=VALUES(dataset_name),datastore_active=VALUES(datastore_active),last_seen_sync=VALUES(last_seen_sync),deleted_at=NULL,updated_at=UTC_TIMESTAMP()`
 	if _, err = tx.ExecContext(ctx, query, args...); err != nil {
 		return err
 	}

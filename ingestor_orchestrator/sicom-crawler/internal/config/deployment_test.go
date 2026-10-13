@@ -8,12 +8,12 @@ import (
 	"testing"
 )
 
-func TestImagePinsCorrectedLightpandaAndBuildsCrawler(t *testing.T) {
+func TestImageUsesOfficialLightpandaNightlyAndBuildsCrawler(t *testing.T) {
 	data, err := os.ReadFile("../../Dockerfile")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"7e890133b78fa2127096e7464a3ee6977cc93d36", "github.com/guitcastro/browser.git", "linux/arm64", "./cmd/sicom-crawler", "tini", "USER 10001"} {
+	for _, required := range []string{"FROM lightpanda/browser:nightly AS lightpanda", "COPY --from=lightpanda /bin/lightpanda /usr/local/bin/lightpanda", "ARG TARGETARCH", "./cmd/sicom-crawler", "tini", "USER 10001"} {
 		if !strings.Contains(string(data), required) {
 			t.Errorf("Dockerfile missing %s", required)
 		}

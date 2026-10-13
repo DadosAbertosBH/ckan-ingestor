@@ -73,7 +73,7 @@ workerCoordinator:
     limits:
       memory: 1Gi
 
-# -- SICOM is temporarily paused; restore the Lightpanda runtime before enabling.
+# -- Include SICOM in bulk and scheduled syncs. Individual manual syncs are always available.
 sicom:
   enabled: false
 

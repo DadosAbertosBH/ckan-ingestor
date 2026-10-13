@@ -27,7 +27,7 @@ import (
 var ErrConflict = errors.New("conflict")
 
 type Dispatcher struct {
-	SICOMEnabled  bool
+	SICOMEnabled  bool // Include SICOM in bulk and scheduled syncs; individual syncs are always available.
 	Store         Store
 	Publisher     Publisher
 	RetryTopic    string
@@ -87,9 +87,6 @@ func (d *Dispatcher) SyncInstance(ctx context.Context, instanceID string) (*Meta
 		instance, err := tx.Instance(ctx, instanceID)
 		if err != nil {
 			return err
-		}
-		if instance.SourceType == "sicom" && !d.SICOMEnabled {
-			return fmt.Errorf("%w: SICOM source is temporarily paused", ErrConflict)
 		}
 		now := d.now()
 		created = &MetadataSync{ID: d.newID(), InstanceID: instance.ID, StartTime: now, Status: "pending"}

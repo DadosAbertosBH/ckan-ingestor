@@ -5,6 +5,7 @@ package resourcecatalog
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -74,7 +75,10 @@ func TestObserveBatchUsesOneTransactionalMultiRowUpsert(t *testing.T) {
 	defer db.Close()
 	repo := MySQLSourceResourceCatalogRepository{DB: db}
 	m.ExpectBegin()
-	m.ExpectExec(`INSERT INTO source_resource .* VALUES \(.+\),\(.+\) ON DUPLICATE KEY UPDATE`).WillReturnResult(sqlmock.NewResult(0, 2))
+	// Metadata changes with the same version preserve the change marker;
+	// a new version or a restored resource advances it before fields are assigned.
+	changeMarker := regexp.QuoteMeta("last_changed_sync=IF(NOT(BINARY source_version<=>BINARY VALUES(source_version)) OR deleted_at IS NOT NULL,VALUES(last_changed_sync),last_changed_sync),parent_resource_id=VALUES(parent_resource_id)")
+	m.ExpectExec(`INSERT INTO source_resource .* VALUES \(.+\),\(.+\) ON DUPLICATE KEY UPDATE ` + changeMarker).WillReturnResult(sqlmock.NewResult(0, 2))
 	m.ExpectCommit()
 	resources := []Resource{
 		{ID: "one", SourceID: "source"},

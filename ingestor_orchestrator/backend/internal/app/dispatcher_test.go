@@ -28,16 +28,27 @@ type published struct {
 	payload    []byte
 }
 
-func TestSICOMSyncIsPausedByDefault(t *testing.T) {
+func TestSICOMManualSyncIsAllowedWithScheduledSyncPaused(t *testing.T) {
 	store := newMemoryStore()
-	store.instances["sicom"] = &Instance{ID: "sicom", SourceType: "sicom"}
+	store.instances["sicom"] = &Instance{ID: "sicom", Name: "TCE-MG", URL: "https://dadosabertos.tce.mg.gov.br/", SourceType: "sicom"}
 	pub := &fakePublisher{}
-	d := &Dispatcher{Store: store, Publisher: pub, MetadataTopic: "sync"}
-	if _, err := d.SyncInstance(context.Background(), "sicom"); !errors.Is(err, ErrConflict) {
-		t.Fatalf("expected paused source conflict, got %v", err)
+	d := &Dispatcher{Store: store, Publisher: pub, MetadataTopic: "sync", NewID: func() string { return "sync-id" }}
+	sync, err := d.SyncInstance(context.Background(), "sicom")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(pub.messages) != 0 || len(store.syncs) != 0 {
-		t.Fatal("paused SICOM source created work")
+	if sync == nil || sync.ID != "sync-id" || sync.InstanceID != "sicom" || sync.Status != "pending" || len(store.syncs) != 1 {
+		t.Fatalf("manual sync=%+v stored=%v", sync, store.syncs)
+	}
+	if len(pub.messages) != 1 || pub.messages[0].topic != "sync" || pub.messages[0].key != "sync-id" {
+		t.Fatalf("published=%+v", pub.messages)
+	}
+	var command map[string]string
+	if err := json.Unmarshal(pub.messages[0].payload, &command); err != nil {
+		t.Fatal(err)
+	}
+	if command["source_type"] != "sicom" || command["instance_id"] != "sicom" || command["sync_id"] != sync.ID || command["instance_url"] != store.instances["sicom"].URL {
+		t.Fatalf("command=%v", command)
 	}
 }
 

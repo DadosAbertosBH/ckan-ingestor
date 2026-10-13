@@ -44,8 +44,14 @@ migration 7, ficam preservadas em bancos existentes e sem uso pelo novo fluxo.
 
 ```bash
 cp ingestor_orchestrator/.env.example ingestor_orchestrator/.env
+docker compose -f ingestor_orchestrator/docker-compose.yml build --pull source-sync-worker
 docker compose -f ingestor_orchestrator/docker-compose.yml up -d
 ```
+
+O Dockerfile do `source-sync-worker` copia o executável diretamente da imagem
+oficial `lightpanda/browser:nightly` e o inicia dentro do próprio container
+durante o sync do SICOM. Para atualizar o nightly, execute novamente o comando
+de build com `--pull`.
 
 - Aplicação: `http://localhost:8000`
 - OpenAPI: `http://localhost:8000/openapi.json`

@@ -1,7 +1,7 @@
 # SICOM crawler
 
 Independent Go service for TCE-MG SICOM. Authentication uses chromedp over CDP
-with the corrected Lightpanda fork. Downloads and R2 transfers use Go HTTP/S3
+with the official Lightpanda nightly. Downloads and R2 transfers use Go HTTP/S3
 clients; no browser download directory is required.
 
 ## Pipeline
@@ -32,7 +32,7 @@ formats become extracted objects/jobs. Defaults: CSV, JSON, GEOJSON.
 
 ```sh
 cd ingestor_orchestrator/sicom-crawler
-SICOM_LIGHTPANDA_BIN=/path/to/corrected/lightpanda \
+SICOM_LIGHTPANDA_BIN=/path/to/nightly/lightpanda \
   go run ./cmd/sicom-crawler --discover-only --year 2026 \
   --category 'Despesas com pessoal'
 ```
@@ -95,9 +95,9 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 helm unittest charts/ingestor-orchestrator             # run from repo root
 ```
 
-Docker builds Linux Lightpanda natively per architecture from fork commit
-`7e890133b78fa2127096e7464a3ee6977cc93d36`, verifies the Zig download signature,
-and packages both executables with Debian/glibc, system CAs and tini. The Go
+Docker copies the official nightly executable from `lightpanda/browser:nightly`
+for each target architecture and packages both executables with Debian/glibc,
+system CAs and tini. Build with `--pull` to refresh the nightly image. The Go
 binary is cross-compiled. `.gitlab-ci.yml` runs tests and publishes a multiarch image.
 
 Optional read-only live test against an already running CDP browser:
