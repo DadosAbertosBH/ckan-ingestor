@@ -200,6 +200,8 @@ postgres:
   backup:
     # -- Enable backup via barmanObjectStore (S3-compatible)
     enabled: false
+    # -- Barman server name (defaults to the cluster name if empty)
+    serverName: ""
     # -- S3 destination path (e.g. s3://bucket/prefix)
     destinationPath: ""
     # -- S3 endpoint URL

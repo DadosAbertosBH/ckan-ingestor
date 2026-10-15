@@ -35,6 +35,9 @@ spec:
   {{- if .Values.postgres.backup.enabled }}
   backup:
     barmanObjectStore:
+      {{- if .Values.postgres.backup.serverName }}
+      serverName: {{ .Values.postgres.backup.serverName }}
+      {{- end }}
       destinationPath: {{ .Values.postgres.backup.destinationPath | quote }}
       endpointURL: {{ .Values.postgres.backup.endpointURL | quote }}
       s3Credentials:
