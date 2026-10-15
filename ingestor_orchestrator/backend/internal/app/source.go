@@ -1,26 +1,13 @@
 // Copyright (C) 2026 Noctcloud Desenvolvimento LTDA
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Licensed under the GNU Affero General Public License, version 3 or later.
 package app
 
-import (
-	"strings"
-
-	sicomidentity "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/sicom-source-identity"
-)
+import repositories "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/repository-contracts"
 
 func SourceDatasetURL(base, dataset string) string {
-	if base == "" {
-		return ""
-	}
-	if sicomidentity.IsPortalURL(base) {
-		return sicomidentity.DownloadPageURL
-	}
-	return strings.TrimRight(base, "/") + "/dataset/" + dataset
+	return repositories.SourceDatasetURL(base, dataset)
 }
 func SourceResourceURL(base, dataset, resource string) string {
-	datasetURL := SourceDatasetURL(base, dataset)
-	if base == "" || strings.Contains(datasetURL, "/#/") {
-		return datasetURL
-	}
-	return datasetURL + "/resource/" + resource
+	return repositories.SourceResourceURL(base, dataset, resource)
 }

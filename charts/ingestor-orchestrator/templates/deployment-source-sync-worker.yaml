@@ -79,9 +79,19 @@ spec:
           resources:
             {{- toYaml .Values.sourceSyncWorker.resources | nindent 12 }}
           volumeMounts:
+            {{- if .Values.oracle.walletSecretName }}
+            - name: oracle-wallet
+              mountPath: {{ .Values.oracle.walletMountPath }}
+              readOnly: true
+            {{- end }}
             - name: temporary
               mountPath: /tmp
       volumes:
+        {{- if .Values.oracle.walletSecretName }}
+        - name: oracle-wallet
+          secret:
+            secretName: {{ .Values.oracle.walletSecretName }}
+        {{- end }}
         - name: temporary
           emptyDir:
             sizeLimit: {{ .Values.sourceSyncWorker.tempStorage | quote }}

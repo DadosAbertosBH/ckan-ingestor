@@ -134,11 +134,14 @@ func TestCategoryLifecycleLogsIncludeCategoryIdentity(t *testing.T) {
 	if err := r.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	for _, message := range []string{"category started", "download started", "download completed", "processing started", "category complete"} {
+	for _, message := range []string{"download started", "download completed", "processing started", "category complete"} {
 		expected := "msg=\"" + message + "\" year=2026 category=\"Despesas com pessoal\" seq_zip=2026"
 		if !strings.Contains(logs.String(), expected) {
 			t.Fatalf("log does not include %q identity: %s", message, logs.String())
 		}
+	}
+	if strings.Contains(logs.String(), "msg=\"category started\"") {
+		t.Fatalf("obsolete category-started log emitted: %s", logs.String())
 	}
 }
 
@@ -158,11 +161,19 @@ func TestNestedZIPCacheAndDailyReplay(t *testing.T) {
 	if len(s.objects) != 3 {
 		t.Fatalf("objects=%d", len(s.objects))
 	}
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
 	if e := r.Run(ctx); e != nil {
 		t.Fatal(e)
 	}
 	if p.downloads != 1 || !reflect.DeepEqual(first, q.jobs[1]) {
 		t.Fatalf("downloads=%d jobs=%+v", p.downloads, q.jobs)
+	}
+	expected := "msg=\"manifest found, skipping processing\" year=2026 category=\"Despesas com pessoal\" seq_zip=2026"
+	if !strings.Contains(logs.String(), expected) {
+		t.Fatalf("manifest cache log missing: %s", logs.String())
 	}
 }
 
@@ -202,11 +213,19 @@ func TestRebuildManifestFromCachedZIP(t *testing.T) {
 			delete(s.objects, k)
 		}
 	}
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
 	if e := r.Run(context.Background()); e != nil {
 		t.Fatal(e)
 	}
 	if p.downloads != 1 || len(q.jobs) != 2 {
 		t.Fatalf("downloads=%d jobs=%d", p.downloads, len(q.jobs))
+	}
+	expected := "msg=\"download zip cache\" year=2026 category=\"Despesas com pessoal\" seq_zip=2026"
+	if !strings.Contains(logs.String(), expected) {
+		t.Fatalf("ZIP cache log missing: %s", logs.String())
 	}
 }
 func TestStorageErrorsNeverTriggerOriginDownload(t *testing.T) {

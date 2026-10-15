@@ -106,7 +106,6 @@ func (r *Runner) limits() Limits {
 	return l
 }
 func (r *Runner) process(ctx context.Context, c Category) error {
-	slog.Info("category started", "year", c.Year, "category", c.Name, "seq_zip", c.SeqZip)
 	origin := r.Portal.DownloadURL(c)
 	archiveKey := "crawled-files/" + sicomidentity.StableID(origin) + "/archive.zip"
 	manifestKey := "crawled-discovery/sicom/" + sicomidentity.StableID(origin) + "/members.json"
@@ -140,6 +139,7 @@ func (r *Runner) process(ctx context.Context, c Category) error {
 					}
 				}
 				if complete {
+					slog.Info("manifest found, skipping processing", "year", c.Year, "category", c.Name, "seq_zip", c.SeqZip)
 					slog.Info("processing started", "year", c.Year, "category", c.Name, "seq_zip", c.SeqZip)
 					return r.publish(ctx, c, m.Jobs)
 				}
@@ -151,6 +151,7 @@ func (r *Runner) process(ctx context.Context, c Category) error {
 	var body io.ReadCloser
 	var err error
 	if cached {
+		slog.Info("download zip cache", "year", c.Year, "category", c.Name, "seq_zip", c.SeqZip)
 		body, err = r.Storage.Get(ctx, archiveKey)
 	} else {
 		slog.Info("download started", "year", c.Year, "category", c.Name, "seq_zip", c.SeqZip)

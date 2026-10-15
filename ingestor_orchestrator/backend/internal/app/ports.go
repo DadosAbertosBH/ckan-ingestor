@@ -1,65 +1,16 @@
-// Noctcloud Desenvolvimento LTDA
-// Copyright (C) 2026  Noctcloud Desenvolvimento LTDA
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Affero General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Affero General Public License for more details.
-//
-// You should have received a copy of the GNU Affero General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
+// Copyright (C) 2026 Noctcloud Desenvolvimento LTDA
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Licensed under the GNU Affero General Public License, version 3 or later.
 package app
 
-import "context"
+import (
+	"context"
+	repositories "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/repository-contracts"
+)
 
-type Tx interface {
-	Job(context.Context, string) (*Job, error)
-	InsertJob(context.Context, *Job) error
-	UpdateJob(context.Context, *Job) error
-	InsertResult(context.Context, *JobResult) error
-	Latest(context.Context, string) (*LatestResource, error)
-	PutLatest(context.Context, *LatestResource) error
-	Terminal(context.Context, string) (*TerminalState, error)
-	PutTerminal(context.Context, *TerminalState) error
-	AddLabel(context.Context, string, string) error
-	RemoveLabel(context.Context, string, string) error
-	RemoveLabelsWithPrefix(context.Context, string, string) error
-	PutCSVHint(context.Context, string, string) error
-	CSVHint(context.Context, string) (*string, error)
-	Sync(context.Context, string) (*MetadataSync, error)
-	InsertSync(context.Context, *MetadataSync) error
-	UpdateSync(context.Context, *MetadataSync) error
-	Instance(context.Context, string) (*Instance, error)
-	UpdateInstance(context.Context, *Instance) error
-}
-
-type Store interface {
-	InTx(context.Context, func(Tx) error) error
-	Instances(context.Context) ([]Instance, error)
-	Ping(context.Context) error
-}
-
-type QueryStore interface {
-	ListInstances(context.Context) ([]Instance, error)
-	GetInstance(context.Context, string) (*Instance, error)
-	CreateInstance(context.Context, *Instance) error
-	DeleteInstance(context.Context, string) error
-	ListJobs(context.Context, JobQuery) ([]JobView, error)
-	GetJob(context.Context, string) (*JobView, error)
-	ListResources(context.Context, ResourceQuery) ([]ResourceView, error)
-	GetResource(context.Context, string) (*ResourceView, error)
-	ListDatasets(context.Context, ResourceQuery) ([]DatasetView, error)
-	Dashboard(context.Context) ([]InstanceStats, error)
-	ListSyncs(context.Context, SyncQuery) ([]MetadataSync, error)
-	GetSync(context.Context, string) (*MetadataSync, error)
-}
-
+type Tx = repositories.Tx
+type Store = repositories.Store
+type QueryStore = repositories.QueryStore
 type Publisher interface {
 	Publish(context.Context, string, []byte, string) (Routing, error)
 }

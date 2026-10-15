@@ -1,5 +1,39 @@
 services:
+  oracle:
+    image: container-registry.oracle.com/database/free:latest-lite
+    hostname: oracle
+    cap_add: [SYS_ADMIN]
+    devices: [/dev/fuse]
+    mem_limit: ${INGEST_ORCH_ORACLE_MEMORY:-2g}
+    cpus: 1
+    environment:
+      ORACLE_PWD: ${INGEST_ORCH_ORACLE_ADMIN_PASSWORD:-ContractCKAN123!}
+      DISABLE_ORDS: true
+    ports: ["1522:1521"]
+    healthcheck:
+      test: ["CMD-SHELL", "lsnrctl status | grep -q 'STATUS of the LISTENER'"]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+      start_period: 60s
+    networks: [orchestrator_net]
+
+  oracle-bootstrap:
+    image: container-registry.oracle.com/database/free:latest-lite
+    user: root
+    entrypoint: [bash, /bootstrap-oracle.sh]
+    depends_on:
+      oracle:
+        condition: service_healthy
+    environment:
+      - ORACLE_PWD=${INGEST_ORCH_ORACLE_ADMIN_PASSWORD:-ContractCKAN123!}
+      - APP_PASSWORD=${INGEST_ORCH_ORACLE_PASSWORD:-ContractApp123}
+    volumes:
+      - ./bootstrap-oracle.sh:/bootstrap-oracle.sh:ro
+    networks: [orchestrator_net]
+
   mysql:
+    profiles: [mysql]
     image: mysql:8.0
     deploy:
       resources:
@@ -10,8 +44,6 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${INGEST_ORCH_MYSQL_PASSWORD:-ckan_orch_pass}
       MYSQL_DATABASE: ${INGEST_ORCH_MYSQL_DATABASE:-ingestor_orchestrator}
-    volumes:
-      - mysql_data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
@@ -42,8 +74,6 @@ services:
       IGGY_NODE_ADVERTISED_ADDRESS: 127.0.0.1
       IGGY_PATH: /app/local_data
       IGGY_SHARDING_CPU_ALLOCATION: all
-    volumes:
-      - iggy_data:/app/local_data
     healthcheck:
       test: ["CMD", "/usr/local/bin/iggy", "-u", "iggy", "-p", "iggy", "ping"]
       interval: 5s
@@ -122,11 +152,13 @@ services:
       context: ..
       dockerfile: ingestor_orchestrator/Dockerfile
     depends_on:
-      mysql:
-        condition: service_healthy
+      oracle-bootstrap:
+        condition: service_completed_successfully
     env_file:
       - .env
     environment:
+      INGEST_ORCH_DB_PROVIDER: oracle
+      INGEST_ORCH_ORACLE_DSN: "${INGEST_ORCH_ORACLE_DSN:-oracle://CKAN_APP:ContractApp123@oracle:1521/FREEPDB1}"
       INGEST_ORCH_MYSQL_HOST: mysql
       INGEST_ORCH_MYSQL_PORT: "3306"
       INGEST_ORCH_MYSQL_USER: root
@@ -148,8 +180,8 @@ services:
           cpus: "1"
           memory: "1024M"
     depends_on:
-      mysql:
-        condition: service_healthy
+      oracle-bootstrap:
+        condition: service_completed_successfully
       iggy:
         condition: service_healthy
       db-init:
@@ -157,6 +189,8 @@ services:
     env_file:
       - .env
     environment:
+      INGEST_ORCH_DB_PROVIDER: oracle
+      INGEST_ORCH_ORACLE_DSN: "${INGEST_ORCH_ORACLE_DSN:-oracle://CKAN_APP:ContractApp123@oracle:1521/FREEPDB1}"
       INGEST_ORCH_MYSQL_HOST: mysql
       INGEST_ORCH_MYSQL_PORT: "3306"
       INGEST_ORCH_MYSQL_USER: root
@@ -177,7 +211,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "3"
+          cpus: "1"
           memory: "8192M"
     depends_on:
       iggy:
@@ -195,7 +229,8 @@ services:
       IGGY_TOPIC_RETRY: jobs-retry
       IGGY_TOPIC_RESULTS: job-results
       IGGY_GROUP_ID: ckan-worker
-      IGGY_PARTITIONS: "3"
+      IGGY_JOB_PARTITIONS: "3"
+      IGGY_RETRY_PARTITIONS: "3"
       DUCKLAKE_DATABASE: ":memory:"
       DUCKLAKE_CATALOG_URI: "postgres:dbname=ducklake_catalog host=postgres user=postgres password=postgres"
       S3_ENDPOINT: rustfs:9000
@@ -237,12 +272,7 @@ services:
       IGGY_TOPIC: jobs
       IGGY_TOPIC_RETRY: jobs-retry
       IGGY_TOPIC_RESULTS: job-results
-      IGGY_PARTITIONS: "10"
-      INGEST_ORCH_MYSQL_HOST: mysql
-      INGEST_ORCH_MYSQL_PORT: "3306"
-      INGEST_ORCH_MYSQL_USER: root
-      INGEST_ORCH_MYSQL_PASSWORD: ${INGEST_ORCH_MYSQL_PASSWORD:-ckan_orch_pass}
-      INGEST_ORCH_MYSQL_DATABASE: ${INGEST_ORCH_MYSQL_DATABASE:-ingestor_orchestrator}
+      IGGY_RESULT_PARTITIONS: "1"
       DUCKLAKE_DATABASE: ":memory:"
       DUCKLAKE_CATALOG_URI: "postgres:dbname=ducklake_catalog host=postgres user=postgres password=postgres"
       S3_ENDPOINT: rustfs:9000
@@ -263,8 +293,8 @@ services:
     init: true
     restart: unless-stopped
     depends_on:
-      mysql:
-        condition: service_healthy
+      oracle-bootstrap:
+        condition: service_completed_successfully
       iggy:
         condition: service_healthy
       rustfs-setup:
@@ -272,6 +302,8 @@ services:
       db-init:
         condition: service_completed_successfully
     environment:
+      INGEST_ORCH_DB_PROVIDER: oracle
+      INGEST_ORCH_ORACLE_DSN: "${INGEST_ORCH_ORACLE_DSN:-oracle://CKAN_APP:ContractApp123@oracle:1521/FREEPDB1}"
       INGEST_ORCH_MYSQL_HOST: mysql
       INGEST_ORCH_MYSQL_PORT: "3306"
       INGEST_ORCH_MYSQL_USER: root
@@ -297,10 +329,6 @@ services:
       SICOM_ORCHESTRATOR_URL: http://api:8000
     networks:
       - orchestrator_net
-
-volumes:
-  mysql_data:
-  iggy_data:
 
 networks:
   orchestrator_net:

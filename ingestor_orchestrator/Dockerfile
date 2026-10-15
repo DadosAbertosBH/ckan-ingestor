@@ -14,6 +14,9 @@ WORKDIR /src/ingestor_orchestrator
 COPY ingestor_orchestrator/iggy-message-transport ./iggy-message-transport
 COPY ingestor_orchestrator/ingestor-job-message-contracts ./ingestor-job-message-contracts
 COPY ingestor_orchestrator/sicom-source-identity ./sicom-source-identity
+COPY ingestor_orchestrator/repository-contracts ./repository-contracts
+COPY ingestor_orchestrator/mysql-repositories ./mysql-repositories
+COPY ingestor_orchestrator/oracle-repositories ./oracle-repositories
 COPY ingestor_orchestrator/backend/go.mod ingestor_orchestrator/backend/go.sum ./backend/
 WORKDIR /src/ingestor_orchestrator/backend
 RUN go mod download

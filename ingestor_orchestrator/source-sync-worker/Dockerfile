@@ -5,6 +5,9 @@ WORKDIR /src/ingestor_orchestrator
 COPY ingestor_orchestrator/iggy-message-transport ./iggy-message-transport
 COPY ingestor_orchestrator/ingestor-job-message-contracts ./ingestor-job-message-contracts
 COPY ingestor_orchestrator/sicom-source-identity ./sicom-source-identity
+COPY ingestor_orchestrator/repository-contracts ./repository-contracts
+COPY ingestor_orchestrator/mysql-repositories ./mysql-repositories
+COPY ingestor_orchestrator/oracle-repositories ./oracle-repositories
 COPY ingestor_orchestrator/source-resource-catalog ./source-resource-catalog
 COPY ingestor_orchestrator/source-sync-message-contracts ./source-sync-message-contracts
 COPY ingestor_orchestrator/ckan-source-discovery ./ckan-source-discovery

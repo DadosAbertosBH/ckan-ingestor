@@ -6,7 +6,7 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-package mysqlstore
+package mysqlrepositories
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/app"
+	app "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/repository-contracts"
 )
 
 func TestQueryStoreAgainstMySQL(t *testing.T) {

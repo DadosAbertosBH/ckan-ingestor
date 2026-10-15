@@ -80,6 +80,7 @@ test-go:
     MYSQL_ROOT_PASSWORD: "integration-test"
     MYSQL_DATABASE: "orchestrator_test"
     INGEST_ORCH_MYSQL_HOST: "mysql"
+    INGEST_ORCH_DB_PROVIDER: "mysql"
     INGEST_ORCH_MYSQL_PASSWORD: "integration-test"
     INGEST_ORCH_MYSQL_DATABASE: "orchestrator_test"
     MYSQL_INTEGRATION_DSN: "root:integration-test@tcp(mysql:3306)/orchestrator_test?parseTime=true&loc=UTC"
@@ -96,10 +97,14 @@ test-go:
     - go vet ./...
     - go run ./cmd/orchestrator migrate
     - go test -race -coverprofile=coverage.out ./...
+    - cd ../mysql-repositories && go test -race ./...
   rules:
     - if: $CI_COMMIT_TAG
     - changes:
         - "ingestor_orchestrator/backend/**/*"
+        - "ingestor_orchestrator/repository-contracts/**/*"
+        - "ingestor_orchestrator/mysql-repositories/**/*"
+        - "ingestor_orchestrator/oracle-repositories/**/*"
         - "ingestor_orchestrator/Dockerfile"
 
 test-frontend:
@@ -140,6 +145,9 @@ test-ingestion-message-modules:
     - cd ../iggy-message-transport && go test -race ./...
     - cd ../source-sync-message-contracts && go test -race ./...
     - cd ../source-resource-catalog && go test -race ./...
+    - cd ../repository-contracts && go test -race ./...
+    - cd ../mysql-repositories && go test -race ./...
+    - cd ../oracle-repositories && go test -race ./...
     - cd ../ckan-source-discovery && go test -race ./...
     - cd ../source-sync-worker && go test -race ./...
   rules:
@@ -152,7 +160,13 @@ test-ingestion-message-modules:
         - "ingestor_orchestrator/source-resource-catalog/**/*"
         - "ingestor_orchestrator/ckan-source-discovery/**/*"
         - "ingestor_orchestrator/source-sync-worker/**/*"
+        - "ingestor_orchestrator/repository-contracts/**/*"
+        - "ingestor_orchestrator/mysql-repositories/**/*"
+        - "ingestor_orchestrator/oracle-repositories/**/*"
         - "ingestor_orchestrator/backend/**/*"
+        - "ingestor_orchestrator/repository-contracts/**/*"
+        - "ingestor_orchestrator/mysql-repositories/**/*"
+        - "ingestor_orchestrator/oracle-repositories/**/*"
         - "ingestor_orchestrator/sicom-crawler/**/*"
         - ".gitlab-ci.yml"
 
@@ -191,6 +205,9 @@ build-source-sync-worker:
     - if: $CI_COMMIT_TAG
     - changes:
         - "ingestor_orchestrator/source-sync-worker/**/*"
+        - "ingestor_orchestrator/repository-contracts/**/*"
+        - "ingestor_orchestrator/mysql-repositories/**/*"
+        - "ingestor_orchestrator/oracle-repositories/**/*"
         - "ingestor_orchestrator/source-resource-catalog/**/*"
         - "ingestor_orchestrator/ckan-source-discovery/**/*"
         - "ingestor_orchestrator/sicom-crawler/**/*"

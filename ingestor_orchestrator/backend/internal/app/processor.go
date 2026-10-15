@@ -25,7 +25,7 @@ import (
 	"time"
 )
 
-var ErrNotFound = errors.New("not found")
+var ErrNotFound = repositoryErrNotFound
 var ErrInvalidMessage = errors.New("invalid message")
 
 type Processor struct {

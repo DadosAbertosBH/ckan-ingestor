@@ -31,8 +31,7 @@ import (
 	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/config"
 	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/httpapi"
 	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/iggy"
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/migrations"
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/mysqlstore"
+	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/persistence"
 	runtimeapp "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/runtime"
 )
 
@@ -61,13 +60,13 @@ func run() error {
 	cfg := config.Load()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	store, err := mysqlstore.Open(cfg.MySQLDSN)
+	store, err := persistence.Open(cfg)
 	if err != nil {
 		return err
 	}
-	defer store.DB.Close()
+	defer store.Close()
 	if err := retryUntil(ctx, cfg.StartupTimeout, store.Ping); err != nil {
-		return fmt.Errorf("connect to MySQL: %w", err)
+		return fmt.Errorf("connect to %s: %w", cfg.DBProvider, err)
 	}
 
 	var driver *iggy.SDKDriver
@@ -120,15 +119,15 @@ func migrate() error {
 	cfg := config.Load()
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.StartupTimeout)
 	defer cancel()
-	store, err := mysqlstore.Open(cfg.MySQLDSN)
+	store, err := persistence.Open(cfg)
 	if err != nil {
 		return err
 	}
-	defer store.DB.Close()
+	defer store.Close()
 	if err := retryUntil(ctx, cfg.StartupTimeout, store.Ping); err != nil {
-		return fmt.Errorf("connect to MySQL: %w", err)
+		return fmt.Errorf("connect to %s: %w", cfg.DBProvider, err)
 	}
-	return migrations.Up(ctx, store.DB)
+	return store.Migrate(ctx)
 }
 
 func retryUntil(ctx context.Context, timeout time.Duration, operation func(context.Context) error) error {

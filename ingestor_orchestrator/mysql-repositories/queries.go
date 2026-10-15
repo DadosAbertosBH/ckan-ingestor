@@ -6,7 +6,7 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-package mysqlstore
+package mysqlrepositories
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/app"
+	app "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/repository-contracts"
 )
 
 const instanceColumns = `id,name,url,CASE WHEN source_type='sicom' THEN (SELECT COUNT(DISTINCT dataset_name) FROM latest_resource_job WHERE instance_id=ckan_instance.id) ELSE dataset_count END,CASE WHEN source_type='sicom' THEN (SELECT COUNT(*) FROM latest_resource_job WHERE instance_id=ckan_instance.id) ELSE resource_count END,last_metadata_synced,created_at,updated_at,source_type`

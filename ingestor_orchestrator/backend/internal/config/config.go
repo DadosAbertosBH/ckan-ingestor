@@ -24,6 +24,8 @@ import (
 )
 
 type Config struct {
+	DBProvider          string
+	OracleDSN           string
 	SICOMEnabled        bool
 	HTTPAddress         string
 	StaticDir           string
@@ -54,6 +56,8 @@ func Load() Config {
 	database := env("INGEST_ORCH_MYSQL_DATABASE", "ingestor_orchestrator")
 
 	return Config{
+		DBProvider:          env("INGEST_ORCH_DB_PROVIDER", "oracle"),
+		OracleDSN:           os.Getenv("INGEST_ORCH_ORACLE_DSN"),
 		SICOMEnabled:        env("INGEST_ORCH_SICOM_ENABLED", "false") == "true",
 		HTTPAddress:         env("INGEST_ORCH_GO_ADDRESS", ":8000"),
 		StaticDir:           env("INGEST_ORCH_STATIC_DIR", "/app/frontend"),

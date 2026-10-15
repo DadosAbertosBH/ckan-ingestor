@@ -1,5 +1,3 @@
-github.com/DATA-DOG/go-sqlmock v1.5.2 h1:OcvFkGmslmlZibjAjaHm3L//6LiuBgolP7OputlJIzU=
-github.com/DATA-DOG/go-sqlmock v1.5.2/go.mod h1:88MAG/4G7SMwSE3CeA0ZKzrT5CiOU3OJ+JlNzwDqpNU=
 github.com/apache/iggy/foreign/go v0.9.0 h1:8CBjR8VLYuaNMKl3o/JXBt+z9QEEPuHiGom47mXBU2M=
 github.com/apache/iggy/foreign/go v0.9.0/go.mod h1:RSWaRul6swJlvc3k876UHscyCAIlpfrzhMgX9xRpT1I=
 github.com/avast/retry-go/v5 v5.0.0 h1:kf1Qc2UsTZ4qq8elDymqfbISvkyMuhgRxuJqX2NHP7k=

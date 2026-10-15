@@ -1,10 +1,11 @@
 // Copyright (C) 2026 Noctcloud Desenvolvimento LTDA
 // Licensed under the GNU Affero General Public License, version 3 or later.
-package resourcecatalog
+package mysqlrepositories
 
 import (
 	"context"
 	"encoding/json"
+	app "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/repository-contracts"
 	"regexp"
 	"testing"
 
@@ -40,7 +41,7 @@ func TestSnapshotReplayPreparesJobsAndDeletionsWithoutPersistingMessages(t *test
 		if err := json.Unmarshal(messages[1].Payload, &payload); err != nil {
 			t.Fatal(err)
 		}
-		if payload["job_id"] != Job(Resource{ID: "r", SourceID: "source", Version: "v1"}).JobID {
+		if payload["job_id"] != app.JobForResource(Resource{ID: "r", SourceID: "source", Version: "v1"}).JobID {
 			t.Fatalf("job identity changed: %v", payload)
 		}
 	}
@@ -49,7 +50,7 @@ func TestSnapshotReplayPreparesJobsAndDeletionsWithoutPersistingMessages(t *test
 	}
 }
 
-var _ SourceResourceCatalogRepository = (*MySQLSourceResourceCatalogRepository)(nil)
+var _ app.SourceResourceCatalogRepository = (*MySQLSourceResourceCatalogRepository)(nil)
 
 func TestMySQLSourceUsesRegisteredConfiguration(t *testing.T) {
 	db, m, err := sqlmock.New()
@@ -108,7 +109,7 @@ func TestVersionStatusesReadsOnlyCompletedVersionsFromAPIJobLedger(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if statuses[ResourceID("one", "v1")] != "" || statuses[ResourceID("two", "v1")] != "completed" {
+	if statuses[app.ResourceID("one", "v1")] != "" || statuses[app.ResourceID("two", "v1")] != "completed" {
 		t.Fatalf("statuses=%v", statuses)
 	}
 	m.ExpectCommit()

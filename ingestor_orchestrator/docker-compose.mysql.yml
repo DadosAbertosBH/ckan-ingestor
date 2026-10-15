@@ -1,0 +1,35 @@
+services:
+  oracle:
+    profiles: [oracle]
+  oracle-bootstrap:
+    profiles: [oracle]
+  mysql:
+    profiles: !reset []
+  db-init:
+    depends_on: !override
+      mysql:
+        condition: service_healthy
+    environment:
+      INGEST_ORCH_DB_PROVIDER: mysql
+  api:
+    depends_on: !override
+      mysql:
+        condition: service_healthy
+      iggy:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      INGEST_ORCH_DB_PROVIDER: mysql
+  source-sync-worker:
+    depends_on: !override
+      mysql:
+        condition: service_healthy
+      iggy:
+        condition: service_healthy
+      rustfs-setup:
+        condition: service_completed_successfully
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      INGEST_ORCH_DB_PROVIDER: mysql

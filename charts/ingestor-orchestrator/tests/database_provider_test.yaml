@@ -1,0 +1,16 @@
+suite: Database provider configuration
+templates:
+  - configmap.yaml
+tests:
+  - it: selects Oracle by default
+    asserts:
+      - equal:
+          path: data.INGEST_ORCH_DB_PROVIDER
+          value: oracle
+  - it: allows selecting MySQL explicitly
+    set:
+      database.provider: mysql
+    asserts:
+      - equal:
+          path: data.INGEST_ORCH_DB_PROVIDER
+          value: mysql

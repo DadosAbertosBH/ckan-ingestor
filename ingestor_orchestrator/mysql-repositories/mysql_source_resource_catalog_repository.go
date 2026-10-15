@@ -1,6 +1,6 @@
 // Copyright (C) 2026 Noctcloud Desenvolvimento LTDA
 // Licensed under the GNU Affero General Public License, version 3 or later.
-package resourcecatalog
+package mysqlrepositories
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	jobmessage "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/ingestor-job-message-contracts"
+	app "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/repository-contracts"
 )
 
 // MySQLSourceResourceCatalogRepository persists source snapshots and reads the API job ledger.
@@ -32,7 +33,7 @@ func (r *MySQLSourceResourceCatalogRepository) Lock(ctx context.Context, id stri
 	if err != nil {
 		return nil, err
 	}
-	key := "source-sync:" + ResourceID(id, "lock")
+	key := "source-sync:" + app.ResourceID(id, "lock")
 	var acquired int
 	if err = conn.QueryRowContext(ctx, `SELECT GET_LOCK(?,0)`, key).Scan(&acquired); err != nil || acquired != 1 {
 		conn.Close()
@@ -86,10 +87,10 @@ func (r *MySQLSourceResourceCatalogRepository) versionStatuses(ctx context.Conte
 			if v.URL == "" || v.Version == "" {
 				continue
 			}
-			job := Job(v)
+			job := app.JobForResource(v)
 			conditions = append(conditions, "(instance_id=? AND resource_id=? AND source_version=?)")
 			args = append(args, v.SourceID, job.ResourceID, v.Version)
-			identities[v.SourceID+"\x00"+job.ResourceID+"\x00"+v.Version] = ResourceID(v.ID, v.Version)
+			identities[v.SourceID+"\x00"+job.ResourceID+"\x00"+v.Version] = app.ResourceID(v.ID, v.Version)
 		}
 		if len(conditions) == 0 {
 			continue
@@ -150,18 +151,18 @@ func (r *MySQLSourceResourceCatalogRepository) Complete(ctx context.Context, syn
 		if v.URL == "" || v.Version == "" {
 			continue
 		}
-		job := Job(v)
+		job := app.JobForResource(v)
 		job.CKANURL = s.URL
 		// The source's original ID is preserved for DataStore access, while identity is namespaced.
-		versionID := ResourceID(v.ID, v.Version)
+		versionID := app.ResourceID(v.ID, v.Version)
 		if statuses[versionID] == "completed" {
 			continue
 		}
 		pending := jobmessage.Pending(job)
-		if err = appendMessage(&messages, r.ResultsTopic, job.ResourceID, ResourceID(syncID, job.JobID+":pending"), pending); err != nil {
+		if err = appendMessage(&messages, r.ResultsTopic, job.ResourceID, app.ResourceID(syncID, job.JobID+":pending"), pending); err != nil {
 			return counts, messages, err
 		}
-		if err = appendMessage(&messages, r.JobsTopic, job.ResourceID, ResourceID(syncID, job.JobID+":job"), job); err != nil {
+		if err = appendMessage(&messages, r.JobsTopic, job.ResourceID, app.ResourceID(syncID, job.JobID+":job"), job); err != nil {
 			return counts, messages, err
 		}
 		counts.Planned++
@@ -192,13 +193,13 @@ func (r *MySQLSourceResourceCatalogRepository) Complete(ctx context.Context, syn
 			continue
 		}
 		counts.DeletedResources++
-		j := jobmessage.WorkerJob{JobID: ResourceID(syncID, a.id+":deleted"), ResourceID: a.id, InstanceID: s.ID, DatasetName: a.dataset, ResourceName: a.title, CKANURL: s.URL}
+		j := jobmessage.WorkerJob{JobID: app.ResourceID(syncID, a.id+":deleted"), ResourceID: a.id, InstanceID: s.ID, DatasetName: a.dataset, ResourceName: a.title, CKANURL: s.URL}
 		pending := jobmessage.Pending(j)
-		if err = appendMessage(&messages, r.ResultsTopic, j.ResourceID, ResourceID(j.JobID, "pending"), pending); err != nil {
+		if err = appendMessage(&messages, r.ResultsTopic, j.ResourceID, app.ResourceID(j.JobID, "pending"), pending); err != nil {
 			return counts, messages, err
 		}
 		pending.Status = "DELETED"
-		if err = appendMessage(&messages, r.ResultsTopic, j.ResourceID, ResourceID(j.JobID, "deleted"), pending); err != nil {
+		if err = appendMessage(&messages, r.ResultsTopic, j.ResourceID, app.ResourceID(j.JobID, "deleted"), pending); err != nil {
 			return counts, messages, err
 		}
 	}
@@ -207,7 +208,7 @@ func (r *MySQLSourceResourceCatalogRepository) Complete(ctx context.Context, syn
 		return counts, messages, err
 	}
 	result := map[string]any{"sync_id": syncID, "instance_id": s.ID, "instance_name": s.Name, "status": "success", "total_packages": counts.DatasetCount, "dataset_count": counts.DatasetCount, "resource_count": counts.ResourceCount, "new_datasets": counts.NewDatasets, "new_resources": counts.NewResources, "updated_datasets": counts.UpdatedDatasets, "updated_resources": counts.UpdatedResources, "deleted_datasets": counts.DeletedDatasets, "deleted_resources": counts.DeletedResources, "outdated_resources": counts.Planned}
-	if err = appendMessage(&messages, r.SyncResultsTopic, s.ID, ResourceID(syncID, "success"), result); err != nil {
+	if err = appendMessage(&messages, r.SyncResultsTopic, s.ID, app.ResourceID(syncID, "success"), result); err != nil {
 		return counts, messages, err
 	}
 	err = tx.Commit()

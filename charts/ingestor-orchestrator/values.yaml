@@ -211,6 +211,16 @@ postgres:
     # -- Cron schedule for automated backups (leave empty to disable scheduled backups)
     schedule: ""
 
+# -- Database provider shared by API, migrations and source sync worker.
+database:
+  provider: oracle
+
+# -- Oracle configuration (external Autonomous database).
+oracle:
+  dsn: ""
+  walletSecretName: ""
+  walletMountPath: /oracle-wallet
+
 # -- MySQL configuration (external, not deployed by this chart)
 mysql:
   host: "mysql"

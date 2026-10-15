@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package mysqlstore
+package mysqlrepositories
 
 import (
 	"context"
@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/app"
+	app "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/repository-contracts"
 )
 
 type interfaceTx = app.Tx

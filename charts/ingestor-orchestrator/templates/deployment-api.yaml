@@ -34,6 +34,12 @@ spec:
           imagePullPolicy: {{ .Values.api.image.pullPolicy | default .Values.global.image.pullPolicy }}
           command: ["/usr/local/bin/orchestrator-go"]
           args: ["migrate"]
+          {{- if .Values.oracle.walletSecretName }}
+          volumeMounts:
+            - name: oracle-wallet
+              mountPath: {{ .Values.oracle.walletMountPath }}
+              readOnly: true
+          {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "ingestor-orchestrator.fullname" . }}
@@ -52,6 +58,12 @@ spec:
             - name: http
               containerPort: 8000
               protocol: TCP
+          {{- if .Values.oracle.walletSecretName }}
+          volumeMounts:
+            - name: oracle-wallet
+              mountPath: {{ .Values.oracle.walletMountPath }}
+              readOnly: true
+          {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "ingestor-orchestrator.fullname" . }}
@@ -72,4 +84,10 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}
+      {{- if .Values.oracle.walletSecretName }}
+      volumes:
+        - name: oracle-wallet
+          secret:
+            secretName: {{ .Values.oracle.walletSecretName }}
+      {{- end }}
 {{- end }}

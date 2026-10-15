@@ -8,21 +8,14 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/google/uuid"
 	jobmessage "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/ingestor-job-message-contracts"
+	repositories "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/repository-contracts"
 )
 
-type Source struct{ ID, Name, URL, Type string }
-type Resource struct {
-	ID, SourceID, ParentID, Kind, Title, Description, PageURL string
-	URL, Format, Version, DatasetName                         string
-	DatastoreActive                                           bool
-}
-type Counts struct{ NewDatasets, NewResources, UpdatedDatasets, UpdatedResources, DeletedDatasets, DeletedResources, DatasetCount, ResourceCount, Planned int64 }
-type Outgoing struct {
-	ID, Topic, Key string
-	Payload        []byte
-}
+type Source = repositories.Source
+type Resource = repositories.Resource
+type Counts = repositories.Counts
+type Outgoing = repositories.Outgoing
 
 type Adapter interface {
 	Discover(context.Context, Source, func(Resource) error) error
@@ -41,11 +34,10 @@ const maximumResourcesPerObservationBatch = 200
 
 // ResourceID builds a deterministic identifier for synthetic resources and messages.
 func ResourceID(source, key string) string {
-	return uuid.NewSHA1(uuid.NameSpaceURL, []byte(source+":"+key)).String()
+	return repositories.ResourceID(source, key)
 }
 func Job(r Resource) jobmessage.WorkerJob {
-	jobID := ResourceID(r.SourceID, r.ID+":"+r.Version)
-	return jobmessage.WorkerJob{JobID: jobID, ResourceID: r.ID, InstanceID: r.SourceID, PackageID: r.ParentID, DatasetName: r.DatasetName, ResourceName: r.Title, ResourceURL: r.URL, ResourceFormat: r.Format, SourceVersion: r.Version, DatastoreActive: r.DatastoreActive, ExternalResourceID: r.ID}
+	return repositories.JobForResource(r)
 }
 func (w *Worker) Sync(ctx context.Context, syncID, sourceID, sourceType string) error {
 	slog.InfoContext(ctx, "source sync started", "sync_id", syncID, "source_id", sourceID, "source_type", sourceType)

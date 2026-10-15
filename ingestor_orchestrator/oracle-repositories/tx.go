@@ -14,18 +14,19 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package mysqlstore
+package oraclerepositories
 
 import (
 	"context"
 	"database/sql"
+	go_ora "github.com/sijms/go-ora/v2"
 
 	"github.com/google/uuid"
-	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/app"
+	app "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/repository-contracts"
 )
 
 func (s *txStore) Job(ctx context.Context, id string) (*app.Job, error) {
-	row := s.tx.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM ckan_data_job j LEFT JOIN ckan_instance i ON i.id=j.instance_id WHERE j.id=? FOR UPDATE`, id)
+	row := queryRowContext(ctx, s.tx, `SELECT `+jobColumns+` FROM ckan_data_job j LEFT JOIN ckan_instance i ON i.id=j.instance_id WHERE j.id=? FOR UPDATE OF j.id`, id)
 	var v app.Job
 	var name, url, format, instanceName, instanceURL, broker, stream, topic, parentJob, parentResource, sourceVersion sql.NullString
 	var started, completed sql.NullTime
@@ -58,19 +59,19 @@ func (s *txStore) Job(ctx context.Context, id string) (*app.Job, error) {
 }
 
 func (s *txStore) InsertJob(ctx context.Context, v *app.Job) error {
-	_, err := s.tx.ExecContext(ctx, `INSERT INTO ckan_data_job (id,resource_id,resource_name,resource_url,resource_format,dataset_name,status,idempotency_key,instance_id,ckan_url,datastore_active,created_at,updated_at,started_at,completed_at,broker_type,message_stream,message_topic,message_partition,message_offset,parent_job_id,parent_resource_id,child_index,total_child_count,source_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, v.ID, v.ResourceID, v.ResourceName, v.ResourceURL, v.ResourceFormat, v.DatasetName, v.Status, v.IdempotencyKey, v.InstanceID, v.CKANURL, v.DatastoreActive, v.CreatedAt, v.UpdatedAt, v.StartedAt, v.CompletedAt, v.BrokerType, v.MessageStream, v.MessageTopic, v.MessagePartition, v.MessageOffset, v.ParentJobID, v.ParentResourceID, v.ChildIndex, v.TotalChildCount, v.SourceVersion)
+	_, err := execContext(ctx, s.tx, `INSERT INTO ckan_data_job (id,resource_id,resource_name,resource_url,resource_format,dataset_name,status,idempotency_key,instance_id,ckan_url,datastore_active,created_at,updated_at,started_at,completed_at,broker_type,message_stream,message_topic,message_partition,message_offset,parent_job_id,parent_resource_id,child_index,total_child_count,source_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, v.ID, v.ResourceID, v.ResourceName, v.ResourceURL, v.ResourceFormat, v.DatasetName, v.Status, v.IdempotencyKey, v.InstanceID, v.CKANURL, v.DatastoreActive, v.CreatedAt, v.UpdatedAt, v.StartedAt, v.CompletedAt, v.BrokerType, v.MessageStream, v.MessageTopic, v.MessagePartition, v.MessageOffset, v.ParentJobID, v.ParentResourceID, v.ChildIndex, v.TotalChildCount, v.SourceVersion)
 	return err
 }
 func (s *txStore) UpdateJob(ctx context.Context, v *app.Job) error {
-	_, err := s.tx.ExecContext(ctx, `UPDATE ckan_data_job SET status=?,started_at=?,completed_at=?,updated_at=?,total_child_count=? WHERE id=?`, v.Status, v.StartedAt, v.CompletedAt, v.UpdatedAt, v.TotalChildCount, v.ID)
+	_, err := execContext(ctx, s.tx, `UPDATE ckan_data_job SET status=?,started_at=?,completed_at=?,updated_at=?,total_child_count=? WHERE id=?`, v.Status, v.StartedAt, v.CompletedAt, v.UpdatedAt, v.TotalChildCount, v.ID)
 	return err
 }
 func (s *txStore) InsertResult(ctx context.Context, v *app.JobResult) error {
-	_, err := s.tx.ExecContext(ctx, `INSERT INTO ckan_data_job_result (id,job_id,success,status,error_message,error_trace,dataset_preview,rows_processed,expected_rows,resource_size,encoding,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, v.ID, v.JobID, v.Success, v.Status, v.ErrorMessage, v.ErrorTrace, nullableJSON(v.DatasetPreview), v.RowsProcessed, v.ExpectedRows, v.ResourceSize, v.Encoding, v.CreatedAt)
+	_, err := execContext(ctx, s.tx, `INSERT INTO ckan_data_job_result (id,job_id,success,status,error_message,error_trace,dataset_preview,rows_processed,expected_rows,resource_size,encoding,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, v.ID, v.JobID, v.Success, v.Status, v.ErrorMessage, v.ErrorTrace, nullableJSON(v.DatasetPreview), v.RowsProcessed, v.ExpectedRows, v.ResourceSize, v.Encoding, v.CreatedAt)
 	return err
 }
 func (s *txStore) Latest(ctx context.Context, id string) (*app.LatestResource, error) {
-	row := s.tx.QueryRowContext(ctx, `SELECT resource_id,latest_job_id,instance_id,resource_name,resource_url,resource_format,dataset_name,status,created_at,updated_at FROM latest_resource_job WHERE resource_id=? FOR UPDATE`, id)
+	row := queryRowContext(ctx, s.tx, `SELECT resource_id,latest_job_id,instance_id,resource_name,resource_url,resource_format,dataset_name,status,created_at,updated_at FROM latest_resource_job WHERE resource_id=? FOR UPDATE`, id)
 	var v app.LatestResource
 	var name, url, format sql.NullString
 	if err := row.Scan(&v.ResourceID, &v.LatestJobID, &v.InstanceID, &name, &url, &format, &v.DatasetName, &v.Status, &v.CreatedAt, &v.UpdatedAt); err != nil {
@@ -80,11 +81,11 @@ func (s *txStore) Latest(ctx context.Context, id string) (*app.LatestResource, e
 	return &v, nil
 }
 func (s *txStore) PutLatest(ctx context.Context, v *app.LatestResource) error {
-	_, err := s.tx.ExecContext(ctx, `INSERT INTO latest_resource_job (resource_id,latest_job_id,instance_id,resource_name,resource_url,resource_format,dataset_name,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE latest_job_id=VALUES(latest_job_id),instance_id=VALUES(instance_id),resource_name=VALUES(resource_name),resource_url=VALUES(resource_url),resource_format=VALUES(resource_format),dataset_name=VALUES(dataset_name),status=VALUES(status),updated_at=VALUES(updated_at)`, v.ResourceID, v.LatestJobID, v.InstanceID, v.ResourceName, v.ResourceURL, v.ResourceFormat, v.DatasetName, v.Status, v.CreatedAt, v.UpdatedAt)
+	_, err := execContext(ctx, s.tx, `INSERT INTO latest_resource_job (resource_id,latest_job_id,instance_id,resource_name,resource_url,resource_format,dataset_name,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE latest_job_id=VALUES(latest_job_id),instance_id=VALUES(instance_id),resource_name=VALUES(resource_name),resource_url=VALUES(resource_url),resource_format=VALUES(resource_format),dataset_name=VALUES(dataset_name),status=VALUES(status),updated_at=VALUES(updated_at)`, v.ResourceID, v.LatestJobID, v.InstanceID, v.ResourceName, v.ResourceURL, v.ResourceFormat, v.DatasetName, v.Status, v.CreatedAt, v.UpdatedAt)
 	return err
 }
 func (s *txStore) Terminal(ctx context.Context, id string) (*app.TerminalState, error) {
-	row := s.tx.QueryRowContext(ctx, `SELECT resource_id,last_terminal_job_id,last_terminal_status,last_terminal_at,last_successful_job_id FROM last_terminal_status WHERE resource_id=? FOR UPDATE`, id)
+	row := queryRowContext(ctx, s.tx, `SELECT resource_id,last_terminal_job_id,last_terminal_status,last_terminal_at,last_successful_job_id FROM last_terminal_status WHERE resource_id=? FOR UPDATE`, id)
 	var v app.TerminalState
 	var success sql.NullString
 	if err := row.Scan(&v.ResourceID, &v.LastTerminalJobID, &v.LastTerminalStatus, &v.LastTerminalAt, &success); err != nil {
@@ -94,34 +95,34 @@ func (s *txStore) Terminal(ctx context.Context, id string) (*app.TerminalState, 
 	return &v, nil
 }
 func (s *txStore) PutTerminal(ctx context.Context, v *app.TerminalState) error {
-	_, err := s.tx.ExecContext(ctx, `INSERT INTO last_terminal_status (resource_id,last_terminal_job_id,last_terminal_status,last_terminal_at,last_successful_job_id) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE last_terminal_job_id=VALUES(last_terminal_job_id),last_terminal_status=VALUES(last_terminal_status),last_terminal_at=VALUES(last_terminal_at),last_successful_job_id=VALUES(last_successful_job_id)`, v.ResourceID, v.LastTerminalJobID, v.LastTerminalStatus, v.LastTerminalAt, v.LastSuccessfulJobID)
+	_, err := execContext(ctx, s.tx, `INSERT INTO last_terminal_status (resource_id,last_terminal_job_id,last_terminal_status,last_terminal_at,last_successful_job_id) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE last_terminal_job_id=VALUES(last_terminal_job_id),last_terminal_status=VALUES(last_terminal_status),last_terminal_at=VALUES(last_terminal_at),last_successful_job_id=VALUES(last_successful_job_id)`, v.ResourceID, v.LastTerminalJobID, v.LastTerminalStatus, v.LastTerminalAt, v.LastSuccessfulJobID)
 	return err
 }
 func (s *txStore) AddLabel(ctx context.Context, resourceID, label string) error {
-	_, err := s.tx.ExecContext(ctx, `INSERT IGNORE INTO resource_metadata_label (id,resource_id,label,created_at) VALUES (?,?,?,UTC_TIMESTAMP())`, uuid.NewString(), resourceID, label)
+	_, err := execContext(ctx, s.tx, `INSERT IGNORE INTO resource_metadata_label (id,resource_id,label,created_at) VALUES (?,?,?,UTC_TIMESTAMP())`, uuid.NewString(), resourceID, label)
 	return err
 }
 func (s *txStore) RemoveLabel(ctx context.Context, resourceID, label string) error {
-	_, err := s.tx.ExecContext(ctx, `DELETE FROM resource_metadata_label WHERE resource_id=? AND label=?`, resourceID, label)
+	_, err := execContext(ctx, s.tx, `DELETE FROM resource_metadata_label WHERE resource_id=? AND label=?`, resourceID, label)
 	return err
 }
 func (s *txStore) RemoveLabelsWithPrefix(ctx context.Context, resourceID, prefix string) error {
-	_, err := s.tx.ExecContext(ctx, `DELETE FROM resource_metadata_label WHERE resource_id=? AND label LIKE ?`, resourceID, prefix+"%")
+	_, err := execContext(ctx, s.tx, `DELETE FROM resource_metadata_label WHERE resource_id=? AND label LIKE ?`, resourceID, prefix+"%")
 	return err
 }
 func (s *txStore) PutCSVHint(ctx context.Context, resourceID, delimiter string) error {
-	_, err := s.tx.ExecContext(ctx, `INSERT INTO csv_hint (resource_id,delimiter) VALUES (?,?) ON DUPLICATE KEY UPDATE delimiter=VALUES(delimiter)`, resourceID, delimiter)
+	_, err := execContext(ctx, s.tx, `INSERT INTO csv_hint (resource_id,delimiter) VALUES (?,?) ON DUPLICATE KEY UPDATE delimiter=VALUES(delimiter)`, resourceID, delimiter)
 	return err
 }
 func (s *txStore) CSVHint(ctx context.Context, resourceID string) (*string, error) {
 	var v string
-	if err := s.tx.QueryRowContext(ctx, `SELECT delimiter FROM csv_hint WHERE resource_id=?`, resourceID).Scan(&v); err != nil {
+	if err := queryRowContext(ctx, s.tx, `SELECT delimiter FROM csv_hint WHERE resource_id=?`, resourceID).Scan(&v); err != nil {
 		return nil, translateNotFound(err)
 	}
 	return &v, nil
 }
 func (s *txStore) Sync(ctx context.Context, id string) (*app.MetadataSync, error) {
-	row := s.tx.QueryRowContext(ctx, `SELECT id,instance_id,start_time,end_time,status,error_message,total_packages,new_datasets,new_resources,updated_datasets,updated_resources,outdated_resources,deleted_datasets,deleted_resources FROM metadata_sync WHERE id=? FOR UPDATE`, id)
+	row := queryRowContext(ctx, s.tx, `SELECT id,instance_id,start_time,end_time,status,error_message,total_packages,new_datasets,new_resources,updated_datasets,updated_resources,outdated_resources,deleted_datasets,deleted_resources FROM metadata_sync WHERE id=? FOR UPDATE`, id)
 	var v app.MetadataSync
 	var end sql.NullTime
 	var status, message sql.NullString
@@ -135,15 +136,15 @@ func (s *txStore) Sync(ctx context.Context, id string) (*app.MetadataSync, error
 	return &v, nil
 }
 func (s *txStore) InsertSync(ctx context.Context, v *app.MetadataSync) error {
-	_, err := s.tx.ExecContext(ctx, `INSERT INTO metadata_sync (id,instance_id,start_time,status,total_packages,new_datasets,new_resources,updated_datasets,updated_resources,outdated_resources,deleted_datasets,deleted_resources) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, v.ID, v.InstanceID, v.StartTime, v.Status, 0, 0, 0, 0, 0, 0, 0, 0)
+	_, err := execContext(ctx, s.tx, `INSERT INTO metadata_sync (id,instance_id,start_time,status,total_packages,new_datasets,new_resources,updated_datasets,updated_resources,outdated_resources,deleted_datasets,deleted_resources) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, v.ID, v.InstanceID, v.StartTime, v.Status, 0, 0, 0, 0, 0, 0, 0, 0)
 	return err
 }
 func (s *txStore) UpdateSync(ctx context.Context, v *app.MetadataSync) error {
-	_, err := s.tx.ExecContext(ctx, `UPDATE metadata_sync SET end_time=?,status=?,error_message=?,total_packages=?,new_datasets=?,new_resources=?,updated_datasets=?,updated_resources=?,outdated_resources=?,deleted_datasets=?,deleted_resources=? WHERE id=?`, v.EndTime, v.Status, v.ErrorMessage, v.TotalPackages, v.NewDatasets, v.NewResources, v.UpdatedDatasets, v.UpdatedResources, v.OutdatedResources, v.DeletedDatasets, v.DeletedResources, v.ID)
+	_, err := execContext(ctx, s.tx, `UPDATE metadata_sync SET end_time=?,status=?,error_message=?,total_packages=?,new_datasets=?,new_resources=?,updated_datasets=?,updated_resources=?,outdated_resources=?,deleted_datasets=?,deleted_resources=? WHERE id=?`, v.EndTime, v.Status, v.ErrorMessage, v.TotalPackages, v.NewDatasets, v.NewResources, v.UpdatedDatasets, v.UpdatedResources, v.OutdatedResources, v.DeletedDatasets, v.DeletedResources, v.ID)
 	return err
 }
 func (s *txStore) Instance(ctx context.Context, id string) (*app.Instance, error) {
-	row := s.tx.QueryRowContext(ctx, `SELECT id,name,url,dataset_count,resource_count,last_metadata_synced,source_type FROM ckan_instance WHERE id=? FOR UPDATE`, id)
+	row := queryRowContext(ctx, s.tx, `SELECT id,name,url,dataset_count,resource_count,last_metadata_synced,source_type FROM ckan_instance WHERE id=? FOR UPDATE`, id)
 	var v app.Instance
 	var synced sql.NullTime
 	if err := row.Scan(&v.ID, &v.Name, &v.URL, &v.DatasetCount, &v.ResourceCount, &synced, &v.SourceType); err != nil {
@@ -153,14 +154,14 @@ func (s *txStore) Instance(ctx context.Context, id string) (*app.Instance, error
 	return &v, nil
 }
 func (s *txStore) UpdateInstance(ctx context.Context, v *app.Instance) error {
-	_, err := s.tx.ExecContext(ctx, `UPDATE ckan_instance SET dataset_count=?,resource_count=?,last_metadata_synced=? WHERE id=?`, v.DatasetCount, v.ResourceCount, v.LastMetadataSynced, v.ID)
+	_, err := execContext(ctx, s.tx, `UPDATE ckan_instance SET dataset_count=?,resource_count=?,last_metadata_synced=? WHERE id=?`, v.DatasetCount, v.ResourceCount, v.LastMetadataSynced, v.ID)
 	return err
 }
 func nullableJSON(value []byte) any {
 	if len(value) == 0 {
 		return nil
 	}
-	return value
+	return go_ora.Clob{String: string(value), Valid: true}
 }
 
 var _ app.Tx = (*txStore)(nil)
