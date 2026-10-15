@@ -182,8 +182,14 @@ postgres:
   service:
     annotations: {}
   storage:
-    size: "50Gi"
+    size: "10Gi"
     storageClass: ""
+  # -- Bootstrap configuration. When recovery.backupName is set, the cluster
+  #    bootstraps from that backup (CloudNativePG bootstrap.recovery); leave
+  #    empty for the default initdb bootstrap.
+  bootstrap:
+    recovery:
+      backupName: ""
   resources:
     requests:
       memory: "256Mi"

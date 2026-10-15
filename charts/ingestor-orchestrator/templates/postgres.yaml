@@ -8,6 +8,12 @@ metadata:
     app.kubernetes.io/component: postgres
 spec:
   instances: {{ .Values.postgres.instances }}
+  {{- if .Values.postgres.bootstrap.recovery.backupName }}
+  bootstrap:
+    recovery:
+      backup:
+        name: {{ .Values.postgres.bootstrap.recovery.backupName }}
+  {{- end }}
   {{- with .Values.postgres.service.annotations }}
   managed:
     services:
