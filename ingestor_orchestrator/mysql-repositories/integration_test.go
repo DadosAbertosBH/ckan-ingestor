@@ -91,7 +91,7 @@ func TestQueryStoreAgainstMySQL(t *testing.T) {
 	if err != nil || detail.Results == nil || len(*detail.Results) != 1 {
 		t.Fatalf("job=%+v err=%v", detail, err)
 	}
-	resources, err := store.ListResources(ctx, app.ResourceQuery{Limit: 50})
+	resources, err := store.ListResources(ctx, app.ResourceQuery{InstanceID: instance.ID, Limit: 50})
 	if err != nil || len(resources) != 1 {
 		t.Fatalf("resources=%+v err=%v", resources, err)
 	}
@@ -99,7 +99,7 @@ func TestQueryStoreAgainstMySQL(t *testing.T) {
 	if err != nil || resource.Preview == nil {
 		t.Fatalf("resource=%+v err=%v", resource, err)
 	}
-	datasets, err := store.ListDatasets(ctx, app.ResourceQuery{Limit: 50})
+	datasets, err := store.ListDatasets(ctx, app.ResourceQuery{InstanceID: instance.ID, Limit: 50})
 	if err != nil || len(datasets) != 1 || datasets[0].CompletedResources != 1 {
 		t.Fatalf("datasets=%+v err=%v", datasets, err)
 	}
