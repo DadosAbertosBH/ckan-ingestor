@@ -31,4 +31,7 @@ func TestOracleMigrationCommitsEachCSVHintBatch(t *testing.T) {
 	if !strings.Contains(string(data), "VALUES(s.resource_id,s.delimiter)") {
 		t.Fatal("CSV hint merge must use the source delimiter in its INSERT clause")
 	}
+	if strings.Contains(string(data), "sql.Named(\"ids\"") {
+		t.Fatal("CSV hint migration must avoid vectorized Oracle binds")
+	}
 }

@@ -85,12 +85,10 @@ func migrateCSVHintBatch(ctx context.Context, db *sql.DB, batch [][2]string) err
 		return err
 	}
 	defer tx.Rollback()
-	ids, delimiters := make([]string, len(batch)), make([]string, len(batch))
-	for i, h := range batch {
-		ids[i], delimiters[i] = h[0], h[1]
-	}
-	if _, err = tx.ExecContext(ctx, "MERGE INTO csv_hint t USING(SELECT :ids resource_id,:delimiters delimiter FROM dual) s ON(t.resource_id=s.resource_id) WHEN MATCHED THEN UPDATE SET t.delimiter=s.delimiter WHEN NOT MATCHED THEN INSERT(resource_id,delimiter) VALUES(s.resource_id,s.delimiter)", sql.Named("ids", ids), sql.Named("delimiters", delimiters)); err != nil {
-		return err
+	for _, hint := range batch {
+		if _, err = tx.ExecContext(ctx, "MERGE INTO csv_hint t USING(SELECT :resource_id resource_id,:delimiter delimiter FROM dual) s ON(t.resource_id=s.resource_id) WHEN MATCHED THEN UPDATE SET t.delimiter=s.delimiter WHEN NOT MATCHED THEN INSERT(resource_id,delimiter) VALUES(s.resource_id,s.delimiter)", sql.Named("resource_id", hint[0]), sql.Named("delimiter", hint[1])); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
