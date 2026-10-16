@@ -271,11 +271,7 @@ fn run_conversion(
     job: &JobMessage,
     s3: &S3DocumentIngestor,
 ) -> Result<ConversionOutcome, anyhow::Error> {
-    let version = if job.source_version.is_empty() {
-        job.job_id.as_str()
-    } else {
-        job.source_version.as_str()
-    };
+    let version = conversion_version(job);
     if job.parent_job_id.is_none()
         && runtime.block_on(uploader.exists(&job.resource_id, version))?
     {
@@ -382,6 +378,10 @@ fn run_conversion(
             Ok(ConversionOutcome::Result(result))
         }
     }
+}
+
+fn conversion_version(job: &JobMessage) -> &str {
+    job.source_version.as_str()
 }
 
 fn copy_child_context(job: &JobMessage, result: &mut JobResultMessage) {
@@ -560,7 +560,8 @@ mod tests {
     use reqwest::StatusCode;
 
     use super::{
-        child_job, job_result_from_deleted, job_result_from_failure, job_result_from_success,
+        child_job, conversion_version, job_result_from_deleted, job_result_from_failure,
+        job_result_from_success,
     };
     use crate::messages::JobStatus;
 
@@ -602,6 +603,18 @@ mod tests {
         let reordered = child_job(&parent, source(), 1, 2);
         assert_eq!(first.job_id, reordered.job_id);
         assert_eq!(first.resource_id, reordered.resource_id);
+    }
+
+    #[test]
+    fn conversion_uses_an_empty_source_version_as_the_artifact_version() {
+        let job: ckan_ingestor_worker_lib::JobMessage = serde_json::from_value(serde_json::json!({
+            "job_id": "job-id", "resource_id": "resource-id", "source_version": "",
+            "package_id": "dataset", "ckan_url": "https://example.test", "resource_url": "https://example.test/file.csv",
+            "resource_format": "CSV", "datastore_active": false
+        }))
+        .unwrap();
+
+        assert_eq!(conversion_version(&job), "");
     }
 
     #[test]

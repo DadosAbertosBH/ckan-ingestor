@@ -7,6 +7,7 @@ COPY ingestor_orchestrator/iggy-message-transport ./iggy-message-transport
 COPY ingestor_orchestrator/ingestor-job-message-contracts ./ingestor-job-message-contracts
 COPY ingestor_orchestrator/sicom-source-identity ./sicom-source-identity
 COPY ingestor_orchestrator/source-resource-catalog ./source-resource-catalog
+COPY ingestor_orchestrator/repository-contracts ./repository-contracts
 COPY ingestor_orchestrator/sicom-crawler/go.mod ingestor_orchestrator/sicom-crawler/go.sum ./sicom-crawler/
 WORKDIR /src/ingestor_orchestrator/sicom-crawler
 RUN go mod download
@@ -16,10 +17,9 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags=
 FROM lightpanda/browser:nightly AS lightpanda
 
 FROM debian:trixie-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tini \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=go-builder /out/sicom-crawler /usr/local/bin/sicom-crawler
 COPY --from=lightpanda /bin/lightpanda /usr/local/bin/lightpanda
 ENV LIGHTPANDA_DISABLE_TELEMETRY=true LIGHTPANDA_DISABLE_CORE_DUMP=true XDG_CACHE_HOME=/tmp XDG_DATA_HOME=/tmp
 USER 10001
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/sicom-crawler"]
+ENTRYPOINT ["/usr/local/bin/sicom-crawler"]

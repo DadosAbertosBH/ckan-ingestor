@@ -19,9 +19,9 @@ RUN go mod download && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out
 FROM lightpanda/browser:nightly AS lightpanda
 
 FROM debian:trixie-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tini && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=lightpanda /bin/lightpanda /usr/local/bin/lightpanda
 COPY --from=builder /out/source-sync-worker /usr/local/bin/source-sync-worker
-ENV LIGHTPANDA_DISABLE_TELEMETRY=true LIGHTPANDA_DISABLE_CORE_DUMP=true XDG_CACHE_HOME=/tmp XDG_DATA_HOME=/tmp TINI_SUBREAPER=true
+ENV LIGHTPANDA_DISABLE_TELEMETRY=true LIGHTPANDA_DISABLE_CORE_DUMP=true XDG_CACHE_HOME=/tmp XDG_DATA_HOME=/tmp
 USER 10001
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/source-sync-worker"]
+ENTRYPOINT ["/usr/local/bin/source-sync-worker"]

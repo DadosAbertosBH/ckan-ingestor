@@ -10,6 +10,8 @@ _old/ingestor/.env
 *.wal
 .tmp_dagster*
 /.idea/workspace.xml
+ducklake_listing.sqlite
+ducklake_add_data_files/
 
 # ingestor_orchestrator frontend
 ingestor_orchestrator/frontend/node_modules/
