@@ -28,4 +28,7 @@ func TestOracleMigrationCommitsEachCSVHintBatch(t *testing.T) {
 	if !strings.Contains(string(data), "func migrateCSVHintBatch") || !strings.Contains(string(data), "return tx.Commit()") {
 		t.Fatal("CSV hint batches must commit independently to avoid Oracle parallel DML transaction errors")
 	}
+	if !strings.Contains(string(data), "VALUES(s.resource_id,s.delimiter)") {
+		t.Fatal("CSV hint merge must use the source delimiter in its INSERT clause")
+	}
 }
