@@ -53,12 +53,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 		{app.ResourceID("seed", "mg"), "Minas Gerais", "https://dados.mg.gov.br/", "ckan"},
 		{"4be9dd37-1f28-540d-a7c3-104e4f5a54e8", "TCE-MG SICOM", "https://dadosabertos.tce.mg.gov.br/", "sicom"},
 	} {
-		_, err = tx.ExecContext(ctx, "MERGE INTO ckan_instance t USING (SELECT :id id,:name name,:url url,:kind source_type FROM dual) s ON(t.name=s.name) WHEN NOT MATCHED THEN INSERT(id,name,url,source_type,created_at,updated_at) VALUES(s.id,s.name,s.url,s.source_type,SYS_EXTRACT_UTC(SYSTIMESTAMP),SYS_EXTRACT_UTC(SYSTIMESTAMP))", sql.Named("id", source.id), sql.Named("name", source.name), sql.Named("url", source.url), sql.Named("kind", source.kind))
+		_, err = tx.ExecContext(ctx, "MERGE /*+ DISABLE_PARALLEL_DML */ INTO ckan_instance t USING (SELECT :id id,:name name,:url url,:kind source_type FROM dual) s ON(t.name=s.name) WHEN NOT MATCHED THEN INSERT(id,name,url,source_type,created_at,updated_at) VALUES(s.id,s.name,s.url,s.source_type,SYS_EXTRACT_UTC(SYSTIMESTAMP),SYS_EXTRACT_UTC(SYSTIMESTAMP))", sql.Named("id", source.id), sql.Named("name", source.name), sql.Named("url", source.url), sql.Named("kind", source.kind))
 		if err != nil {
 			return err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, "MERGE INTO repository_lock t USING (SELECT 'source:'||id lock_key FROM ckan_instance UNION ALL SELECT 'scheduler' FROM dual) s ON(t.lock_key=s.lock_key) WHEN NOT MATCHED THEN INSERT(lock_key) VALUES(s.lock_key)"); err != nil {
+	if _, err = tx.ExecContext(ctx, "MERGE /*+ DISABLE_PARALLEL_DML */ INTO repository_lock t USING (SELECT 'source:'||id lock_key FROM ckan_instance UNION ALL SELECT 'scheduler' FROM dual) s ON(t.lock_key=s.lock_key) WHEN NOT MATCHED THEN INSERT(lock_key) VALUES(s.lock_key)"); err != nil {
 		return err
 	}
 	if err = tx.Commit(); err != nil {
@@ -86,7 +86,7 @@ func migrateCSVHintBatch(ctx context.Context, db *sql.DB, batch [][2]string) err
 	}
 	defer tx.Rollback()
 	for _, hint := range batch {
-		if _, err = tx.ExecContext(ctx, "MERGE INTO csv_hint t USING(SELECT :resource_id resource_id,:delimiter delimiter FROM dual) s ON(t.resource_id=s.resource_id) WHEN MATCHED THEN UPDATE SET t.delimiter=s.delimiter WHEN NOT MATCHED THEN INSERT(resource_id,delimiter) VALUES(s.resource_id,s.delimiter)", sql.Named("resource_id", hint[0]), sql.Named("delimiter", hint[1])); err != nil {
+		if _, err = tx.ExecContext(ctx, "MERGE /*+ DISABLE_PARALLEL_DML */ INTO csv_hint t USING(SELECT :resource_id resource_id,:delimiter delimiter FROM dual) s ON(t.resource_id=s.resource_id) WHEN MATCHED THEN UPDATE SET t.delimiter=s.delimiter WHEN NOT MATCHED THEN INSERT(resource_id,delimiter) VALUES(s.resource_id,s.delimiter)", sql.Named("resource_id", hint[0]), sql.Named("delimiter", hint[1])); err != nil {
 			return err
 		}
 	}

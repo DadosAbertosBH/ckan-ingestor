@@ -4,10 +4,14 @@
 package oraclerepositories
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/DATA-DOG/go-sqlmock"
 )
 
 func TestOracleRetainsAllCSVHints(t *testing.T) {
@@ -17,6 +21,63 @@ func TestOracleRetainsAllCSVHints(t *testing.T) {
 	}
 	if len(hints) != 4064 {
 		t.Fatalf("hints=%d want=4064", len(hints))
+	}
+}
+
+func TestMigrationSeedsDisableParallelDML(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectQuery("SELECT COUNT").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery("SELECT NVL").WillReturnRows(sqlmock.NewRows([]string{"version"}).AddRow(0))
+	for _, statement := range strings.Split(schema, ";") {
+		if strings.TrimSpace(statement) != "" {
+			mock.ExpectQuery("SELECT COUNT").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+		}
+	}
+	mock.ExpectBegin()
+	for range 3 {
+		mock.ExpectExec(`MERGE /\*\+ DISABLE_PARALLEL_DML \*/ INTO ckan_instance`).WillReturnResult(sqlmock.NewResult(0, 1))
+	}
+	mock.ExpectExec(`MERGE /\*\+ DISABLE_PARALLEL_DML \*/ INTO repository_lock`).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	var hints [][2]string
+	if err := json.Unmarshal(csvHints, &hints); err != nil {
+		t.Fatal(err)
+	}
+	for start := 0; start < len(hints); start += 200 {
+		mock.ExpectBegin()
+		for _, hint := range hints[start:min(start+200, len(hints))] {
+			mock.ExpectExec(`MERGE /\*\+ DISABLE_PARALLEL_DML \*/ INTO csv_hint`).WithArgs(hint[0], hint[1]).WillReturnResult(sqlmock.NewResult(0, 1))
+		}
+		mock.ExpectCommit()
+	}
+	mock.ExpectExec("INSERT INTO repository_schema_version").WillReturnResult(sqlmock.NewResult(0, 1))
+	if err := (&Store{DB: db}).Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCSVHintBatchRollsBackOnFailure(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	want := errors.New("seed failed")
+	mock.ExpectBegin()
+	mock.ExpectExec(`MERGE /\*\+ DISABLE_PARALLEL_DML \*/ INTO csv_hint`).WithArgs("resource", ",").WillReturnError(want)
+	mock.ExpectRollback()
+	if err := migrateCSVHintBatch(context.Background(), db, [][2]string{{"resource", ","}}); !errors.Is(err, want) {
+		t.Fatalf("got %v, want %v", err, want)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 
