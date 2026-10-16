@@ -5,6 +5,8 @@ package oraclerepositories
 
 import (
 	"encoding/json"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -15,5 +17,15 @@ func TestOracleRetainsAllCSVHints(t *testing.T) {
 	}
 	if len(hints) != 4064 {
 		t.Fatalf("hints=%d want=4064", len(hints))
+	}
+}
+
+func TestOracleMigrationCommitsEachCSVHintBatch(t *testing.T) {
+	data, err := os.ReadFile("migrations.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "func migrateCSVHintBatch") || !strings.Contains(string(data), "return tx.Commit()") {
+		t.Fatal("CSV hint batches must commit independently to avoid Oracle parallel DML transaction errors")
 	}
 }

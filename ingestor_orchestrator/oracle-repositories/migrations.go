@@ -61,22 +61,35 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if _, err = tx.ExecContext(ctx, "MERGE INTO repository_lock t USING (SELECT 'source:'||id lock_key FROM ckan_instance UNION ALL SELECT 'scheduler' FROM dual) s ON(t.lock_key=s.lock_key) WHEN NOT MATCHED THEN INSERT(lock_key) VALUES(s.lock_key)"); err != nil {
 		return err
 	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
 	var hints [][2]string
 	if err = json.Unmarshal(csvHints, &hints); err != nil {
 		return err
 	}
 	for start := 0; start < len(hints); start += 200 {
-		batch := hints[start:min(start+200, len(hints))]
-		ids, delimiters := make([]string, len(batch)), make([]string, len(batch))
-		for i, h := range batch {
-			ids[i], delimiters[i] = h[0], h[1]
-		}
-		_, err = tx.ExecContext(ctx, "MERGE INTO csv_hint t USING(SELECT :ids resource_id,:delimiters delimiter FROM dual) s ON(t.resource_id=s.resource_id) WHEN MATCHED THEN UPDATE SET t.delimiter=s.delimiter WHEN NOT MATCHED THEN INSERT(resource_id,delimiter) VALUES(s.resource_id,s.delimiter)", sql.Named("ids", ids), sql.Named("delimiters", delimiters))
-		if err != nil {
+		if err = migrateCSVHintBatch(ctx, s.DB, hints[start:min(start+200, len(hints))]); err != nil {
 			return err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO repository_schema_version(version_number) VALUES(1)"); err != nil {
+	if _, err = s.DB.ExecContext(ctx, "INSERT INTO repository_schema_version(version_number) VALUES(1)"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func migrateCSVHintBatch(ctx context.Context, db *sql.DB, batch [][2]string) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	ids, delimiters := make([]string, len(batch)), make([]string, len(batch))
+	for i, h := range batch {
+		ids[i], delimiters[i] = h[0], h[1]
+	}
+	if _, err = tx.ExecContext(ctx, "MERGE INTO csv_hint t USING(SELECT :ids resource_id,:delimiters delimiter FROM dual) s ON(t.resource_id=s.resource_id) WHEN MATCHED THEN UPDATE SET t.delimiter=s.delimiter WHEN NOT MATCHED THEN INSERT(resource_id,delimiter) VALUES(s.resource_id,delimiter)", sql.Named("ids", ids), sql.Named("delimiters", delimiters)); err != nil {
 		return err
 	}
 	return tx.Commit()
