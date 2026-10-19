@@ -10,11 +10,77 @@ package iggy
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 
+	iggycontracts "github.com/apache/iggy/foreign/go/contracts"
 	"gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/backend/internal/config"
 )
+
+type topicClientFake struct {
+	topicExists bool
+	created     struct {
+		expiry iggycontracts.Duration
+		size   uint64
+	}
+	updated struct {
+		expiry iggycontracts.Duration
+		size   uint64
+	}
+}
+
+func (f *topicClientFake) GetStream(context.Context, iggycontracts.Identifier) (*iggycontracts.StreamDetails, error) {
+	return nil, errors.New("not found")
+}
+func (f *topicClientFake) CreateStream(context.Context, string) (*iggycontracts.StreamDetails, error) {
+	return nil, nil
+}
+func (f *topicClientFake) GetTopic(context.Context, iggycontracts.Identifier, iggycontracts.Identifier) (*iggycontracts.TopicDetails, error) {
+	if f.topicExists {
+		return &iggycontracts.TopicDetails{}, nil
+	}
+	return nil, errors.New("not found")
+}
+func (f *topicClientFake) CreateTopic(_ context.Context, _ iggycontracts.Identifier, _ string, _ uint32, _ iggycontracts.CompressionAlgorithm, expiry iggycontracts.Duration, size uint64, _ ...iggycontracts.HeaderEntry) (*iggycontracts.TopicDetails, error) {
+	f.created.expiry, f.created.size = expiry, size
+	return &iggycontracts.TopicDetails{}, nil
+}
+func (f *topicClientFake) UpdateTopic(_ context.Context, _ iggycontracts.Identifier, _ iggycontracts.Identifier, _ string, _ iggycontracts.CompressionAlgorithm, expiry iggycontracts.Duration, size uint64, _ ...iggycontracts.HeaderEntry) error {
+	f.updated.expiry, f.updated.size = expiry, size
+	return nil
+}
+func (f *topicClientFake) Ping(context.Context) error { return nil }
+
+func TestEnsureTopicAppliesRetentionToNewAndExistingTopics(t *testing.T) {
+	wantExpiry := iggycontracts.Duration(30 * 24 * iggycontracts.Hour)
+	const wantSize = uint64(2 * 1024 * 1024 * 1024)
+
+	for _, item := range []struct {
+		name   string
+		exists bool
+	}{
+		{name: "new"},
+		{name: "existing", exists: true},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			client := &topicClientFake{topicExists: item.exists}
+			driver := &SDKDriver{client: client, stream: "ckan-ingestor"}
+			if err := driver.EnsureTopic(context.Background(), "jobs", 1); err != nil {
+				t.Fatal(err)
+			}
+			if item.exists {
+				if client.updated.expiry != wantExpiry || client.updated.size != wantSize {
+					t.Fatalf("updated retention = (%d, %d), want (%d, %d)", client.updated.expiry, client.updated.size, wantExpiry, wantSize)
+				}
+				return
+			}
+			if client.created.expiry != wantExpiry || client.created.size != wantSize {
+				t.Fatalf("created retention = (%d, %d), want (%d, %d)", client.created.expiry, client.created.size, wantExpiry, wantSize)
+			}
+		})
+	}
+}
 
 func TestSDKDriverAgainstIggy(t *testing.T) {
 	address := os.Getenv("IGGY_INTEGRATION_ADDRESS")

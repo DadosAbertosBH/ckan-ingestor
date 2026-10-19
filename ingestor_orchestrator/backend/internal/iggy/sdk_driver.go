@@ -25,10 +25,23 @@ import (
 )
 
 type SDKDriver struct {
-	client    iggcon.Client
+	client    topicClient
 	stream    string
 	transport *iggytransport.Client
 }
+
+type topicClient interface {
+	GetStream(context.Context, iggcon.Identifier) (*iggcon.StreamDetails, error)
+	CreateStream(context.Context, string) (*iggcon.StreamDetails, error)
+	GetTopic(context.Context, iggcon.Identifier, iggcon.Identifier) (*iggcon.TopicDetails, error)
+	CreateTopic(context.Context, iggcon.Identifier, string, uint32, iggcon.CompressionAlgorithm, iggcon.Duration, uint64, ...iggcon.HeaderEntry) (*iggcon.TopicDetails, error)
+	UpdateTopic(context.Context, iggcon.Identifier, iggcon.Identifier, string, iggcon.CompressionAlgorithm, iggcon.Duration, uint64, ...iggcon.HeaderEntry) error
+	Ping(context.Context) error
+}
+
+const maxTopicSize = uint64(2 * 1024 * 1024 * 1024)
+
+const messageExpiry = iggcon.Duration(30 * 24 * iggcon.Hour)
 
 func NewSDKDriver(ctx context.Context, cfg config.Config) (*SDKDriver, error) {
 	transport, err := iggytransport.Connect(ctx, iggytransport.ConnectionConfig{Address: cfg.IggyAddress, Username: cfg.IggyUsername, Password: cfg.IggyPassword, Stream: cfg.Stream})
@@ -65,10 +78,13 @@ func (d *SDKDriver) EnsureTopic(ctx context.Context, name string, partitions int
 	if err != nil {
 		return err
 	}
-	if _, err := d.client.GetTopic(ctx, stream, topic); err == nil {
-		return nil
+	if current, err := d.client.GetTopic(ctx, stream, topic); err == nil {
+		if current.MessageExpiry == messageExpiry && current.MaxTopicSize == maxTopicSize {
+			return nil
+		}
+		return d.client.UpdateTopic(ctx, stream, topic, name, iggcon.CompressionAlgorithm(current.CompressionAlgorithm), messageExpiry, maxTopicSize)
 	}
-	if _, err := d.client.CreateTopic(ctx, stream, name, uint32(partitions), 0, iggcon.IggyExpiryServerDefault, 0); err != nil {
+	if _, err := d.client.CreateTopic(ctx, stream, name, uint32(partitions), 0, messageExpiry, maxTopicSize); err != nil {
 		if _, getErr := d.client.GetTopic(ctx, stream, topic); getErr != nil {
 			return err
 		}
