@@ -20,6 +20,18 @@ use message_processor::{BrokerMessage, MessagePublisher, MessageSource, Outgoing
 pub use iggy;
 use serde::Serialize;
 
+/// Configure coordinator and worker sessions with the same heartbeat budget.
+pub fn session_client(connection_string: &str) -> Result<IggyClient> {
+    let separator = if connection_string.contains('?') {
+        '&'
+    } else {
+        '?'
+    };
+    Ok(IggyClient::from_connection_string(&format!(
+        "{connection_string}{separator}heartbeat_interval=2s"
+    ))?)
+}
+
 struct OwnedConsumer<Client, Consumer> {
     _client: Client,
     consumer: Consumer,
@@ -66,6 +78,11 @@ impl MessageSource for IggySource {
             .consumer
             .store_offset(offset, Some(partition))
             .await?;
+        Ok(())
+    }
+
+    async fn shutdown(&mut self) -> Result<()> {
+        self.connection.consumer.shutdown().await?;
         Ok(())
     }
 }
@@ -130,6 +147,16 @@ mod tests {
     use message_processor::{MessagePublisher, OutgoingMessage};
 
     use super::{IggyPublisher, OwnedConsumer};
+
+    #[tokio::test]
+    async fn session_client_heartbeats_every_two_seconds() {
+        use iggy::prelude::SystemClient;
+        let client = super::session_client("iggy://test:test@127.0.0.1:8090").unwrap();
+        assert_eq!(
+            client.heartbeat_interval().await.get_duration(),
+            std::time::Duration::from_secs(2)
+        );
+    }
 
     struct DropProbe(Arc<AtomicBool>);
 

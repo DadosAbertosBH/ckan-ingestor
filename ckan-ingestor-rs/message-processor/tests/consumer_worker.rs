@@ -25,7 +25,7 @@ use std::{
 use async_stream::stream;
 use futures::Stream;
 use message_processor::{
-    BrokerMessage, MessageProcessor, OutgoingMessage, WorkerHandler,
+    BrokerMessage, MessageProcessor, MessageSource, OutgoingMessage, WorkerHandler,
     test_support::{MockMessageSource, MockResultPublisher},
 };
 use serde::{Deserialize, Serialize};
@@ -40,6 +40,67 @@ struct Input {
 struct Output(u8);
 
 struct Processor;
+
+struct SessionSource {
+    shutdown_completed: Arc<AtomicBool>,
+    stall_shutdown: bool,
+}
+
+impl MessageSource for SessionSource {
+    async fn recv(&mut self) -> anyhow::Result<BrokerMessage> {
+        std::future::pending().await
+    }
+
+    async fn commit(&mut self, _: u32, _: u64) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn shutdown(&mut self) -> anyhow::Result<()> {
+        if self.stall_shutdown {
+            return std::future::pending().await;
+        }
+        // An actual await verifies cleanup is driven before the runtime is dropped.
+        tokio::task::yield_now().await;
+        self.shutdown_completed.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+#[test]
+fn worker_shutdown_awaits_broker_session_cleanup_even_when_idle() {
+    let completed = Arc::new(AtomicBool::new(false));
+    let mut worker = WorkerHandler::new(
+        SessionSource {
+            shutdown_completed: completed.clone(),
+            stall_shutdown: false,
+        },
+        MockResultPublisher::new(),
+        Processor,
+    );
+    worker.run();
+    worker.shutdown();
+    assert!(
+        completed.load(Ordering::SeqCst),
+        "broker session was dropped without leaving the group"
+    );
+}
+
+#[test]
+fn unresponsive_broker_cleanup_has_a_ten_second_deadline() {
+    let started = std::time::Instant::now();
+    let mut worker = WorkerHandler::new(
+        SessionSource {
+            shutdown_completed: Arc::new(AtomicBool::new(false)),
+            stall_shutdown: true,
+        },
+        MockResultPublisher::new(),
+        Processor,
+    );
+    worker.run();
+    worker.shutdown();
+    assert!(started.elapsed() >= Duration::from_secs(10));
+    assert!(started.elapsed() < Duration::from_secs(15));
+}
 
 impl MessageProcessor for Processor {
     type IncomingMessage = Input;

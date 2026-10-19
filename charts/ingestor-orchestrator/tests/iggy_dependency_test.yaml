@@ -3,6 +3,7 @@ templates:
   - charts/iggy/templates/deployment.yaml
 tests:
   - it: deploys Iggy using the official chart with existing storage and credentials
+    documentIndex: 0
     asserts:
       - isKind:
           of: Deployment
@@ -11,7 +12,34 @@ tests:
           value: iggy
       - equal:
           path: spec.template.spec.containers[0].image
-          value: apache/iggy:0.9.0
+          value: registry.gitlab.com/pedalin/ckan-ingestor/iggy:session-recovery-d2f97066@sha256:1ca2a60db33b3d75cb0200d02b711fc252c2bb2856bf49a33896b8e9f169bedd
+      - equal:
+          path: spec.strategy.type
+          value: Recreate
+      - contains:
+          path: spec.template.spec.imagePullSecrets
+          content:
+            name: gitlab-registry-pull
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: IGGY_HEARTBEAT_ENABLED
+            value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: IGGY_HEARTBEAT_INTERVAL
+            value: "5s"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: IGGY_CONSUMER_GROUP_HEARTBEAT_INTERVAL
+            value: "2s"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: IGGY_CONSUMER_GROUP_SESSION_TIMEOUT
+            value: "30s"
       - contains:
           path: spec.template.spec.containers[0].env
           content:

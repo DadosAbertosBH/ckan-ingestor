@@ -54,6 +54,10 @@ pub struct BrokerMessage {
 pub trait MessageSource {
     fn recv(&mut self) -> impl Future<Output = Result<BrokerMessage>>;
     fn commit(&mut self, partition: u32, offset: u64) -> impl Future<Output = Result<()>>;
+    /// Release broker membership while the source's runtime and connection are alive.
+    fn shutdown(&mut self) -> impl Future<Output = Result<()>> {
+        async { Ok(()) }
+    }
 }
 
 #[cfg(feature = "test-support")]

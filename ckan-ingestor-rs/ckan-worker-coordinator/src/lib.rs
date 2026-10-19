@@ -178,7 +178,7 @@ fn parquet_processor(
 }
 
 async fn connected_client(connection_string: &str) -> Result<IggyClient> {
-    let client = IggyClient::from_connection_string(connection_string)?;
+    let client = iggy_processor::session_client(connection_string)?;
     client.connect().await?;
     Ok(client)
 }

@@ -14,7 +14,7 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with ckan-ingestor-rs.  If not, see <https://www.gnu.org/licenses/>.
-use std::{sync::Arc, thread::JoinHandle};
+use std::{sync::Arc, thread::JoinHandle, time::Duration};
 
 use futures::StreamExt;
 use serde::de::DeserializeOwned;
@@ -101,7 +101,7 @@ where
                     }
                 });
                 let Some(message) = message else {
-                    return;
+                    break;
                 };
                 match message {
                     Ok(message) => {
@@ -120,6 +120,13 @@ where
                     }
                     Err(error) => log::error!("consumer error: {error}"),
                 }
+            }
+            match runtime.block_on(async {
+                tokio::time::timeout(Duration::from_secs(10), source.shutdown()).await
+            }) {
+                Ok(Ok(())) => log::info!("broker consumer session shut down"),
+                Ok(Err(error)) => log::error!("broker consumer shutdown failed: {error}"),
+                Err(_) => log::error!("broker consumer shutdown timed out after 10s"),
             }
         }));
     }

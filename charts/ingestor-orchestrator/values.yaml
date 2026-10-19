@@ -105,13 +105,18 @@ iggy:
   # -- Deploy Apache Iggy using the official chart dependency.
   enabled: true
   fullnameOverride: iggy
+  imagePullSecrets:
+    - name: gitlab-registry-pull
 
   server:
     enabled: true
     replicaCount: 1
+    # A single broker owns this PVC; replace it after the old process exits.
+    strategy:
+      type: Recreate
     image:
-      repository: apache/iggy
-      tag: "0.9.0"
+      repository: registry.gitlab.com/pedalin/ckan-ingestor/iggy
+      tag: "session-recovery-d2f97066@sha256:1ca2a60db33b3d75cb0200d02b711fc252c2bb2856bf49a33896b8e9f169bedd"
       pullPolicy: IfNotPresent
     users:
       root:
@@ -138,6 +143,14 @@ iggy:
         value: /app/local_data
       - name: IGGY_SHARDING_CPU_ALLOCATION
         value: all
+      - name: IGGY_HEARTBEAT_ENABLED
+        value: "true"
+      - name: IGGY_HEARTBEAT_INTERVAL
+        value: "5s"
+      - name: IGGY_CONSUMER_GROUP_HEARTBEAT_INTERVAL
+        value: "2s"
+      - name: IGGY_CONSUMER_GROUP_SESSION_TIMEOUT
+        value: "30s"
 
   ui:
     enabled: true

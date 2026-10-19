@@ -3333,6 +3333,7 @@ dependencies = [
  "message_processor",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
