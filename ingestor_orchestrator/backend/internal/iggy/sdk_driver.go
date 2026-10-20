@@ -58,7 +58,21 @@ func (d *SDKDriver) EnsureStream(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := d.client.GetStream(ctx, id); err == nil {
+	if current, err := d.client.GetStream(ctx, id); err == nil {
+		// Workers own creation and partition counts for retry and parquet topics.
+		// Reconcile retention for every existing topic in the application stream.
+		for _, topic := range current.Topics {
+			if topic.MessageExpiry == messageExpiry && topic.MaxTopicSize == maxTopicSize {
+				continue
+			}
+			topicID, err := identifier(topic.Name)
+			if err != nil {
+				return err
+			}
+			if err := d.client.UpdateTopic(ctx, id, topicID, topic.Name, iggcon.CompressionAlgorithm(topic.CompressionAlgorithm), messageExpiry, maxTopicSize); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 	if _, err := d.client.CreateStream(ctx, name); err != nil {

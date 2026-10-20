@@ -19,8 +19,11 @@ import (
 )
 
 type topicClientFake struct {
-	topicExists bool
-	created     struct {
+	topicExists  bool
+	streamTopics []iggycontracts.Topic
+	updatedNames []string
+	updateErr    error
+	created      struct {
 		expiry iggycontracts.Duration
 		size   uint64
 	}
@@ -31,6 +34,9 @@ type topicClientFake struct {
 }
 
 func (f *topicClientFake) GetStream(context.Context, iggycontracts.Identifier) (*iggycontracts.StreamDetails, error) {
+	if f.streamTopics != nil {
+		return &iggycontracts.StreamDetails{Topics: f.streamTopics}, nil
+	}
 	return nil, errors.New("not found")
 }
 func (f *topicClientFake) CreateStream(context.Context, string) (*iggycontracts.StreamDetails, error) {
@@ -46,11 +52,39 @@ func (f *topicClientFake) CreateTopic(_ context.Context, _ iggycontracts.Identif
 	f.created.expiry, f.created.size = expiry, size
 	return &iggycontracts.TopicDetails{}, nil
 }
-func (f *topicClientFake) UpdateTopic(_ context.Context, _ iggycontracts.Identifier, _ iggycontracts.Identifier, _ string, _ iggycontracts.CompressionAlgorithm, expiry iggycontracts.Duration, size uint64, _ ...iggycontracts.HeaderEntry) error {
+func (f *topicClientFake) UpdateTopic(_ context.Context, _ iggycontracts.Identifier, _ iggycontracts.Identifier, name string, _ iggycontracts.CompressionAlgorithm, expiry iggycontracts.Duration, size uint64, _ ...iggycontracts.HeaderEntry) error {
+	f.updatedNames = append(f.updatedNames, name)
 	f.updated.expiry, f.updated.size = expiry, size
-	return nil
+	return f.updateErr
 }
 func (f *topicClientFake) Ping(context.Context) error { return nil }
+
+func TestEnsureStreamAppliesRetentionToWorkerOwnedTopics(t *testing.T) {
+	client := &topicClientFake{streamTopics: []iggycontracts.Topic{
+		{Name: "jobs-retry", PartitionsCount: 3},
+		{Name: "parquet-results", PartitionsCount: 1},
+		{Name: "job-results", MessageExpiry: messageExpiry, MaxTopicSize: maxTopicSize},
+	}}
+	driver := &SDKDriver{client: client, stream: "ckan-ingestor"}
+	if err := driver.EnsureStream(context.Background(), "ckan-ingestor"); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.updatedNames) != 2 || client.updatedNames[0] != "jobs-retry" || client.updatedNames[1] != "parquet-results" {
+		t.Fatalf("updated topics = %v", client.updatedNames)
+	}
+	if client.updated.expiry != messageExpiry || client.updated.size != maxTopicSize {
+		t.Fatalf("retention = %#v", client.updated)
+	}
+}
+
+func TestEnsureStreamPropagatesRetentionFailure(t *testing.T) {
+	want := errors.New("broker unavailable")
+	client := &topicClientFake{streamTopics: []iggycontracts.Topic{{Name: "parquet-results"}}, updateErr: want}
+	driver := &SDKDriver{client: client, stream: "ckan-ingestor"}
+	if err := driver.EnsureStream(context.Background(), "ckan-ingestor"); !errors.Is(err, want) {
+		t.Fatalf("error = %v, want %v", err, want)
+	}
+}
 
 func TestEnsureTopicAppliesRetentionToNewAndExistingTopics(t *testing.T) {
 	wantExpiry := iggycontracts.Duration(30 * 24 * iggycontracts.Hour)
