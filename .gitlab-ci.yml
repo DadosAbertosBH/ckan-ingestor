@@ -97,7 +97,6 @@ test-go:
     - go vet ./...
     - go run ./cmd/orchestrator migrate
     - go test -race -coverprofile=coverage.out ./...
-    - cd ../mysql-repositories && go test -race ./...
   rules:
     - if: $CI_COMMIT_TAG
     - changes:
@@ -135,21 +134,30 @@ test-sicom-crawler:
         - "ingestor_orchestrator/sicom-crawler/**/*"
         - ".gitlab-ci.yml"
 
-test-ingestion-message-modules:
+test-go-modules:
   stage: test
   image: golang:1.26-bookworm
   services: []
   script:
-    - cd ingestor_orchestrator/sicom-source-identity && go test -race ./...
-    - cd ../ingestor-job-message-contracts && go test -race ./...
-    - cd ../iggy-message-transport && go test -race ./...
-    - cd ../source-sync-message-contracts && go test -race ./...
-    - cd ../source-resource-catalog && go test -race ./...
-    - cd ../repository-contracts && go test -race ./...
-    - cd ../mysql-repositories && go test -race ./...
-    - cd ../oracle-repositories && go test -race ./...
-    - cd ../ckan-source-discovery && go test -race ./...
-    - cd ../source-sync-worker && go test -race ./...
+    - |
+      for module in \
+        sicom-source-identity \
+        ingestor-job-message-contracts \
+        iggy-message-transport \
+        source-sync-message-contracts \
+        source-resource-catalog \
+        repository-contracts \
+        mysql-repositories \
+        oracle-repositories \
+        ckan-source-discovery \
+        source-sync-worker; do
+        (
+          cd "ingestor_orchestrator/$module"
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test -race ./...
+        )
+      done
   rules:
     - if: $CI_COMMIT_TAG
     - changes:
@@ -163,11 +171,6 @@ test-ingestion-message-modules:
         - "ingestor_orchestrator/repository-contracts/**/*"
         - "ingestor_orchestrator/mysql-repositories/**/*"
         - "ingestor_orchestrator/oracle-repositories/**/*"
-        - "ingestor_orchestrator/backend/**/*"
-        - "ingestor_orchestrator/repository-contracts/**/*"
-        - "ingestor_orchestrator/mysql-repositories/**/*"
-        - "ingestor_orchestrator/oracle-repositories/**/*"
-        - "ingestor_orchestrator/sicom-crawler/**/*"
         - ".gitlab-ci.yml"
 
 test-sicom-chart:
