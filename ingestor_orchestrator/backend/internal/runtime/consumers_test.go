@@ -17,8 +17,12 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -88,6 +92,40 @@ func TestJobHandlerRetriesNotFoundAndStopsWhenContextIsCancelled(t *testing.T) {
 	processor.remaining = 5
 	if err := consumers.handleJob(ctx, []byte(`{"job_id":"job","resource_id":"resource","status":"SUCCESS"}`)); !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestJobHandlerSkipsRemovedInstanceOnceAndLogsItsIdentity(t *testing.T) {
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	processor := &fakeProcessor{err: fmt.Errorf("lookup: %w", app.ErrInstanceNotFound)}
+	consumers := &Consumers{processor: processor}
+	if err := consumers.handleJob(context.Background(), []byte(`{"job_id":"orphan","resource_id":"resource","instance_id":"removed-instance","status":"PENDING"}`)); err != nil {
+		t.Fatalf("handler must allow offset commit: %v", err)
+	}
+	if len(processor.jobs) != 1 {
+		t.Fatalf("processor called %d times, want 1", len(processor.jobs))
+	}
+	var record map[string]any
+	if err := json.Unmarshal(output.Bytes(), &record); err != nil {
+		t.Fatal(err)
+	}
+	if record["msg"] != "job result skipped: instance no longer exists" || record["level"] != "WARN" || record["job_id"] != "orphan" || record["instance_id"] != "removed-instance" || record["status"] != "PENDING" {
+		t.Fatalf("log = %#v", record)
+	}
+}
+
+func TestJobHandlerPreservesDatabaseFailures(t *testing.T) {
+	want := errors.New("database unavailable")
+	processor := &fakeProcessor{err: want}
+	consumers := &Consumers{processor: processor}
+	if err := consumers.handleJob(context.Background(), []byte(`{"job_id":"job","resource_id":"resource","status":"PENDING"}`)); !errors.Is(err, want) {
+		t.Fatalf("error = %v, want %v", err, want)
+	}
+	if len(processor.jobs) != 1 {
+		t.Fatalf("processor called %d times, want 1", len(processor.jobs))
 	}
 }
 

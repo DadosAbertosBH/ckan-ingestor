@@ -224,15 +224,15 @@ func TestApplyPendingCreatesCoordinatedJobAndLatestProjection(t *testing.T) {
 	}
 }
 
-func TestApplyPendingForRemovedInstanceReturnsNotFoundWithoutCreatingJob(t *testing.T) {
+func TestApplyPendingForRemovedInstanceReturnsDistinctErrorWithoutCreatingJob(t *testing.T) {
 	store := newMemoryStore()
 	processor := fixedProcessor(store)
 	err := processor.ApplyJobResult(context.Background(), JobResultMessage{
 		JobID: "orphan", Status: "PENDING", ResourceID: "resource",
 		DatasetName: ptr("dataset"), InstanceID: ptr("removed-instance"),
 	})
-	if !errors.Is(err, ErrNotFound) {
-		t.Fatalf("error = %v, want ErrNotFound", err)
+	if !errors.Is(err, ErrInstanceNotFound) || errors.Is(err, ErrNotFound) {
+		t.Fatalf("error = %v, want distinct ErrInstanceNotFound", err)
 	}
 	if store.jobs["orphan"] != nil {
 		t.Fatal("orphan job was inserted")

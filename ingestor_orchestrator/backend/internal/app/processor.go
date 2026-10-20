@@ -27,6 +27,7 @@ import (
 
 var ErrNotFound = repositoryErrNotFound
 var ErrInvalidMessage = errors.New("invalid message")
+var ErrInstanceNotFound = errors.New("instance not found")
 
 type Processor struct {
 	Store Store
@@ -91,6 +92,9 @@ func (p *Processor) applyPending(ctx context.Context, tx Tx, message JobResultMe
 		return fmt.Errorf("%w: pending result requires dataset_name and instance_id", ErrInvalidMessage)
 	}
 	if _, err := tx.Instance(ctx, *message.InstanceID); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("%w: %s", ErrInstanceNotFound, *message.InstanceID)
+		}
 		return err
 	}
 	now := p.now()

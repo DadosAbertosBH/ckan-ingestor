@@ -93,6 +93,14 @@ func (c *Consumers) handleJob(ctx context.Context, payload []byte) error {
 	var err error
 	for attempt := 0; attempt < 5; attempt++ {
 		err = c.processor.ApplyJobResult(ctx, message)
+		if errors.Is(err, app.ErrInstanceNotFound) {
+			var instanceID string
+			if message.InstanceID != nil {
+				instanceID = *message.InstanceID
+			}
+			slog.Warn("job result skipped: instance no longer exists", "job_id", message.JobID, "instance_id", instanceID, "status", message.Status)
+			return nil
+		}
 		if !errors.Is(err, app.ErrNotFound) {
 			return err
 		}
