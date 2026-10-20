@@ -124,6 +124,7 @@ func TestRetryJobRequeuesExistingJobAfterPublishingRetryMessage(t *testing.T) {
 
 func TestRetryKeepsOriginalSourceVersion(t *testing.T) {
 	store := newMemoryStore()
+	addInstance(store, "instance")
 	var pending JobResultMessage
 	if err := json.Unmarshal([]byte(`{"job_id":"original","status":"PENDING","resource_id":"resource","dataset_name":"dataset","instance_id":"instance","source_version":"2026-09-01T00:00:00Z"}`), &pending); err != nil {
 		t.Fatal(err)

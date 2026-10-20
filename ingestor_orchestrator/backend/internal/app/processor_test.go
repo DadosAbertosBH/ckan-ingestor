@@ -104,6 +104,8 @@ func newMemoryStore() *memoryStore {
 	}
 }
 
+func addInstance(store *memoryStore, id string) { store.instances[id] = &Instance{ID: id} }
+
 func (m *memoryStore) InTx(_ context.Context, fn func(Tx) error) error { return fn(m) }
 func (m *memoryStore) Instances(context.Context) ([]Instance, error) {
 	values := make([]Instance, 0, len(m.instances))
@@ -205,6 +207,7 @@ func fixedProcessor(store *memoryStore) *Processor {
 
 func TestApplyPendingCreatesCoordinatedJobAndLatestProjection(t *testing.T) {
 	store := newMemoryStore()
+	addInstance(store, "instance-1")
 	processor := fixedProcessor(store)
 	err := processor.ApplyJobResult(context.Background(), JobResultMessage{
 		JobID: "job-1", Status: "PENDING", ResourceID: "resource-1",
@@ -221,8 +224,24 @@ func TestApplyPendingCreatesCoordinatedJobAndLatestProjection(t *testing.T) {
 	}
 }
 
+func TestApplyPendingForRemovedInstanceReturnsNotFoundWithoutCreatingJob(t *testing.T) {
+	store := newMemoryStore()
+	processor := fixedProcessor(store)
+	err := processor.ApplyJobResult(context.Background(), JobResultMessage{
+		JobID: "orphan", Status: "PENDING", ResourceID: "resource",
+		DatasetName: ptr("dataset"), InstanceID: ptr("removed-instance"),
+	})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("error = %v, want ErrNotFound", err)
+	}
+	if store.jobs["orphan"] != nil {
+		t.Fatal("orphan job was inserted")
+	}
+}
+
 func TestChildJobResultsStayOutOfLatestResourceProjection(t *testing.T) {
 	store := newMemoryStore()
+	addInstance(store, "instance-1")
 	processor := fixedProcessor(store)
 	var pending JobResultMessage
 	if err := json.Unmarshal([]byte(`{"job_id":"child-1","status":"PENDING","resource_id":"child-resource","dataset_name":"dataset","instance_id":"instance-1","parent_job_id":"parent-1","parent_resource_id":"parent-resource","child_index":0,"total_child_count":2}`), &pending); err != nil {
@@ -457,6 +476,7 @@ func TestPendingUsesPreviousTerminalProjection(t *testing.T) {
 		expected string
 	}{{JobCompleted, "outdated"}, {JobFailed, "failed"}} {
 		store := newMemoryStore()
+		addInstance(store, "instance")
 		store.terminal["resource"] = &TerminalState{ResourceID: "resource", LastTerminalStatus: item.terminal}
 		message := JobResultMessage{JobID: string(item.terminal), ResourceID: "resource", Status: "PENDING", DatasetName: ptr("dataset"), InstanceID: ptr("instance")}
 		if err := fixedProcessor(store).ApplyJobResult(context.Background(), message); err != nil {
@@ -470,6 +490,7 @@ func TestPendingUsesPreviousTerminalProjection(t *testing.T) {
 
 func TestWorkerJobPendingContractIsAcceptedByTheOrchestrator(t *testing.T) {
 	store := newMemoryStore()
+	addInstance(store, "sicom")
 	job := jobmessage.WorkerJob{JobID: "job", ResourceID: "resource", DatasetName: "SICOM 2026", InstanceID: "sicom", CKANURL: "https://dadosabertos.tce.mg.gov.br/", ResourceURL: "https://files.test/pessoal.csv", ResourceFormat: "CSV", SourceVersion: "109822"}
 	if err := fixedProcessor(store).ApplyJobResult(context.Background(), jobmessage.Pending(job)); err != nil {
 		t.Fatal(err)
@@ -570,6 +591,7 @@ func TestMetadataFailureUnknownAndMissingInstance(t *testing.T) {
 
 func TestPendingIsIdempotentAndAcceptsOptionalCoordinatorFields(t *testing.T) {
 	store := newMemoryStore()
+	addInstance(store, "instance")
 	processor := fixedProcessor(store)
 	message := JobResultMessage{
 		JobID: "job", ResourceID: "resource", Status: "PENDING",

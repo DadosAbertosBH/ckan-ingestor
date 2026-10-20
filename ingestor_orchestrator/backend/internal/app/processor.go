@@ -90,6 +90,9 @@ func (p *Processor) applyPending(ctx context.Context, tx Tx, message JobResultMe
 	if message.DatasetName == nil || message.InstanceID == nil {
 		return fmt.Errorf("%w: pending result requires dataset_name and instance_id", ErrInvalidMessage)
 	}
+	if _, err := tx.Instance(ctx, *message.InstanceID); err != nil {
+		return err
+	}
 	now := p.now()
 	job := &Job{
 		ID: message.JobID, ResourceID: message.ResourceID, ResourceName: message.ResourceName,
