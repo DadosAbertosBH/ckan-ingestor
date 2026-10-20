@@ -239,6 +239,29 @@ func TestApplyPendingForRemovedInstanceReturnsDistinctErrorWithoutCreatingJob(t 
 	}
 }
 
+func TestApplyTerminalResultForRemovedInstanceReturnsDistinctError(t *testing.T) {
+	store := newMemoryStore()
+	processor := fixedProcessor(store)
+	err := processor.ApplyJobResult(context.Background(), JobResultMessage{
+		JobID: "orphan", Status: "SUCCESS", ResourceID: "resource", InstanceID: ptr("removed-instance"),
+	})
+	if !errors.Is(err, ErrInstanceNotFound) || errors.Is(err, ErrNotFound) {
+		t.Fatalf("error = %v, want distinct ErrInstanceNotFound", err)
+	}
+}
+
+func TestApplyTerminalResultForActiveInstanceKeepsJobOrderingRetry(t *testing.T) {
+	store := newMemoryStore()
+	addInstance(store, "active-instance")
+	processor := fixedProcessor(store)
+	err := processor.ApplyJobResult(context.Background(), JobResultMessage{
+		JobID: "not-yet-persisted", Status: "PROCESSING", ResourceID: "resource", InstanceID: ptr("active-instance"),
+	})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("error = %v, want ErrNotFound", err)
+	}
+}
+
 func TestChildJobResultsStayOutOfLatestResourceProjection(t *testing.T) {
 	store := newMemoryStore()
 	addInstance(store, "instance-1")

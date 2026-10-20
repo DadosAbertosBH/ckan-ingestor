@@ -288,7 +288,7 @@ fn run_conversion(
             resource_name: None,
             resource_url: None,
             resource_format: None,
-            instance_id: None,
+            instance_id: job.instance_id.clone(),
             ckan_url: None,
             datastore_active: Some(job.datastore_active),
             reader: Some("cached-parquet".into()),
@@ -391,6 +391,7 @@ fn copy_child_context(job: &JobMessage, result: &mut JobResultMessage) {
     result.total_child_count = job.total_child_count;
     result.resource_name = job.resource_name.clone();
     result.resource_format = Some(job.resource_format.clone());
+    result.instance_id = job.instance_id.clone();
 }
 
 fn failed_job(job: &JobMessage, error: impl std::fmt::Display) -> JobResultMessage {
@@ -419,7 +420,7 @@ fn failed_job(job: &JobMessage, error: impl std::fmt::Display) -> JobResultMessa
         resource_name: None,
         resource_url: None,
         resource_format: None,
-        instance_id: None,
+        instance_id: job.instance_id.clone(),
         ckan_url: None,
         http_status: None,
         error_message: Some(truncated.to_string()),
@@ -451,7 +452,7 @@ fn processing_job(job: &JobMessage) -> JobResultMessage {
         resource_name: None,
         resource_url: None,
         resource_format: None,
-        instance_id: None,
+        instance_id: job.instance_id.clone(),
         ckan_url: None,
         http_status: None,
         error_message: None,
@@ -560,8 +561,8 @@ mod tests {
     use reqwest::StatusCode;
 
     use super::{
-        child_job, conversion_version, job_result_from_deleted, job_result_from_failure,
-        job_result_from_success,
+        child_job, conversion_version, copy_child_context, failed_job, job_result_from_deleted,
+        job_result_from_failure, job_result_from_success, processing_job,
     };
     use crate::messages::JobStatus;
 
@@ -693,5 +694,40 @@ mod tests {
         assert_eq!(result.resource_id, "resource-1");
         assert!(result.error_message.is_none());
         assert!(result.artifact.is_none());
+    }
+
+    #[test]
+    fn worker_lifecycle_results_carry_the_job_instance() {
+        let job: ckan_ingestor_worker_lib::JobMessage = serde_json::from_value(serde_json::json!({
+            "job_id": "job-1", "resource_id": "resource-1", "instance_id": "instance-1",
+            "source_version": "v1", "ckan_url": "https://example.test"
+        }))
+        .unwrap();
+
+        assert_eq!(
+            processing_job(&job).instance_id.as_deref(),
+            Some("instance-1")
+        );
+        assert_eq!(
+            failed_job(&job, "boom").instance_id.as_deref(),
+            Some("instance-1")
+        );
+
+        let mut success = job_result_from_success(
+            job.job_id.clone(),
+            job.resource_id.clone(),
+            job.source_version.clone(),
+            successful_result(),
+            ParquetArtifact {
+                uri: "s3://warehouse/resource-1/job-1.parquet".into(),
+                schema_ipc_base64: "schema".into(),
+                num_rows: 2,
+                file_size_bytes: 100,
+                footer_size_bytes: None,
+                column_statistics: vec![],
+            },
+        );
+        copy_child_context(&job, &mut success);
+        assert_eq!(success.instance_id.as_deref(), Some("instance-1"));
     }
 }

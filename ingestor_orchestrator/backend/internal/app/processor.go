@@ -67,6 +67,13 @@ func (p *Processor) ApplyJobResult(ctx context.Context, message JobResultMessage
 		}
 		job, err := tx.Job(ctx, message.JobID)
 		if err != nil {
+			if errors.Is(err, ErrNotFound) && message.InstanceID != nil {
+				if _, instanceErr := tx.Instance(ctx, *message.InstanceID); errors.Is(instanceErr, ErrNotFound) {
+					return fmt.Errorf("%w: %s", ErrInstanceNotFound, *message.InstanceID)
+				} else if instanceErr != nil {
+					return instanceErr
+				}
+			}
 			return err
 		}
 		switch message.Status {
