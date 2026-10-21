@@ -53,3 +53,9 @@ def test_lake_explorer_pins_pnpm_and_approves_required_builds():
     workspace = yaml.safe_load((root / "lake-explorer/pnpm-workspace.yaml").read_text())
     assert package["packageManager"].startswith("pnpm@12.")
     assert workspace["allowBuilds"] == {"esbuild": True, "workerd": True}
+
+
+def test_playwright_starts_vite_on_its_configured_port():
+    root = Path(__file__).resolve().parents[1]
+    config = (root / "lake-explorer/playwright.config.ts").read_text()
+    assert "pnpm exec vite --host 127.0.0.1 --port 5179" in config
