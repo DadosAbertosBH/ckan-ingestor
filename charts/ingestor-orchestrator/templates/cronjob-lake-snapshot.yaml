@@ -1,0 +1,67 @@
+{{- if .Values.lakeSnapshot.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "ingestor-orchestrator.fullname" . }}-lake-snapshot
+  labels:
+    {{- include "ingestor-orchestrator.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.lakeSnapshot.schedule | quote }}
+  timeZone: {{ .Values.lakeSnapshot.timeZone | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 10800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: lake-snapshot
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            fsGroup: 10001
+          {{- with .Values.global.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: snapshot
+              image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "lakeSnapshot") }}
+              imagePullPolicy: {{ .Values.lakeSnapshot.image.pullPolicy | default .Values.global.image.pullPolicy }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              env:
+                {{- if not .Values.lakeSnapshot.existingSecret }}
+                {{- include "ingestor-orchestrator.cnpgDucklakeCatalogUriEnv" . | nindent 16 }}
+                {{- end }}
+                - name: DUCKLAKE_DATA_PATH__ENDPOINT
+                  value: {{ .Values.ducklake.dataPath.endpoint | quote }}
+                - name: DUCKLAKE_DATA_PATH__BUCKET
+                  value: {{ .Values.ducklake.dataPath.bucket | quote }}
+                - name: DUCKLAKE_METADATA_SCHEMA
+                  value: {{ .Values.lakeSnapshot.metadataSchema | quote }}
+                - name: TMPDIR
+                  value: /tmp
+              envFrom:
+                - secretRef:
+                    name: {{ .Values.lakeSnapshot.existingSecret | default (include "ingestor-orchestrator.secretName" .) }}
+              resources:
+                {{- toYaml .Values.lakeSnapshot.resources | nindent 16 }}
+              volumeMounts:
+                - name: temporary
+                  mountPath: /tmp
+          volumes:
+            - name: temporary
+              emptyDir:
+                sizeLimit: {{ .Values.lakeSnapshot.tempStorage | quote }}
+{{- end }}

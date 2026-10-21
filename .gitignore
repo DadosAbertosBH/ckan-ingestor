@@ -21,3 +21,10 @@ argocd-applications/
 # Helm template debug output
 .debug/
 .gocache/
+lake-explorer/node_modules/
+lake-explorer/dist/
+lake-explorer/.wrangler/
+lake-explorer/.dev.vars
+lake-explorer/test-results/
+lake-explorer/playwright-report/
+lake-explorer/e2e/fixtures/

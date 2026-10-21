@@ -268,3 +268,24 @@ existingSecret: ""
 
 # -- Debug mode
 debug: false
+
+# -- Daily read-only DuckLake catalog publication for the browser explorer
+lakeSnapshot:
+  enabled: false
+  schedule: "0 4 * * *"
+  timeZone: America/Sao_Paulo
+  image:
+    registry: ""
+    repository: lake-snapshot
+    tag: ""
+    pullPolicy: ""
+  # Dedicated secret containing a read-only catalog URI and R2 source/read + explorer/write keys.
+  existingSecret: ""
+  metadataSchema: public
+  tempStorage: 8Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 4Gi
