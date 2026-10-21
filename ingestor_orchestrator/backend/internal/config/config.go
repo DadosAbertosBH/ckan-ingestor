@@ -24,28 +24,29 @@ import (
 )
 
 type Config struct {
-	DBProvider          string
-	OracleDSN           string
-	SICOMEnabled        bool
-	HTTPAddress         string
-	StaticDir           string
-	MySQLDSN            string
-	IggyAddress         string
-	IggyUsername        string
-	IggyPassword        string
-	Stream              string
-	JobTopic            string
-	RetryTopic          string
-	ResultTopic         string
-	MetadataTopic       string
-	MetadataResultTopic string
-	ResultGroup         string
-	MetadataResultGroup string
-	JobPartitions       int
-	ResultPartitions    int
-	PollInterval        time.Duration
-	SchedulerInterval   time.Duration
-	StartupTimeout      time.Duration
+	DBProvider                        string
+	OracleDSN                         string
+	SICOMEnabled                      bool
+	HTTPAddress                       string
+	StaticDir                         string
+	MySQLDSN                          string
+	IggyAddress                       string
+	IggyUsername                      string
+	IggyPassword                      string
+	Stream                            string
+	JobTopic                          string
+	RetryTopic                        string
+	ResultTopic                       string
+	MetadataTopic                     string
+	MetadataResultTopic               string
+	ResultGroup                       string
+	MetadataResultGroup               string
+	JobPartitions                     int
+	ResultPartitions                  int
+	ResultNotFoundRetryBackoffEnabled bool
+	PollInterval                      time.Duration
+	SchedulerInterval                 time.Duration
+	StartupTimeout                    time.Duration
 }
 
 func Load() Config {
@@ -56,28 +57,29 @@ func Load() Config {
 	database := env("INGEST_ORCH_MYSQL_DATABASE", "ingestor_orchestrator")
 
 	return Config{
-		DBProvider:          env("INGEST_ORCH_DB_PROVIDER", "oracle"),
-		OracleDSN:           os.Getenv("INGEST_ORCH_ORACLE_DSN"),
-		SICOMEnabled:        env("INGEST_ORCH_SICOM_ENABLED", "false") == "true",
-		HTTPAddress:         env("INGEST_ORCH_GO_ADDRESS", ":8000"),
-		StaticDir:           env("INGEST_ORCH_STATIC_DIR", "/app/frontend"),
-		MySQLDSN:            fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&loc=UTC", user, password, host, port, database),
-		IggyAddress:         env("INGEST_ORCH_IGGY_ADDRESS", "localhost:8090"),
-		IggyUsername:        env("INGEST_ORCH_IGGY_USERNAME", "iggy"),
-		IggyPassword:        env("INGEST_ORCH_IGGY_PASSWORD", "iggy"),
-		Stream:              env("INGEST_ORCH_IGGY_STREAM", "ckan-ingestor"),
-		JobTopic:            env("INGEST_ORCH_IGGY_TOPIC", "jobs"),
-		RetryTopic:          env("INGEST_ORCH_IGGY_TOPIC_RETRY", "jobs-retry"),
-		ResultTopic:         env("INGEST_ORCH_IGGY_TOPIC_RESULTS", "job-results"),
-		MetadataTopic:       env("INGEST_ORCH_IGGY_METADATA_SYNC_TOPIC", "ckan_metadata_sync"),
-		MetadataResultTopic: env("INGEST_ORCH_IGGY_METADATA_SYNC_RESULT_TOPIC", "ckan_metadata_sync_result"),
-		ResultGroup:         env("INGEST_ORCH_IGGY_RESULT_GROUP_ID", "ckan-result-consumer"),
-		MetadataResultGroup: env("INGEST_ORCH_IGGY_METADATA_SYNC_RESULT_GROUP_ID", "ckan-metadata-sync-result-consumer"),
-		JobPartitions:       envInt("INGEST_ORCH_IGGY_JOB_PARTITIONS", 10),
-		ResultPartitions:    envInt("INGEST_ORCH_IGGY_RESULT_PARTITIONS", 1),
-		PollInterval:        time.Duration(envInt("INGEST_ORCH_IGGY_CONSUMER_POLL_INTERVAL_MS", 500)) * time.Millisecond,
-		SchedulerInterval:   time.Duration(envInt("INGEST_ORCH_SCHEDULER_INTERVAL_MINUTES", 480)) * time.Minute,
-		StartupTimeout:      time.Duration(envInt("INGEST_ORCH_GO_STARTUP_TIMEOUT_SECONDS", 60)) * time.Second,
+		DBProvider:                        env("INGEST_ORCH_DB_PROVIDER", "oracle"),
+		OracleDSN:                         os.Getenv("INGEST_ORCH_ORACLE_DSN"),
+		SICOMEnabled:                      env("INGEST_ORCH_SICOM_ENABLED", "false") == "true",
+		HTTPAddress:                       env("INGEST_ORCH_GO_ADDRESS", ":8000"),
+		StaticDir:                         env("INGEST_ORCH_STATIC_DIR", "/app/frontend"),
+		MySQLDSN:                          fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&loc=UTC", user, password, host, port, database),
+		IggyAddress:                       env("INGEST_ORCH_IGGY_ADDRESS", "localhost:8090"),
+		IggyUsername:                      env("INGEST_ORCH_IGGY_USERNAME", "iggy"),
+		IggyPassword:                      env("INGEST_ORCH_IGGY_PASSWORD", "iggy"),
+		Stream:                            env("INGEST_ORCH_IGGY_STREAM", "ckan-ingestor"),
+		JobTopic:                          env("INGEST_ORCH_IGGY_TOPIC", "jobs"),
+		RetryTopic:                        env("INGEST_ORCH_IGGY_TOPIC_RETRY", "jobs-retry"),
+		ResultTopic:                       env("INGEST_ORCH_IGGY_TOPIC_RESULTS", "job-results"),
+		MetadataTopic:                     env("INGEST_ORCH_IGGY_METADATA_SYNC_TOPIC", "ckan_metadata_sync"),
+		MetadataResultTopic:               env("INGEST_ORCH_IGGY_METADATA_SYNC_RESULT_TOPIC", "ckan_metadata_sync_result"),
+		ResultGroup:                       env("INGEST_ORCH_IGGY_RESULT_GROUP_ID", "ckan-result-consumer"),
+		MetadataResultGroup:               env("INGEST_ORCH_IGGY_METADATA_SYNC_RESULT_GROUP_ID", "ckan-metadata-sync-result-consumer"),
+		JobPartitions:                     envInt("INGEST_ORCH_IGGY_JOB_PARTITIONS", 10),
+		ResultPartitions:                  envInt("INGEST_ORCH_IGGY_RESULT_PARTITIONS", 1),
+		ResultNotFoundRetryBackoffEnabled: envBool("INGEST_ORCH_IGGY_RESULT_NOT_FOUND_RETRY_BACKOFF_ENABLED", true),
+		PollInterval:                      time.Duration(envInt("INGEST_ORCH_IGGY_CONSUMER_POLL_INTERVAL_MS", 500)) * time.Millisecond,
+		SchedulerInterval:                 time.Duration(envInt("INGEST_ORCH_SCHEDULER_INTERVAL_MINUTES", 480)) * time.Minute,
+		StartupTimeout:                    time.Duration(envInt("INGEST_ORCH_GO_STARTUP_TIMEOUT_SECONDS", 60)) * time.Second,
 	}
 }
 
@@ -95,6 +97,18 @@ func envInt(name string, fallback int) int {
 	}
 	parsed, err := strconv.Atoi(value)
 	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
+
+func envBool(name string, fallback bool) bool {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
 		return fallback
 	}
 	return parsed

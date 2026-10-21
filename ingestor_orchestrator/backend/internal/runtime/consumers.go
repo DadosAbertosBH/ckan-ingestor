@@ -90,8 +90,12 @@ func (c *Consumers) handleJob(ctx context.Context, payload []byte) error {
 	if err := json.Unmarshal(payload, &message); err != nil {
 		return err
 	}
+	attempts := 1
+	if c.cfg.ResultNotFoundRetryBackoffEnabled {
+		attempts = 5
+	}
 	var err error
-	for attempt := 0; attempt < 5; attempt++ {
+	for attempt := 0; attempt < attempts; attempt++ {
 		err = c.processor.ApplyJobResult(ctx, message)
 		if errors.Is(err, app.ErrInstanceNotFound) {
 			var instanceID string
@@ -104,7 +108,7 @@ func (c *Consumers) handleJob(ctx context.Context, payload []byte) error {
 		if !errors.Is(err, app.ErrNotFound) {
 			return err
 		}
-		if attempt < 4 {
+		if attempt < attempts-1 {
 			timer := time.NewTimer(time.Duration(1<<attempt) * 100 * time.Millisecond)
 			select {
 			case <-ctx.Done():

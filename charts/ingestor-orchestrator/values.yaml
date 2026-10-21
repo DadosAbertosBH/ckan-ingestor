@@ -185,6 +185,8 @@ iggy:
   jobPartitions: 10
   retryPartitions: 10
   resultPartitions: 1
+  # Retry a result whose PENDING announcement has not been persisted yet.
+  resultNotFoundRetryBackoffEnabled: true
 
 # -- PostgreSQL configuration (CloudNativePG)
 postgres:

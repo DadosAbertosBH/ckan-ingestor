@@ -4,6 +4,15 @@ templates:
   - service.yaml
   - configmap.yaml
 tests:
+  - it: configures result retry backoff explicitly
+    set:
+      iggy.resultNotFoundRetryBackoffEnabled: false
+    asserts:
+      - equal:
+          path: data.INGEST_ORCH_IGGY_RESULT_NOT_FOUND_RETRY_BACKOFF_ENABLED
+          value: "false"
+        template: configmap.yaml
+
   - it: exposes one Go API and runs Go migrations
     asserts:
       - equal:

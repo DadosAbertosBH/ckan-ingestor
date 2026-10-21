@@ -37,6 +37,7 @@ func TestLoadDefaults(t *testing.T) {
 		"INGEST_ORCH_IGGY_TOPIC",
 		"INGEST_ORCH_IGGY_TOPIC_RETRY",
 		"INGEST_ORCH_IGGY_TOPIC_RESULTS",
+		"INGEST_ORCH_IGGY_RESULT_NOT_FOUND_RETRY_BACKOFF_ENABLED",
 		"INGEST_ORCH_SCHEDULER_INTERVAL_MINUTES",
 	} {
 		t.Setenv(name, "")
@@ -55,6 +56,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.SchedulerInterval != 480*time.Minute {
 		t.Fatalf("SchedulerInterval = %s", cfg.SchedulerInterval)
 	}
+	if !cfg.ResultNotFoundRetryBackoffEnabled {
+		t.Fatal("ResultNotFoundRetryBackoffEnabled must default to true")
+	}
 	if cfg.MySQLDSN != "root:@tcp(localhost:3306)/ingestor_orchestrator?parseTime=true&loc=UTC" {
 		t.Fatalf("MySQLDSN = %q", cfg.MySQLDSN)
 	}
@@ -69,6 +73,7 @@ func TestLoadEnvironment(t *testing.T) {
 	t.Setenv("INGEST_ORCH_MYSQL_DATABASE", "ckan")
 	t.Setenv("INGEST_ORCH_IGGY_ADDRESS", "iggy:8090")
 	t.Setenv("INGEST_ORCH_IGGY_JOB_PARTITIONS", "6")
+	t.Setenv("INGEST_ORCH_IGGY_RESULT_NOT_FOUND_RETRY_BACKOFF_ENABLED", "false")
 	t.Setenv("INGEST_ORCH_SCHEDULER_INTERVAL_MINUTES", "12")
 
 	cfg := Load()
@@ -77,6 +82,9 @@ func TestLoadEnvironment(t *testing.T) {
 	}
 	if cfg.SchedulerInterval != 12*time.Minute {
 		t.Fatalf("SchedulerInterval = %s", cfg.SchedulerInterval)
+	}
+	if cfg.ResultNotFoundRetryBackoffEnabled {
+		t.Fatal("ResultNotFoundRetryBackoffEnabled = true, want false")
 	}
 	if cfg.MySQLDSN != "app:p@ss@tcp(mysql:3307)/ckan?parseTime=true&loc=UTC" {
 		t.Fatalf("MySQLDSN = %q", cfg.MySQLDSN)

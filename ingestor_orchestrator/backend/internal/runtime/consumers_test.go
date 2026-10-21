@@ -80,7 +80,7 @@ func TestMalformedMessageAndProcessingFailureAreReturned(t *testing.T) {
 
 func TestJobHandlerRetriesNotFoundAndStopsWhenContextIsCancelled(t *testing.T) {
 	processor := &retryProcessor{remaining: 2}
-	consumers := &Consumers{processor: processor}
+	consumers := &Consumers{processor: processor, cfg: config.Config{ResultNotFoundRetryBackoffEnabled: true}}
 	if err := consumers.handleJob(context.Background(), []byte(`{"job_id":"job","resource_id":"resource","status":"SUCCESS"}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -92,6 +92,21 @@ func TestJobHandlerRetriesNotFoundAndStopsWhenContextIsCancelled(t *testing.T) {
 	processor.remaining = 5
 	if err := consumers.handleJob(ctx, []byte(`{"job_id":"job","resource_id":"resource","status":"SUCCESS"}`)); !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestJobHandlerSkipsUnknownJobWithoutRetryBackoff(t *testing.T) {
+	processor := &retryProcessor{remaining: 5}
+	consumers := &Consumers{processor: processor, cfg: config.Config{ResultNotFoundRetryBackoffEnabled: false}}
+	started := time.Now()
+	if err := consumers.handleJob(context.Background(), []byte(`{"job_id":"job","resource_id":"resource","status":"SUCCESS"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if processor.calls != 1 {
+		t.Fatalf("calls = %d, want 1", processor.calls)
+	}
+	if elapsed := time.Since(started); elapsed > 100*time.Millisecond {
+		t.Fatalf("retries took %s, want no backoff", elapsed)
 	}
 }
 

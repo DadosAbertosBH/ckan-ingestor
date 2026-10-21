@@ -24,6 +24,7 @@ data:
   INGEST_ORCH_IGGY_METADATA_SYNC_RESULT_GROUP_ID: {{ .Values.iggy.metadataSyncResultGroupId | quote }}
   INGEST_ORCH_IGGY_JOB_PARTITIONS: {{ .Values.iggy.jobPartitions | quote }}
   INGEST_ORCH_IGGY_RESULT_PARTITIONS: {{ .Values.iggy.resultPartitions | quote }}
+  INGEST_ORCH_IGGY_RESULT_NOT_FOUND_RETRY_BACKOFF_ENABLED: {{ .Values.iggy.resultNotFoundRetryBackoffEnabled | quote }}
   INGEST_ORCH_DEBUG: {{ .Values.debug | quote }}
   DUCKLAKE_DATABASE: {{ .Values.ducklake.database | quote }}
   {{- if .Values.ducklake.dataPath.endpoint }}
