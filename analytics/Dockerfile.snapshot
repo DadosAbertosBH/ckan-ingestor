@@ -3,7 +3,10 @@ WORKDIR /app
 ENV DUCKDB_EXTENSION_DIRECTORY=/opt/duckdb/extensions UV_NO_CACHE=1
 RUN uv pip install --system duckdb==1.5.6 boto3==1.43.114
 COPY analytics/install_snapshot_extensions.py /app/analytics/install_snapshot_extensions.py
-RUN uv run --no-project python /app/analytics/install_snapshot_extensions.py
+ARG TARGETOS
+ARG TARGETARCH
+RUN uv run --no-project python /app/analytics/install_snapshot_extensions.py \
+    --version 1.5.6 --platform "${TARGETOS}_${TARGETARCH}" --skip-verify
 COPY analytics/__init__.py analytics/publish_lake_snapshot.py /app/analytics/
 USER 10001:10001
 CMD ["uv", "run", "--no-project", "python", "-m", "analytics.publish_lake_snapshot"]

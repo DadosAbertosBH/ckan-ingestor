@@ -13,10 +13,19 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+import gzip
+import importlib.util
 import subprocess
 from pathlib import Path
 
 import yaml
+
+spec = importlib.util.spec_from_file_location(
+    "install_snapshot_extensions",
+    Path(__file__).resolve().parents[1] / "analytics/install_snapshot_extensions.py",
+)
+install_snapshot_extensions = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(install_snapshot_extensions)
 
 
 def test_snapshot_job_is_opt_in_and_uses_existing_credentials():
@@ -67,3 +76,40 @@ def test_snapshot_job_is_opt_in_and_uses_existing_credentials():
     ]["env"]
     catalog = next(e for e in env if e["name"] == "DUCKLAKE_CATALOG_URI")
     assert catalog["valueFrom"]["secretKeyRef"]["key"] == "uri"
+
+
+def test_extension_bootstrap_downloads_target_platform_without_duckdb_runtime(
+    monkeypatch, tmp_path
+):
+    requested = []
+
+    class Response:
+        def read(self):
+            return gzip.compress(b"signed-extension")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+    def urlopen(request, timeout):
+        requested.append((request.full_url, request.headers["User-agent"], timeout))
+        return Response()
+
+    monkeypatch.setattr(install_snapshot_extensions.urllib.request, "urlopen", urlopen)
+    install_snapshot_extensions.download_extensions(
+        tmp_path, version="1.5.6", platform="linux_amd64"
+    )
+
+    assert (tmp_path / "v1.5.6/linux_amd64/ducklake.duckdb_extension").read_bytes() == (
+        b"signed-extension"
+    )
+    assert requested == [
+        (
+            f"https://extensions.duckdb.org/v1.5.6/linux_amd64/{name}.duckdb_extension.gz",
+            "DuckDB/v1.5.6",
+            60,
+        )
+        for name in ("httpfs", "postgres_scanner", "ducklake")
+    ]
