@@ -13,7 +13,7 @@ pnpm install --frozen-lockfile
 pnpm run dev
 ```
 
-Para conectar ao R2, execute também `pnpm run preview` em outro terminal (Worker na porta 8787). Configure `.dev.vars` com `R2_ACCESS_KEY_ID` e `R2_SECRET_ACCESS_KEY`, usando um token pai **somente de leitura** no bucket. Os valores permanecem nos secrets do Worker; o cliente recebe somente credenciais derivadas com validade de 15 minutos e permissão `GetObject`/`HeadObject` para o catálogo e os arquivos das tabelas consultadas. Tabelas com muitos arquivos usam escopo por diretório de dados, incluindo as versões armazenadas nesse diretório, para manter o token dentro do limite dos headers.
+Para conectar ao R2, execute também `pnpm run preview` em outro terminal (Worker na porta 8787). O binding `BUCKET` usa o bucket R2 remoto, enquanto o Worker continua executando localmente. Configure `.dev.vars` com `R2_ACCESS_KEY_ID` e `R2_SECRET_ACCESS_KEY`, usando um token pai **somente de leitura** no bucket. Os valores permanecem nos secrets do Worker; o cliente recebe somente credenciais derivadas com validade de 15 minutos e permissão `GetObject`/`HeadObject` para o catálogo e os arquivos das tabelas consultadas. Tabelas com muitos arquivos usam escopo por diretório de dados, incluindo as versões armazenadas nesse diretório, para manter o token dentro do limite dos headers.
 
 A busca usa nome, descrição e fonte dos metadados CKAN quando disponíveis. Tabela, resumo e gráfico usam filtros parametrizados. O editor SQL aceita consultas relacionais, tem destaque de sintaxe, autocomplete de tabelas/colunas e execução por Ctrl/Cmd+Enter, e guarda favoritos neste navegador. A exportação inclui o resultado exibido (100 linhas por página visual ou até 10.000 linhas no SQL).
 
