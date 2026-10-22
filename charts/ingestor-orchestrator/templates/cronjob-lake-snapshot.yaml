@@ -8,6 +8,7 @@ metadata:
 spec:
   schedule: {{ .Values.lakeSnapshot.schedule | quote }}
   timeZone: {{ .Values.lakeSnapshot.timeZone | quote }}
+  suspend: {{ .Values.lakeSnapshot.suspend }}
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 3600
   successfulJobsHistoryLimit: 2

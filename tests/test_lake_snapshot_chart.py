@@ -59,6 +59,7 @@ def test_snapshot_job_is_opt_in_and_uses_existing_credentials():
     assert job["schedule"] == "0 4 * * *"
     assert job["timeZone"] == "America/Sao_Paulo"
     assert job["concurrencyPolicy"] == "Forbid"
+    assert job["suspend"] is False
     pod = job["jobTemplate"]["spec"]["template"]["spec"]
     assert pod["securityContext"]["runAsNonRoot"] is True
     container = pod["containers"][0]
@@ -76,6 +77,32 @@ def test_snapshot_job_is_opt_in_and_uses_existing_credentials():
     ]["env"]
     catalog = next(e for e in env if e["name"] == "DUCKLAKE_CATALOG_URI")
     assert catalog["valueFrom"]["secretKeyRef"]["key"] == "uri"
+
+
+def test_snapshot_job_can_be_suspended_for_manual_debugging():
+    chart = Path(__file__).resolve().parents[1] / "charts/ingestor-orchestrator"
+    result = subprocess.run(
+        [
+            "helm",
+            "template",
+            "test",
+            str(chart),
+            "--set",
+            "lakeSnapshot.enabled=true",
+            "--set",
+            "lakeSnapshot.suspend=true",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    cronjob = next(
+        document
+        for document in yaml.safe_load_all(result.stdout)
+        if document and document["kind"] == "CronJob"
+    )
+
+    assert cronjob["spec"]["suspend"] is True
 
 
 def test_extension_bootstrap_downloads_target_platform_without_duckdb_runtime(
