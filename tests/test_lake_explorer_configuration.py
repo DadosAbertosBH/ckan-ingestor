@@ -34,4 +34,4 @@ def test_vite_proxy_rewrites_local_worker_origin():
     config_path = Path(__file__).parents[1] / "lake-explorer" / "vite.config.ts"
     config = config_path.read_text()
 
-    assert "headers: { origin: 'http://127.0.0.1:8787' }" in config
+    assert "proxyReq.setHeader('origin', 'http://127.0.0.1:8787')" in config
