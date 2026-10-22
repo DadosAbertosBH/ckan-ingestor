@@ -37,6 +37,13 @@ it('rate limits issuance and rejects mismatched origins', async () => {
   expect((await handleRequest(new Request('https://portal/api/session', { method: 'POST' }), env as never)).status).toBe(429);
   expect((await handleRequest(new Request('https://portal/api/session', { method: 'POST', headers: { Origin: 'https://elsewhere' } }), env as never)).status).toBe(403);
 });
+it('accepts the Vite origin when the worker runs locally', async () => {
+  const response = await handleRequest(new Request('http://127.0.0.1:8787/api/session', {
+    method: 'POST', headers: { Origin: 'http://127.0.0.1:5173' },
+  }), environment() as never);
+
+  expect(response.status).toBe(200);
+});
 it('keeps renewals pinned to their original publication', async () => {
   const env = environment();
   await handleRequest(new Request('https://portal/api/session', { method: 'POST', body: JSON.stringify({ publicationId: 'one' }) }), env as never);

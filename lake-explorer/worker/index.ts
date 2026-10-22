@@ -17,7 +17,7 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       return new Response(asset.body, { headers, encodeBody: 'manual' });
     }
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
-    if (request.headers.get('Origin') && request.headers.get('Origin') !== url.origin) return json({ error: 'Origem inválida' }, 403);
+    if (!validOrigin(request.headers.get('Origin'), url)) return json({ error: 'Origem inválida' }, 403);
     if (url.pathname === '/api/health' || url.pathname === '/api/latest') {
       const object = await env.BUCKET.get('explorer/latest.json');
       if (!object) return json({ error: 'Aguardando publicação' }, 503);
@@ -106,4 +106,10 @@ function validInput(input: unknown): input is { publicationId?: string; tables?:
   if ('publicationId' in input && typeof input.publicationId !== 'string') return false;
   if ('tables' in input && (!Array.isArray(input.tables) || input.tables.length > 50 || input.tables.some(t => typeof t !== 'string'))) return false;
   return true;
+}
+
+function validOrigin(origin: string | null, url: URL): boolean {
+  if (!origin || origin === url.origin) return true;
+  return ["127.0.0.1", "localhost"].includes(url.hostname)
+    && ["http://127.0.0.1:5173", "http://localhost:5173"].includes(origin);
 }

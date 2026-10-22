@@ -15,7 +15,7 @@ export default defineConfig({
   server: { proxy: { '/api': {
     target: 'http://127.0.0.1:8787',
     configure: proxy => proxy.on('proxyReq', proxyReq => {
-      proxyReq.setHeader('origin', 'http://127.0.0.1:8787');
+      proxyReq.removeHeader('origin');
     }),
   } } },
   optimizeDeps: { include: ['echarts', 'flint-chart/echarts', 'codemirror', '@codemirror/lang-sql', '@codemirror/view', '@codemirror/autocomplete'] },
