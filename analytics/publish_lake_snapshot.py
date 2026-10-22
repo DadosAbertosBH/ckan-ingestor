@@ -46,6 +46,11 @@ def literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def log_event(event: str, **details) -> None:
+    """Write progress events in a format Kubernetes can stream directly."""
+    logging.warning(json.dumps({"event": event, **details}, sort_keys=True))
+
+
 def connect():
     config = {
         "temp_directory": os.environ.get("TMPDIR", "/tmp"),
@@ -113,6 +118,8 @@ def export_catalog(source: str, destination: Path, schema: str | None = None) ->
     schema = schema or ("public" if postgres else "main")
     if destination.exists():
         raise ValueError("destination must be a new file")
+    started = time.monotonic()
+    log_event("catalog_export_started", schema=schema, sourceType="postgres" if postgres else "duckdb")
     with tempfile.TemporaryDirectory(prefix="lake-export-") as work:
         copy_path = Path(work) / "copy.duckdb"
         with connect() as conn:
@@ -133,12 +140,28 @@ def export_catalog(source: str, destination: Path, schema: str | None = None) ->
             names = [name for (name,) in tables if name.startswith("ducklake_")]
             if "ducklake_metadata" not in names:
                 raise ValueError("source schema contains no DuckLake catalog")
-            for name in names:
+            log_event("catalog_tables_discovered", tables=len(names))
+            for position, name in enumerate(names, start=1):
+                table_started = time.monotonic()
+                log_event(
+                    "catalog_table_copy_started",
+                    table=name,
+                    position=position,
+                    total=len(names),
+                )
                 conn.execute(
                     f"CREATE TABLE exported.main.{identifier(name)} AS "
                     f"SELECT * FROM source.{identifier(schema)}.{identifier(name)}"
                 )
+                log_event(
+                    "catalog_table_copy_completed",
+                    table=name,
+                    position=position,
+                    total=len(names),
+                    durationSeconds=round(time.monotonic() - table_started, 3),
+                )
             conn.execute("COMMIT")
+            log_event("catalog_copy_completed", tables=len(names))
         with connect() as conn:
             conn.execute("LOAD ducklake")
             configure_storage(conn)
@@ -160,10 +183,25 @@ def export_catalog(source: str, destination: Path, schema: str | None = None) ->
             tables = []
             protected = set()
             files_by_table = {}
-            for table_schema, name in conn.sql(
+            lake_tables = conn.sql(
                 "SELECT table_schema, table_name FROM information_schema.tables "
                 "WHERE table_catalog='lake' ORDER BY table_schema, table_name"
-            ).fetchall():
+            ).fetchall()
+            log_event(
+                "catalog_snapshot_loaded",
+                snapshotId=str(snapshot),
+                expiredSnapshots=len(old),
+                tables=len(lake_tables),
+            )
+            for position, (table_schema, name) in enumerate(lake_tables, start=1):
+                table_started = time.monotonic()
+                log_event(
+                    "catalog_table_verification_started",
+                    schema=table_schema,
+                    table=name,
+                    position=position,
+                    total=len(lake_tables),
+                )
                 qualified = f"lake.{identifier(table_schema)}.{identifier(name)}"
                 columns = [
                     {"name": row[0], "type": row[1]}
@@ -192,6 +230,16 @@ def export_catalog(source: str, destination: Path, schema: str | None = None) ->
                             protected.add(value)
                             table_files.add(value)
                 files_by_table[f"{table_schema}.{name}"] = sorted(table_files)
+                log_event(
+                    "catalog_table_verified",
+                    schema=table_schema,
+                    table=name,
+                    position=position,
+                    total=len(lake_tables),
+                    rows=str(count),
+                    files=len(table_files),
+                    durationSeconds=round(time.monotonic() - table_started, 3),
+                )
             enrich_tables(conn, tables)
             format_version = conn.sql(
                 "SELECT value FROM __ducklake_metadata_lake.ducklake_metadata WHERE key='version'"
@@ -201,13 +249,15 @@ def export_catalog(source: str, destination: Path, schema: str | None = None) ->
             ).fetchone()[0]
         # Rewriting into a new database releases pages occupied by expired history.
         with connect() as conn:
+            log_event("catalog_compaction_started")
             conn.execute(f"ATTACH {literal(str(copy_path))} AS compacted (READ_ONLY)")
             conn.execute(f"ATTACH {literal(str(destination))} AS final")
             conn.execute("COPY FROM DATABASE compacted TO final")
+            log_event("catalog_compaction_completed")
     with destination.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     now = datetime.now(UTC)
-    return {
+    manifest = {
         "id": now.strftime("%Y%m%dT%H%M%S") + f"-{snapshot}-{digest[:12]}",
         "createdAt": now.isoformat(),
         "snapshotId": str(snapshot),
@@ -220,11 +270,19 @@ def export_catalog(source: str, destination: Path, schema: str | None = None) ->
         "protectedFiles": sorted(protected),
         "filesByTable": files_by_table,
     }
+    log_event(
+        "catalog_export_completed",
+        snapshotId=str(snapshot),
+        size=manifest["size"],
+        durationSeconds=round(time.monotonic() - started, 3),
+    )
+    return manifest
 
 
 def publish_snapshot(client, bucket: str, catalog: Path, manifest: dict) -> dict:
     prefix = f"explorer/{manifest['id']}"
     key = f"{prefix}/catalog.duckdb"
+    log_event("catalog_upload_started", id=manifest["id"], size=manifest["size"])
     client.upload_file(
         str(catalog),
         bucket,
@@ -240,6 +298,7 @@ def publish_snapshot(client, bucket: str, catalog: Path, manifest: dict) -> dict
         or remote["Metadata"].get("sha256") != manifest["sha256"]
     ):
         raise ValueError("uploaded catalog verification failed")
+    log_event("catalog_upload_verified", id=manifest["id"])
     published = {
         k: v for k, v in manifest.items() if k not in ("protectedFiles", "filesByTable")
     }
@@ -271,6 +330,7 @@ def publish_snapshot(client, bucket: str, catalog: Path, manifest: dict) -> dict
     put(published["protectedFilesKey"], protection)
     put(f"{prefix}/manifest.json", published)
     put("explorer/latest.json", published)
+    log_event("catalog_published", id=manifest["id"])
     return published
 
 
@@ -366,15 +426,11 @@ def main():
         manifest = export_catalog(args.source, path, schema=args.schema)
         published = publish_snapshot(client, bucket, path, manifest)
         prune_publications(client, bucket, published)
-        logging.warning(
-            json.dumps(
-                {
-                    "event": "snapshot_published",
-                    "id": manifest["id"],
-                    "size": manifest["size"],
-                    "durationSeconds": time.monotonic() - started,
-                }
-            )
+        log_event(
+            "snapshot_published",
+            id=manifest["id"],
+            size=manifest["size"],
+            durationSeconds=round(time.monotonic() - started, 3),
         )
 
 

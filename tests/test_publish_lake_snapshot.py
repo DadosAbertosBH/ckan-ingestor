@@ -14,6 +14,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import importlib.util
+import json
+import logging
 import os
 import uuid
 from datetime import UTC, datetime
@@ -102,6 +104,21 @@ def test_native_catalog_keeps_latest_state_and_inline_rows(lake, tmp_path):
     conn.close()
     with duckdb.connect(str(source), read_only=True) as conn:
         assert conn.sql("SELECT count(*) FROM ducklake_snapshot").fetchone()[0] > 1
+
+
+def test_catalog_export_emits_progress_events(lake, tmp_path, caplog):
+    source, _, _ = lake
+
+    with caplog.at_level(logging.WARNING):
+        export_catalog(str(source), tmp_path / "published.duckdb")
+
+    events = [json.loads(record.getMessage())["event"] for record in caplog.records]
+    assert "catalog_export_started" in events
+    assert "catalog_tables_discovered" in events
+    assert "catalog_table_copy_started" in events
+    assert "catalog_table_copy_completed" in events
+    assert "catalog_table_verified" in events
+    assert "catalog_export_completed" in events
 
 
 def test_publication_only_advances_latest_after_verified_upload(tmp_path):
