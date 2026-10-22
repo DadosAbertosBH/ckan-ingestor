@@ -34,7 +34,7 @@
         "rules": [{
           "id": "lake-explorer-read",
           "allowed": {
-            "methods": ["GET", "HEAD"], "origins": ["${var.portal_origin}"],
+            "methods": ["GET", "HEAD"], "origins": ["${var.portal_origin}", "http://127.0.0.1:5173", "http://localhost:5173"],
             "headers": ["authorization", "range", "x-amz-date", "x-amz-content-sha256", "x-amz-security-token", "content-type"]
           },
           "expose_headers": ["Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"],

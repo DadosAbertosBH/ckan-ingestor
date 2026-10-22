@@ -27,7 +27,11 @@ def test_lake_storage_is_private_and_browser_access_is_read_only():
     assert resources["cloudflare_r2_custom_domain"]["existing"]["enabled"] is False
     rule = resources["cloudflare_r2_bucket_cors"]["explorer"]["rules"][0]
     assert rule["allowed"]["methods"] == ["GET", "HEAD"]
-    assert rule["allowed"]["origins"] == ["${var.portal_origin}"]
+    assert rule["allowed"]["origins"] == [
+        "${var.portal_origin}",
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+    ]
     assert "x-amz-security-token" in rule["allowed"]["headers"]
     assert "Content-Range" in rule["expose_headers"]
 
