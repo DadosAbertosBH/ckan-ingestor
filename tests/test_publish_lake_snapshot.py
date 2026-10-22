@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import importlib.util
+import io
 import json
 import logging
 import os
@@ -25,6 +26,7 @@ from unittest.mock import Mock
 import duckdb
 import pytest
 from botocore.exceptions import ClientError
+from botocore.response import StreamingBody
 
 spec = importlib.util.spec_from_file_location(
     "publish_lake_snapshot",
@@ -176,6 +178,106 @@ def test_resource_titles_and_sources_come_from_ckan_metadata(lake, tmp_path):
     assert table["description"] == "Descrição legível"
 
 
+def test_generic_catalog_links_tables_to_a_source_resource_tree(lake, tmp_path):
+    source, _, _ = lake
+    with duckdb.connect() as conn:
+        conn.execute("LOAD ducklake")
+        conn.execute(f"ATTACH 'ducklake:{source}' AS lake")
+        conn.execute(
+            "CREATE TABLE lake.catalog_sources(source_id VARCHAR, title VARCHAR, type VARCHAR, url VARCHAR)"
+        )
+        conn.execute(
+            "INSERT INTO lake.catalog_sources VALUES ('s', 'Prefeitura', 'custom', 'https://dados.example')"
+        )
+        conn.execute(
+            "CREATE TABLE lake.catalog_resources(source_id VARCHAR, id VARCHAR, parent_resource_id VARCHAR, kind VARCHAR, title VARCHAR, description VARCHAR, page_url VARCHAR, content_url VARCHAR, status VARCHAR, deleted BOOLEAN)"
+        )
+        conn.execute(
+            "INSERT INTO lake.catalog_resources VALUES ('s', 'p', NULL, 'collection', 'Cadastro', 'Coleção', '', '', 'discovered', false), ('s', 'r', 'p', 'file', 'Pessoas', 'Descrição', 'https://dados.example/pessoas', '', 'completed', false)"
+        )
+        conn.execute(
+            "CREATE TABLE lake.catalog_tables(source_id VARCHAR, resource_id VARCHAR, table_schema VARCHAR, table_name VARCHAR)"
+        )
+        conn.execute(
+            "INSERT INTO lake.catalog_tables VALUES ('s', 'r', 'main', 'people')"
+        )
+    result = export_catalog(str(source), tmp_path / "published.duckdb")
+    table = next(t for t in result["tables"] if t["name"] == "people")
+    assert table["title"] == "Pessoas"
+    assert table["sourceId"] == "s"
+    assert table["resourceId"] == "r"
+    assert table["path"] == ["Cadastro", "Pessoas"]
+    assert table["source"] == "Prefeitura"
+    assert result["sources"][0]["id"] == "s"
+    assert len(result["resources"]) == 2
+    metadata = next(t for t in result["tables"] if t["name"] == "catalog_resources")
+    assert metadata["category"] == "metadata"
+
+
+def test_main_imports_completed_discoveries_before_export(monkeypatch):
+    events = []
+    monkeypatch.setenv("DUCKLAKE_DATA_PATH__ENDPOINT", "r2.example")
+    monkeypatch.setenv("DUCKLAKE_DATA_PATH__ACCESS_KEY_ID", "test")
+    monkeypatch.setenv("DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY", "test")
+    monkeypatch.setattr("sys.argv", ["publisher", "--source", "catalog.duckdb"])
+    monkeypatch.setattr(module.boto3, "client", lambda *args, **kwargs: Mock())
+    monkeypatch.setattr(
+        module, "ingest_catalog", lambda *args, **kwargs: events.append("ingest")
+    )
+    monkeypatch.setattr(
+        module,
+        "export_catalog",
+        lambda *args, **kwargs: events.append("export") or {"id": "v1", "size": 1},
+    )
+    monkeypatch.setattr(
+        module,
+        "publish_snapshot",
+        lambda *args, **kwargs: events.append("publish") or {"id": "v1"},
+    )
+    monkeypatch.setattr(module, "prune_publications", lambda *args: None)
+    module.main()
+    assert events == ["ingest", "export", "publish"]
+
+
+def test_catalog_ingestion_updates_the_original_lake_before_copy(
+    lake, tmp_path, monkeypatch
+):
+    source, _, _ = lake
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1]))
+    monkeypatch.delenv("DUCKLAKE_INGEST_CATALOG_URI", raising=False)
+    monkeypatch.setattr(module, "configure_storage", lambda conn: None)
+    header = {
+        "version": 1,
+        "source": {
+            "id": "s",
+            "title": "Portal",
+            "type": "custom",
+            "url": "https://example.test",
+        },
+        "sync_id": "one",
+        "collected_at": "2026-10-22T12:00:00Z",
+    }
+    payload = (
+        json.dumps(header)
+        + '\n{"id":"collection","title":"Coleção","kind":"collection"}\n'
+    ).encode()
+    client = Mock()
+    client.get_paginator.return_value.paginate.side_effect = (
+        lambda **kwargs: [{"Contents": [{"Key": "catalog-inbox/s/one.jsonl"}]}]
+        if kwargs["Prefix"] == "catalog-inbox/"
+        else []
+    )
+    client.get_object.side_effect = lambda **kwargs: {
+        "Body": StreamingBody(io.BytesIO(payload), len(payload))
+    }
+    module.ingest_catalog(str(source), client, "fixture")
+    manifest = export_catalog(str(source), tmp_path / "published.duckdb")
+    assert manifest["sources"] == [
+        {"id": "s", "title": "Portal", "type": "custom", "url": "https://example.test"}
+    ]
+    assert manifest["resources"][0]["title"] == "Coleção"
+
+
 def test_retention_protects_current_previous_and_recent_sessions():
     publications = [
         {"id": name, "createdAt": time}
@@ -210,6 +312,63 @@ def test_publication_records_previous_and_protection_for_maintenance(tmp_path):
         {"id": "v1", "sha256": "abc", "size": 7, "protectedFiles": []},
     )
     assert result["previousId"] == "previous"
+
+
+@pytest.mark.skipif(
+    not os.environ.get("LAKE_TEST_POSTGRES_DSN"),
+    reason="isolated PostgreSQL DSN required",
+)
+def test_postgres_catalog_ingestion_supports_a_custom_metadata_schema(
+    tmp_path, monkeypatch
+):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1]))
+    monkeypatch.delenv("DUCKLAKE_INGEST_CATALOG_URI", raising=False)
+    monkeypatch.setattr(module, "configure_storage", lambda conn: None)
+    dsn = os.environ["LAKE_TEST_POSTGRES_DSN"]
+    schema = "catalog_ingest_" + uuid.uuid4().hex
+    header = {
+        "version": 1,
+        "source": {
+            "id": "s",
+            "title": "Portal",
+            "type": "custom",
+            "url": "https://example.test",
+        },
+        "sync_id": "one",
+        "collected_at": "2026-10-22T12:00:00Z",
+    }
+    payload = (
+        json.dumps(header)
+        + '\n{"id":"collection","title":"Coleção","kind":"collection"}\n'
+    ).encode()
+    client = Mock()
+    client.get_paginator.return_value.paginate.side_effect = (
+        lambda **kwargs: [{"Contents": [{"Key": "catalog-inbox/s/one.jsonl"}]}]
+        if kwargs["Prefix"] == "catalog-inbox/"
+        else []
+    )
+    client.get_object.side_effect = lambda **kwargs: {
+        "Body": StreamingBody(io.BytesIO(payload), len(payload))
+    }
+    try:
+        with duckdb.connect() as conn:
+            conn.execute("LOAD ducklake")
+            conn.execute(
+                f"ATTACH {module.literal('ducklake:postgres:' + dsn)} AS lake (METADATA_SCHEMA {module.literal(schema)}, DATA_PATH {module.literal(str(tmp_path / 'data'))})"
+            )
+        module.ingest_catalog("postgres:" + dsn, client, "fixture", schema=schema)
+        manifest = export_catalog(
+            "postgres:" + dsn, tmp_path / "published.duckdb", schema=schema
+        )
+        assert manifest["sources"][0]["title"] == "Portal"
+        assert manifest["resources"][0]["title"] == "Coleção"
+    finally:
+        with duckdb.connect() as conn:
+            conn.execute("LOAD postgres")
+            conn.execute(f"ATTACH {module.literal(dsn)} AS pg (TYPE POSTGRES)")
+            conn.execute(
+                f"CALL postgres_execute('pg', 'DROP SCHEMA IF EXISTS {schema} CASCADE')"
+            )
 
 
 @pytest.mark.skipif(

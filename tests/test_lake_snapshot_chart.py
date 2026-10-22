@@ -28,6 +28,11 @@ install_snapshot_extensions = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(install_snapshot_extensions)
 
 
+def test_snapshot_image_contains_catalog_ingestion():
+    dockerfile = Path(__file__).resolve().parents[1] / "analytics/Dockerfile.snapshot"
+    assert "analytics/catalog_ingestion.py" in dockerfile.read_text()
+
+
 def test_snapshot_job_is_opt_in_and_uses_existing_credentials():
     chart = Path(__file__).resolve().parents[1] / "charts/ingestor-orchestrator"
 

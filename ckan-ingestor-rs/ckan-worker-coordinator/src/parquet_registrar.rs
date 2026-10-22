@@ -33,9 +33,39 @@ impl ParquetRegistrar {
         Self { factory }
     }
 
+    pub async fn record_outcome(
+        &self,
+        result: &ckan_ingestor_worker_lib::JobResultMessage,
+    ) -> Result<()> {
+        crate::catalog_outcomes::persist_outcome(
+            self.factory.data_path(),
+            self.factory.storage_options(),
+            result,
+        )
+        .await
+    }
+
     pub async fn initialize(&self) -> Result<()> {
         let client = self.factory.client().await?;
         initialize_last_update_table(&client).await
+    }
+
+    pub async fn register_for_source(
+        &self,
+        source_id: &str,
+        resource_id: &str,
+        job_id: &str,
+        source_version: &str,
+        artifact: &ParquetArtifact,
+    ) -> Result<()> {
+        self.register_with_tags(
+            resource_id,
+            job_id,
+            source_version,
+            artifact,
+            identity_tags(source_id, resource_id),
+        )
+        .await
     }
 
     /// Registers a pre-uploaded file. `write_data_files` receives complete
@@ -46,6 +76,18 @@ impl ParquetRegistrar {
         job_id: &str,
         source_version: &str,
         artifact: &ParquetArtifact,
+    ) -> Result<()> {
+        self.register_with_tags(resource_id, job_id, source_version, artifact, vec![])
+            .await
+    }
+
+    async fn register_with_tags(
+        &self,
+        resource_id: &str,
+        job_id: &str,
+        source_version: &str,
+        artifact: &ParquetArtifact,
+        mut identity: Vec<Tag>,
     ) -> Result<()> {
         let schema = decode_schema(&artifact.schema_ipc_base64)?;
         let columns = schema
@@ -77,21 +119,22 @@ impl ParquetRegistrar {
         if client.table_exists(table_name.clone()).await? {
             transaction.table(table_name.clone())?.delete()?;
         }
+        identity.extend([
+            Tag {
+                key: "source_job_id".into(),
+                value: job_id.into(),
+            },
+            Tag {
+                key: "source_version".into(),
+                value: source_version.into(),
+            },
+        ]);
         let mut table = transaction.create_table(
             table_name,
             columns,
             None,
             None,
-            Some(vec![
-                Tag {
-                    key: "source_job_id".into(),
-                    value: job_id.into(),
-                },
-                Tag {
-                    key: "source_version".into(),
-                    value: source_version.into(),
-                },
-            ]),
+            Some(identity),
             IfExistsStrategy::Fail,
         )?;
         table
@@ -117,6 +160,42 @@ impl ParquetRegistrar {
         parent_job_id: &str,
         source_version: &str,
         children: &[ChildRecord],
+    ) -> Result<u64> {
+        self.register_children_with_tags(
+            parent_resource_id,
+            parent_job_id,
+            source_version,
+            children,
+            vec![],
+        )
+        .await
+    }
+
+    pub async fn register_children_for_source(
+        &self,
+        source_id: &str,
+        resource_id: &str,
+        job_id: &str,
+        version: &str,
+        children: &[ChildRecord],
+    ) -> Result<u64> {
+        self.register_children_with_tags(
+            resource_id,
+            job_id,
+            version,
+            children,
+            identity_tags(source_id, resource_id),
+        )
+        .await
+    }
+
+    async fn register_children_with_tags(
+        &self,
+        parent_resource_id: &str,
+        parent_job_id: &str,
+        source_version: &str,
+        children: &[ChildRecord],
+        mut identity: Vec<Tag>,
     ) -> Result<u64> {
         anyhow::ensure!(!children.is_empty(), "no child artifacts to merge");
         let client = self.factory.client().await?;
@@ -154,21 +233,22 @@ impl ParquetRegistrar {
         if client.table_exists(name.clone()).await? {
             transaction.table(name.clone())?.delete()?;
         }
+        identity.extend([
+            Tag {
+                key: "source_job_id".into(),
+                value: parent_job_id.into(),
+            },
+            Tag {
+                key: "source_version".into(),
+                value: source_version.into(),
+            },
+        ]);
         let mut table = transaction.create_table(
             name,
             columns,
             None,
             None,
-            Some(vec![
-                Tag {
-                    key: "source_job_id".into(),
-                    value: parent_job_id.into(),
-                },
-                Tag {
-                    key: "source_version".into(),
-                    value: source_version.into(),
-                },
-            ]),
+            Some(identity),
             IfExistsStrategy::Fail,
         )?;
         let rows = artifacts.iter().map(|artifact| artifact.num_rows).sum();
@@ -188,6 +268,22 @@ impl ParquetRegistrar {
         transaction.commit().await?;
         Ok(rows)
     }
+}
+
+fn identity_tags(source_id: &str, resource_id: &str) -> Vec<Tag> {
+    if source_id.is_empty() {
+        return vec![];
+    }
+    vec![
+        Tag {
+            key: "source_id".into(),
+            value: source_id.into(),
+        },
+        Tag {
+            key: "resource_id".into(),
+            value: resource_id.into(),
+        },
+    ]
 }
 
 fn decode_schema(encoded: &str) -> Result<Schema> {
@@ -228,8 +324,8 @@ fn statistics(artifact: &ParquetArtifact) -> Result<DataFileStatistics> {
 
 #[cfg(test)]
 mod tests {
-    use super::ParquetRegistrar;
     use super::statistics;
+    use super::ParquetRegistrar;
     use arrow::datatypes::{DataType, Field, Schema};
     use arrow_ipc::convert::IpcSchemaEncoder;
     use base64::Engine;
@@ -269,12 +365,10 @@ mod tests {
         let registrar = ParquetRegistrar::new(factory);
         registrar.initialize().await.unwrap();
         let client = registrar.factory.client().await.unwrap();
-        assert!(
-            client
-                .table_exists(crate::ducklake_data_writer::LAST_UPDATE_TABLE)
-                .await
-                .unwrap()
-        );
+        assert!(client
+            .table_exists(crate::ducklake_data_writer::LAST_UPDATE_TABLE)
+            .await
+            .unwrap());
         let schema = Schema::new(vec![Field::new("id", DataType::Int32, true)]);
         let schema_ipc_base64 = base64::engine::general_purpose::STANDARD.encode(
             IpcSchemaEncoder::new()
@@ -301,5 +395,30 @@ mod tests {
             .register("resource", "job", "v1", &artifact)
             .await
             .unwrap();
+        registrar
+            .register_for_source("a", "resource-a", "job-a", "v1", &artifact)
+            .await
+            .unwrap();
+        registrar
+            .register_for_source("b", "resource-b", "job-b", "v1", &artifact)
+            .await
+            .unwrap();
+        for (source, name) in [("a", "resource-a"), ("b", "resource-b")] {
+            let table = ducklake::TableName {
+                schema: "main".into(),
+                name: name.into(),
+            };
+            assert!(
+                client.table_exists(table.clone()).await.unwrap(),
+                "missing resource table {name}"
+            );
+            let tags = client.table(table).await.unwrap().tags().await.unwrap();
+            assert!(tags
+                .iter()
+                .any(|tag| tag.key == "source_id" && tag.value == source));
+            assert!(tags
+                .iter()
+                .any(|tag| tag.key == "resource_id" && tag.value == name));
+        }
     }
 }

@@ -1,18 +1,24 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, ref } from 'vue';
+import CatalogBrowser from './CatalogBrowser.vue';
 import { LakeEngine } from './engine';
 import { buildQuery, quoteIdentifier, type Filter } from './queries';
-import type { LakeTable, Publication, QueryResult } from '../shared/types';
+import type { CatalogResource, LakeTable, Publication, QueryResult } from '../shared/types';
 import './style.css';
 import './progress.css';
+import './catalog.css';
 
 const Chart = defineAsyncComponent(() => import('./Chart.vue'));
 const SqlEditor = defineAsyncComponent(() => import('./SqlEditor.vue'));
 const engine = new LakeEngine();
 const publication = ref<Publication>();
-const search = ref('');
-const tableLimit = ref(60);
 const selected = ref<LakeTable>();
+const selectedResource = ref<CatalogResource>();
+const tableResource = computed(() => selected.value?.resourceId ? publication.value?.resources?.find(r => r.sourceId === selected.value?.sourceId && r.id === selected.value?.resourceId) : undefined);
+const resourceTables = computed(() => publication.value?.tables.filter(t => t.sourceId === selectedResource.value?.sourceId && t.resourceId === selectedResource.value?.id) ?? []);
+const statusLabel = (status: string) => ({ failed: 'Atualização com falha', completed: 'Disponível', processing: 'Em processamento', discovered: 'Aguardando ingestão', deleted: 'Removido na origem' }[status] ?? status);
+function sourceLink(url?: string): string | undefined { return url && /^https?:\/\//i.test(url) ? url : undefined; }
+function showResource(resource: CatalogResource) { selected.value = undefined; result.value = undefined; selectedResource.value = resource; }
 const result = ref<QueryResult>();
 const busy = ref(false), connecting = ref(false), error = ref(''), progress = ref(''), progressFraction = ref<number>(), updated = ref(false);
 const tab = ref('Tabela');
@@ -24,7 +30,6 @@ const chartX = ref(''), chartY = ref(''), chartKind = ref('bar');
 const showColumns = ref(false);
 const favorites = ref<string[]>(readFavorites());
 function readFavorites(): string[] { try { return JSON.parse(localStorage.getItem('lake-queries') ?? '[]'); } catch { return []; } }
-const tables = computed(() => (publication.value?.tables ?? []).filter(t => `${t.title} ${t.name} ${t.source ?? ''} ${t.description ?? ''}`.toLocaleLowerCase('pt-BR').includes(search.value.toLocaleLowerCase('pt-BR'))));
 const numeric = computed(() => selected.value?.columns.filter(c => /INT|DOUBLE|FLOAT|DECIMAL|NUMERIC/i.test(c.type)) ?? []);
 const count = (n: number | string) => Number(n).toLocaleString('pt-BR');
 const date = (d: string) => new Date(d).toLocaleString('pt-BR', { dateStyle: 'medium', timeStyle: 'short' });
@@ -42,6 +47,7 @@ async function connect() {
 }
 async function choose(table: LakeTable) {
   if (busy.value) return;
+  selectedResource.value = undefined;
   selected.value = table; tab.value = 'Tabela'; offset.value = 0; order.value = ''; filters.value = [];
   visibleColumns.value = table.columns.map(c => c.name); filterColumn.value = table.columns[0]?.name ?? '';
   group.value = table.columns.find(c => !/INT|DOUBLE|FLOAT|DECIMAL/.test(c.type))?.name ?? table.columns[0]?.name ?? '';
@@ -77,9 +83,8 @@ async function download(format: 'csv' | 'parquet') {
   } catch (e) { error.value = String(e); } finally { busy.value = false; }
 }
 function save() { if (!favorites.value.includes(sql.value)) favorites.value.unshift(sql.value); favorites.value = favorites.value.slice(0, 20); localStorage.setItem('lake-queries', JSON.stringify(favorites.value)); }
-async function refresh() { await engine.close(); publication.value = undefined; selected.value = undefined; result.value = undefined; updated.value = false; await connect(); }
+async function refresh() { await engine.close(); publication.value = undefined; selected.value = undefined; selectedResource.value = undefined; result.value = undefined; updated.value = false; await connect(); }
 const timer = setInterval(async () => { if (!publication.value) return; try { const response = await fetch('/api/latest'); if (response.ok) updated.value = (await response.json()).id !== publication.value.id; } catch { /* next poll retries */ } }, 60_000);
-watch(search, () => { tableLimit.value = 60; });
 onBeforeUnmount(() => { clearInterval(timer); void engine.close(); });
 </script>
 
@@ -107,18 +112,28 @@ onBeforeUnmount(() => { clearInterval(timer); void engine.close(); });
     <div v-else class="workspace">
       <aside class="sidebar">
         <div class="sidebar-title"><span class="eyebrow">SEU PONTO DE PARTIDA</span><h2>Catálogo <small>{{ count(publication.tables.length) }}</small></h2></div>
-        <label class="search"><span>⌕</span><input v-model="search" aria-label="Buscar conjuntos" placeholder="Buscar nos dados…"></label>
-        <p class="list-caption">{{ count(tables.length) }} tabelas disponíveis</p>
-        <nav class="table-list" aria-label="Conjuntos de dados"><button v-for="table in tables.slice(0, tableLimit)" :key="table.schema + '.' + table.name" class="table-card" :class="{ active: selected === table }" :disabled="busy" @click="choose(table)"><span class="table-icon">▦</span><span><strong>{{ table.title }}</strong><small>{{ table.source || table.schema }} · {{ count(table.rows) }} linhas</small></span><span class="table-arrow">↗</span></button><button v-if="tables.length > tableLimit" class="secondary" @click="tableLimit += 60">Ver mais conjuntos</button><p v-if="!tables.length" class="muted">Tente buscar outro nome ou tema.</p></nav>
+        <CatalogBrowser :publication="publication" :busy="busy" @choose="choose" @resource="showResource" />
         <div class="snapshot"><span class="status-dot"></span><div>Atualização dos dados<strong>{{ date(publication.createdAt) }}</strong><small>Snapshot {{ publication.snapshotId }}</small></div></div>
       </aside>
 
       <main class="content">
         <div v-if="updated" class="update-banner">Há uma nova atualização dos dados. <button :disabled="busy" @click="refresh">Abrir catálogo atualizado ↗</button></div>
-        <div v-if="!selected" class="empty-state"><span class="empty-symbol">▦</span><div class="eyebrow">UM MUNDO DE POSSIBILIDADES</div><h1>Qual será sua<br>próxima descoberta?</h1><p>Escolha um conjunto no catálogo para começar.<br>A tabela, os filtros e os gráficos esperam por você.</p><div class="hint">← Explore o catálogo ao lado</div></div>
+        <section v-if="selectedResource" class="resource-detail">
+          <div class="breadcrumb">{{ publication.sources?.find(s => s.id === selectedResource?.sourceId)?.title }} / {{ selectedResource.path.join(' / ') }}</div>
+          <h1>{{ selectedResource.title }}</h1><p>{{ selectedResource.description }}</p>
+          <p role="status">{{ statusLabel(selectedResource.deleted ? 'deleted' : selectedResource.status) }}</p>
+          <a v-if="sourceLink(selectedResource.pageUrl)" :href="sourceLink(selectedResource.pageUrl)" target="_blank" rel="noreferrer">Abrir na fonte ↗</a>
+          <h2 v-if="resourceTables.length">Tabelas disponíveis</h2>
+          <button v-for="table in resourceTables" :key="table.schema + '.' + table.name" class="table-card" @click="choose(table)">{{ table.title }} · {{ count(table.rows) }} linhas ↗</button>
+          <details><summary>Detalhes técnicos</summary><p>Fonte: {{ selectedResource.sourceId }} · Recurso: {{ selectedResource.id }}</p></details>
+        </section>
+        <div v-else-if="!selected" class="empty-state"><span class="empty-symbol">▦</span><div class="eyebrow">UM MUNDO DE POSSIBILIDADES</div><h1>Qual será sua<br>próxima descoberta?</h1><p>Escolha um conjunto no catálogo para começar.<br>A tabela, os filtros e os gráficos esperam por você.</p><div class="hint">← Explore o catálogo ao lado</div></div>
         <template v-else>
-          <div class="breadcrumb">Catálogo <span>/</span> {{ selected.source || selected.schema }}</div>
+          <div class="breadcrumb">Catálogo <span>/</span> {{ selected.source || 'Dados' }} <span v-if="selected.path?.length"> / {{ selected.path.join(' / ') }}</span></div>
+          <p v-if="selected.deleted || selected.status === 'failed'" class="catalog-notice">{{ selected.deleted ? 'Removido na origem' : 'Atualização com falha' }} · exibindo os últimos dados disponíveis.</p>
           <div class="dataset-heading"><div><div class="eyebrow">CONJUNTO DE DADOS</div><h1>{{ selected.title }}</h1><p v-if="selected.description" class="description">{{ selected.description }}</p><div class="dataset-meta"><span><i class="status-dot"></i> {{ count(selected.rows) }} linhas</span><span>{{ selected.columns.length }} colunas</span><span>Atualizado em {{ date(publication.createdAt) }}</span></div></div><span class="dataset-stamp">DADOS<br>ABERTOS ↗</span></div>
+          <a v-if="sourceLink(selected.pageUrl)" :href="sourceLink(selected.pageUrl)" target="_blank" rel="noreferrer">Abrir na fonte ↗</a>
+          <details class="catalog-technical"><summary>Detalhes técnicos</summary><p>Tabela SQL: lake.{{ selected.schema }}.{{ selected.name }}</p><p v-if="selected.resourceId">Fonte: {{ selected.sourceId }} · Recurso: {{ selected.resourceId }}</p><button v-if="tableResource" class="text-button" @click="showResource(tableResource)">Ver recurso e tabelas</button></details>
           <div class="tabs" role="tablist"><button v-for="name in ['Tabela', 'Resumir', 'Gráfico', 'SQL']" :key="name" role="tab" :aria-selected="tab === name" :class="{ selected: tab === name }" :disabled="busy" @click="changeTab(name)">{{ name }}</button><div class="export-actions"><button class="text-button" :disabled="busy || !result" @click="download('csv')">↓ CSV</button><button class="text-button" :disabled="busy || !result" @click="download('parquet')">↓ Parquet</button></div></div>
 
           <section v-if="tab === 'SQL'" class="sql-panel"><div class="panel-label">SUA CONSULTA <button class="text-button" @click="save">☆ Salvar consulta</button></div><SqlEditor v-model="sql" :tables="publication.tables" :selected="selected" @run="run" /><div class="sql-completions"><span>Inserir coluna:</span><button v-for="c in selected.columns.slice(0, 12)" :key="c.name" @click="sql += quoteIdentifier(c.name)">{{ c.name }}</button></div><div class="sql-actions"><button class="primary" :disabled="busy" @click="run">Executar consulta <span>↗</span></button><select v-if="favorites.length" aria-label="Consultas favoritas" @change="sql = ($event.target as HTMLSelectElement).value"><option value="">Consultas salvas neste navegador</option><option v-for="favorite in favorites" :key="favorite" :value="favorite">{{ favorite.slice(0, 80) }}</option></select></div></section>

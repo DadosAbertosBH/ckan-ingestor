@@ -37,7 +37,7 @@ use std::{env, sync::Arc, time::Duration};
 use tokio::runtime::Runtime;
 
 use crate::messages::{JobMessage, JobResultMessage, JobStatus};
-use crate::parquet_uploader::ParquetUploader;
+use crate::parquet_uploader::{storage_resource_id, ParquetUploader};
 use message_processor::{MessageProcessor, OutgoingMessage};
 
 pub(crate) fn http_client() -> Result<Client, reqwest::Error> {
@@ -272,8 +272,9 @@ fn run_conversion(
     s3: &S3DocumentIngestor,
 ) -> Result<ConversionOutcome, anyhow::Error> {
     let version = conversion_version(job);
+    let artifact_resource_id = storage_resource_id(&job.resource_id);
     if job.parent_job_id.is_none()
-        && runtime.block_on(uploader.exists(&job.resource_id, version))?
+        && runtime.block_on(uploader.exists(&artifact_resource_id, version))?
     {
         return Ok(ConversionOutcome::Result(JobResultMessage {
             job_id: job.job_id.clone(),
@@ -349,8 +350,11 @@ fn run_conversion(
     .with_format_resolver(HttpFormatResolver::new(http_client));
     match reader.read(&resource) {
         Ok(result) => {
-            let artifact =
-                runtime.block_on(uploader.upload(&job.resource_id, version, &result.parquet))?;
+            let artifact = runtime.block_on(uploader.upload(
+                &artifact_resource_id,
+                version,
+                &result.parquet,
+            ))?;
             let mut result = job_result_from_success(
                 job.job_id.clone(),
                 job.resource_id.clone(),

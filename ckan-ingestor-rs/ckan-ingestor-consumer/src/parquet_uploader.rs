@@ -15,7 +15,7 @@ use base64::Engine;
 use ckan_ingestor_lib::{config::S3Settings, parquet_output::ParquetOutput};
 use ckan_ingestor_worker_lib::{ParquetArtifact, ParquetColumnStatistics};
 use object_store::{
-    Error as ObjectStoreError, ObjectStore, ObjectStoreExt, WriteMultipart, parse_url_opts,
+    parse_url_opts, Error as ObjectStoreError, ObjectStore, ObjectStoreExt, WriteMultipart,
 };
 use tokio::io::AsyncReadExt;
 use url::Url;
@@ -23,6 +23,10 @@ use url::Url;
 #[derive(Clone)]
 pub struct ParquetUploader {
     s3: S3Settings,
+}
+
+pub fn storage_resource_id(resource_id: &str) -> String {
+    resource_id.to_owned()
 }
 
 impl ParquetUploader {
@@ -140,7 +144,7 @@ mod tests {
         record_batch::RecordBatch,
     };
 
-    use super::{ParquetUploader, artifact_from_parquet};
+    use super::{artifact_from_parquet, ParquetUploader};
     use ckan_ingestor_lib::config::S3Settings;
     use ckan_ingestor_lib::parquet_output::ParquetOutput;
 
@@ -178,9 +182,26 @@ mod tests {
         );
     }
 
+    #[test]
+    fn artifact_cache_uses_the_globally_unique_resource_id() {
+        let uploader = ParquetUploader::new(S3Settings {
+            bucket: "warehouse".into(),
+            ..Default::default()
+        });
+        let a = super::storage_resource_id("resource-a");
+        let b = super::storage_resource_id("resource-b");
+        assert_eq!(a, "resource-a");
+        assert_eq!(b, "resource-b");
+        assert_ne!(
+            uploader.destination_uri(&a, "v1"),
+            uploader.destination_uri(&b, "v1")
+        );
+        assert_eq!(super::storage_resource_id("same"), "same");
+    }
+
     #[tokio::test]
     async fn head_distinguishes_present_and_missing_artifacts() {
-        use object_store::{ObjectStoreExt, PutPayload, memory::InMemory, path::Path};
+        use object_store::{memory::InMemory, path::Path, ObjectStoreExt, PutPayload};
 
         let store = InMemory::new();
         let present = Path::from("resource/ducklake_v1.parquet");

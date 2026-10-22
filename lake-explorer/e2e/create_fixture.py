@@ -29,6 +29,11 @@ spec = importlib.util.spec_from_file_location(
 )
 publisher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(publisher)
+spec = importlib.util.spec_from_file_location(
+    "catalog_ingestion", root / "analytics/catalog_ingestion.py"
+)
+ingestion = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(ingestion)
 fixtures = Path(__file__).parent / "fixtures"
 fixtures.mkdir(exist_ok=True)
 with tempfile.TemporaryDirectory() as work:
@@ -43,6 +48,49 @@ with tempfile.TemporaryDirectory() as work:
         conn.execute("DELETE FROM lake.despesas WHERE id=0")
         conn.execute("CREATE TABLE lake.inline_table(id INTEGER)")
         conn.execute("INSERT INTO lake.inline_table VALUES (42)")
+        ingestion.ingest_snapshot(
+            conn,
+            {
+                "source": {
+                    "id": "fixture-source",
+                    "title": "Prefeitura de exemplo",
+                    "type": "ckan",
+                    "url": "https://dados.example",
+                },
+                "sync_id": "fixture-sync",
+                "collected_at": "2026-10-22T12:00:00Z",
+                "resources": [
+                    {
+                        "id": "financas",
+                        "kind": "collection",
+                        "title": "Finanças municipais",
+                        "metadata": {"license_id": "public"},
+                    },
+                    {
+                        "id": "despesas",
+                        "parent_resource_id": "financas",
+                        "kind": "file",
+                        "title": "despesas municipais",
+                        "description": "Despesas por cidade",
+                        "format": "CSV",
+                        "page_url": "https://dados.example/despesas",
+                    },
+                    {
+                        "id": "inline_table",
+                        "parent_resource_id": "financas",
+                        "kind": "file",
+                        "title": "Dados de referência",
+                    },
+                    {
+                        "id": "empenhos",
+                        "parent_resource_id": "financas",
+                        "kind": "file",
+                        "title": "Empenhos em preparação",
+                    },
+                ],
+            },
+        )
+        ingestion.refresh_table_links(conn)
     published = Path(work) / "published.duckdb"
     manifest = publisher.export_catalog(str(catalog), published)
     shutil.copyfile(published, fixtures / "catalog.duckdb")

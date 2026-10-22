@@ -79,6 +79,8 @@ def enrich_tables(conn, tables):
             else {}
         )
 
+    if "catalog_resources" in available:
+        return enrich_generic_catalog(conn, tables, available)
     resources = rows("ckan_resource")
     datasets = rows("ckan_dataset")
     for table in tables:
@@ -92,6 +94,117 @@ def enrich_tables(conn, tables):
         table["source"] = (
             urlparse(dataset.get("url") or resource.get("url") or "").hostname or ""
         )
+        table["category"] = (
+            "metadata"
+            if table["name"]
+            in {
+                "ckan_resource",
+                "ckan_dataset",
+                "ckan_packages",
+                "ckan_resources",
+                "ckan_resource_last_update",
+            }
+            else "legacy"
+        )
+    return {"sources": [], "resources": []}
+
+
+def enrich_generic_catalog(conn, tables, available):
+    def records(name):
+        if name not in available:
+            return []
+        result = conn.execute(f"SELECT * FROM lake.main.{identifier(name)}")
+        columns = [column[0] for column in result.description]
+        return [dict(zip(columns, row, strict=True)) for row in result.fetchall()]
+
+    sources = [
+        {
+            "id": row["source_id"],
+            "title": row["title"],
+            "type": row["type"],
+            "url": row["url"],
+        }
+        for row in records("catalog_sources")
+    ]
+    source_names = {row["id"]: row["title"] for row in sources}
+    metadata_collections = {row["name"] for row in records("catalog_collections")}
+    resources = records("catalog_resources")
+    by_key = {(row["source_id"], row["id"]): row for row in resources}
+    links = {
+        (row["table_schema"], row["table_name"]): row
+        for row in records("catalog_tables")
+    }
+    public_resources = []
+    for row in resources:
+        path, seen, current = [], set(), row
+        while current:
+            key = (current["source_id"], current["id"])
+            if key in seen:
+                raise ValueError("catalog resource cycle")
+            seen.add(key)
+            path.insert(0, current.get("title") or "Recurso sem título")
+            current = by_key.get((row["source_id"], current.get("parent_resource_id")))
+        row["path"] = path
+        public_resources.append(
+            {
+                "id": row["id"],
+                "sourceId": row["source_id"],
+                "parentId": row.get("parent_resource_id"),
+                "kind": row["kind"],
+                "title": row["title"],
+                "description": row.get("description") or "",
+                "pageUrl": row.get("page_url") or "",
+                "format": row.get("format") or "",
+                "status": row.get("status") or "discovered",
+                "deleted": bool(row.get("deleted")),
+                "path": path,
+            }
+        )
+    for table in tables:
+        if table["schema"] == "main" and (
+            table["name"].startswith("catalog_")
+            or table["name"] in metadata_collections
+            or table["name"]
+            in {
+                "ckan_packages",
+                "ckan_resources",
+                "ckan_resource",
+                "ckan_dataset",
+                "ckan_resource_last_update",
+            }
+        ):
+            table["category"] = "metadata"
+            table["title"] = {
+                "catalog_sources": "Fontes",
+                "catalog_resources": "Catálogo de recursos",
+                "catalog_tables": "Tabelas por recurso",
+                "catalog_history": "Histórico dos metadados",
+                "catalog_imports": "Coletas importadas",
+                "ckan_packages": "Packages CKAN",
+                "ckan_resources": "Resources CKAN",
+            }.get(table["name"], table["name"])
+            continue
+        link = links.get((table["schema"], table["name"]))
+        resource = (
+            by_key.get((link["source_id"], link["resource_id"])) if link else None
+        )
+        if resource is None:
+            table["category"] = "legacy"
+            continue
+        table.update(
+            title=resource["title"],
+            description=resource.get("description") or "",
+            source=source_names.get(resource["source_id"], "Fonte"),
+            sourceId=resource["source_id"],
+            resourceId=resource["id"],
+            path=resource["path"],
+            dataset=" / ".join(resource["path"][:-1]),
+            pageUrl=resource.get("page_url") or "",
+            status=resource.get("status") or "completed",
+            deleted=bool(resource.get("deleted")),
+            category="data",
+        )
+    return {"sources": sources, "resources": public_resources}
 
 
 def configure_storage(conn):
@@ -119,7 +232,11 @@ def export_catalog(source: str, destination: Path, schema: str | None = None) ->
     if destination.exists():
         raise ValueError("destination must be a new file")
     started = time.monotonic()
-    log_event("catalog_export_started", schema=schema, sourceType="postgres" if postgres else "duckdb")
+    log_event(
+        "catalog_export_started",
+        schema=schema,
+        sourceType="postgres" if postgres else "duckdb",
+    )
     with tempfile.TemporaryDirectory(prefix="lake-export-") as work:
         copy_path = Path(work) / "copy.duckdb"
         with connect() as conn:
@@ -240,7 +357,7 @@ def export_catalog(source: str, destination: Path, schema: str | None = None) ->
                     files=len(table_files),
                     durationSeconds=round(time.monotonic() - table_started, 3),
                 )
-            enrich_tables(conn, tables)
+            catalog = enrich_tables(conn, tables)
             format_version = conn.sql(
                 "SELECT value FROM __ducklake_metadata_lake.ducklake_metadata WHERE key='version'"
             ).fetchone()[0]
@@ -267,6 +384,7 @@ def export_catalog(source: str, destination: Path, schema: str | None = None) ->
         "sha256": digest,
         "size": destination.stat().st_size,
         "tables": tables,
+        **catalog,
         "protectedFiles": sorted(protected),
         "filesByTable": files_by_table,
     }
@@ -396,6 +514,27 @@ def protected_files(client, bucket):
     return files
 
 
+def ingest_catalog(source, client, bucket, schema=None):
+    from analytics.catalog_ingestion import import_inbox
+
+    source = os.environ.get("DUCKLAKE_INGEST_CATALOG_URI") or source
+    postgres = source.startswith(("postgres:", "postgresql://", "postgres://"))
+    if postgres and not source.startswith("postgres:"):
+        source = "postgres:" + source
+    options = f" (METADATA_SCHEMA {literal(schema)})" if schema and postgres else ""
+    with connect() as conn:
+        conn.execute("LOAD ducklake")
+        configure_storage(conn)
+        conn.execute(f"ATTACH {literal('ducklake:' + source)} AS lake{options}")
+        import_inbox(
+            conn,
+            client,
+            bucket,
+            metadata_schema=schema or ("public" if postgres else "main"),
+        )
+    log_event("source_catalog_import_completed")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", default=os.environ.get("DUCKLAKE_CATALOG_URI"))
@@ -421,6 +560,7 @@ def main():
     if args.protected_files:
         print(json.dumps(sorted(protected_files(client, bucket))))
         return
+    ingest_catalog(args.source, client, bucket, schema=args.schema)
     with tempfile.TemporaryDirectory(prefix="lake-snapshot-") as work:
         path = Path(work) / "catalog.duckdb"
         manifest = export_catalog(args.source, path, schema=args.schema)

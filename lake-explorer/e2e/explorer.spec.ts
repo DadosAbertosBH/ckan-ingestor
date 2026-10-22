@@ -38,6 +38,12 @@ test('native DuckLake catalog, remote range reads, visual exploration and SQL', 
   await page.goto('/');
   await page.getByRole('button', { name: /^Explorar dados/ }).click();
   await expect.poll(async () => await page.getByRole('alert').count() ? await page.getByRole('alert').textContent() : await page.getByRole('button', { name: /despesas/ }).count() ? 'ready' : 'loading', { timeout: 60000 }).toBe('ready');
+  await page.getByLabel('Fonte', { exact: true }).selectOption('fixture-source');
+  await page.getByRole('button', { name: /Finanças municipais/ }).click();
+  await page.getByLabel('Mostrar todos os recursos').check();
+  await page.getByRole('button', { name: /Empenhos em preparação/ }).click();
+  await expect(page.getByRole('heading', { name: 'Empenhos em preparação' })).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('Aguardando ingestão');
   await page.getByRole('button', { name: /despesas/ }).click();
   await expect(page.getByRole('cell', { name: 'São Paulo', exact: true }).first()).toBeVisible();
   await page.getByLabel('Valor do filtro').fill('Recife');
@@ -77,4 +83,6 @@ test('native DuckLake catalog, remote range reads, visual exploration and SQL', 
   await expect(page.locator('.chart-shell canvas')).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
   await page.screenshot({ path: 'test-results/explorer.png', fullPage: true });
+  await page.getByLabel('Área do catálogo').selectOption('metadata');
+  await expect(page.getByRole('button', { name: /Histórico dos metadados/ })).toBeVisible();
 });

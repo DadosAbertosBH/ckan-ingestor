@@ -59,6 +59,9 @@ func (a *Adapter) Discover(ctx context.Context, s catalog.Source, emit func(cata
 		if !page.Success {
 			return fmt.Errorf("CKAN API rejected discovery")
 		}
+		if page.Result == nil {
+			return fmt.Errorf("CKAN API result must be an array")
+		}
 		for _, raw := range page.Result {
 			var p struct {
 				ID, Name, Title, Notes string
@@ -77,7 +80,7 @@ func (a *Adapter) Discover(ctx context.Context, s catalog.Source, emit func(cata
 			if title == "" {
 				title = p.Name
 			}
-			if err := emit(catalog.Resource{ID: key, Kind: "collection", Title: title, Description: p.Notes, PageURL: pageURL, DatasetName: p.Name}); err != nil {
+			if err := emit(catalog.Resource{ID: key, Kind: "collection", Title: title, Description: p.Notes, PageURL: pageURL, DatasetName: p.Name, Version: p.Modified, Metadata: raw, MetadataCollection: "ckan_packages"}); err != nil {
 				return err
 			}
 			for _, child := range p.Resources {
@@ -104,7 +107,7 @@ func (a *Adapter) Discover(ctx context.Context, s catalog.Source, emit func(cata
 				if r.Datastore {
 					kind = "endpoint"
 				}
-				if err := emit(catalog.Resource{ID: r.ID, ParentID: key, Kind: kind, Title: r.Name, Description: r.Description, PageURL: pageURL + "/resource/" + url.PathEscape(r.ID), URL: r.URL, Format: strings.ToUpper(r.Format), Version: version, DatasetName: p.Name, DatastoreActive: r.Datastore}); err != nil {
+				if err := emit(catalog.Resource{ID: r.ID, ParentID: key, Kind: kind, Title: r.Name, Description: r.Description, PageURL: pageURL + "/resource/" + url.PathEscape(r.ID), URL: r.URL, Format: strings.ToUpper(r.Format), Version: version, DatasetName: p.Name, DatastoreActive: r.Datastore, Metadata: child, MetadataCollection: "ckan_resources"}); err != nil {
 					return err
 				}
 			}

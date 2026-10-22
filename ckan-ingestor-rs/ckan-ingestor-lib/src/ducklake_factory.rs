@@ -69,6 +69,10 @@ impl DucklakeFactory {
         &self.storage_options
     }
 
+    pub fn data_path(&self) -> &str {
+        &self.data_path
+    }
+
     pub async fn initialize(&self) -> Result<()> {
         self.client().await?;
         Ok(())
@@ -143,7 +147,7 @@ fn postgres_url(uri: &str) -> Result<String> {
 mod tests {
     use tempfile::tempdir;
 
-    use super::{postgres_url, DucklakeFactory};
+    use super::{DucklakeFactory, postgres_url};
 
     #[test]
     fn converts_the_existing_libpq_catalog_setting_to_a_postgresql_url() {

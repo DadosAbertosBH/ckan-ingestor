@@ -4,6 +4,7 @@ package ckandiscovery
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	catalog "gitlab.com/pedalin/ckan-ingestor/ingestor_orchestrator/source-resource-catalog"
 	"net/http"
@@ -35,9 +36,19 @@ func TestPagesPackagesAndChildrenWithContentVersionFallback(t *testing.T) {
 	if resources[0].ID != "p" || resources[1].ID != "r" || resources[1].ParentID != "p" || resources[1].Version != "v2" || !resources[1].DatastoreActive {
 		t.Fatal("resource lost parent/version/access metadata")
 	}
+	encoded, _ := json.Marshal(resources[0])
+	var record map[string]any
+	json.Unmarshal(encoded, &record)
+	metadata, _ := record["metadata"].(map[string]any)
+	if metadata["license_id"] != "lic" || resources[0].Version != "v2" {
+		t.Fatalf("package metadata/version lost: %s", encoded)
+	}
+	if record["metadata_collection"] != "ckan_packages" {
+		t.Fatalf("metadata collection=%v", record["metadata_collection"])
+	}
 }
 func TestPartialPageFailurePropagatesAndAPIRejectsFailure(t *testing.T) {
-	for _, response := range []string{`{"success":false,"result":[]}`, `{"success":true,"result":{}}`, `broken`} {
+	for _, response := range []string{`{"success":false,"result":[]}`, `{"success":true,"result":{}}`, `{"success":true,"result":null}`, `{"success":true}`, `broken`} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, response) }))
 		a := Adapter{HTTP: server.Client()}
 		err := a.Discover(context.Background(), catalog.Source{URL: server.URL}, func(catalog.Resource) error { return nil })

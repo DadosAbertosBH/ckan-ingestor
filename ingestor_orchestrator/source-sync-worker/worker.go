@@ -61,7 +61,7 @@ func Run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	defer queue.Close()
-	worker := &catalog.Worker{Catalog: catalogStore, Publisher: queue, SyncResultsTopic: cfg.SyncResultsTopic, Adapters: map[string]catalog.Adapter{"ckan": &ckandiscovery.Adapter{}, "sicom": sicomcrawler.Adapter{}}}
+	worker := &catalog.Worker{Catalog: catalogStore, Publisher: queue, Snapshots: newSnapshotStore(), SyncResultsTopic: cfg.SyncResultsTopic, Adapters: map[string]catalog.Adapter{"ckan": &ckandiscovery.Adapter{}, "sicom": sicomcrawler.Adapter{}}}
 	consumer := iggytransport.Consumer{Driver: queue, PollInterval: time.Second}
 	runner := Runner{Worker: worker}
 	return consumer.Consume(ctx, cfg.SyncTopic, cfg.SyncGroup, func(payload []byte) error { return runner.Handle(ctx, payload) })

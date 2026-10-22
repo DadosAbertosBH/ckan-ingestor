@@ -7,6 +7,7 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
+pub mod catalog_outcomes;
 pub mod child_jobs;
 pub mod child_merge;
 pub mod data_writer;

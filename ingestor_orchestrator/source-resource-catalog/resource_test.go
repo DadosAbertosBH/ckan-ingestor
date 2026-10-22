@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"testing"
+	"time"
 )
 
 type testRepo struct {
@@ -17,6 +19,41 @@ type testRepo struct {
 	complete     int
 	outgoing     []Outgoing
 	ack          []string
+}
+
+type snapshotRecorder struct {
+	data  []byte
+	calls int
+	fail  bool
+}
+
+func (s *snapshotRecorder) Publish(_ context.Context, _ string, _ Source, _ time.Time, stream io.ReadSeeker) error {
+	s.calls++
+	s.data, _ = io.ReadAll(stream)
+	if s.fail {
+		return errors.New("storage unavailable")
+	}
+	return nil
+}
+func TestCompleteDiscoveryPublishesRawSnapshotAndRetriesStorageFailures(t *testing.T) {
+	sink := &snapshotRecorder{fail: true}
+	repo := &testRepo{source: Source{ID: "s", Type: "custom"}}
+	pub := &testPublisher{}
+	w := Worker{Catalog: repo, Snapshots: sink, Publisher: pub, Adapters: map[string]Adapter{"custom": resourceListAdapter{{ID: "r", Metadata: json.RawMessage(`{"extra":[1,2]}`)}}}}
+	if err := w.Sync(context.Background(), "sync", "s", "custom"); err == nil {
+		t.Fatal("storage failure accepted")
+	}
+	sink.fail = false
+	if err := w.Sync(context.Background(), "sync", "s", "custom"); err != nil {
+		t.Fatal(err)
+	}
+	var resource Resource
+	if err := json.Unmarshal(sink.data, &resource); err != nil {
+		t.Fatal(err)
+	}
+	if resource.SourceID != "s" || string(resource.Metadata) != `{"extra":[1,2]}` || sink.calls != 2 {
+		t.Fatalf("snapshot=%s calls=%d", sink.data, sink.calls)
+	}
 }
 
 func (r *testRepo) Source(context.Context, string) (Source, error) { return r.source, nil }
@@ -131,9 +168,32 @@ func TestSyncRoutesAdaptersAndCompletesOnlyFullDiscovery(t *testing.T) {
 		if repo.complete != expected {
 			t.Fatal("partial discovery finalized snapshot")
 		}
-		if len(repo.observed) == 0 || repo.observed[0].SourceID != "s" {
+		if fail && len(repo.observed) != 0 {
+			t.Fatal("partial discovery changed the current catalog")
+		}
+		if !fail && (len(repo.observed) == 0 || repo.observed[0].SourceID != "s") {
 			t.Fatal("observations lost source")
 		}
+	}
+}
+
+func TestSyncValidatesTheEntireTreeBeforePersistence(t *testing.T) {
+	for name, resources := range map[string]resourceListAdapter{
+		"cycle":          {{ID: "a", ParentID: "b"}, {ID: "b", ParentID: "a"}},
+		"missing parent": {{ID: "a", ParentID: "missing"}},
+		"duplicate":      {{ID: "a"}, {ID: "a"}},
+		"foreign source": {{ID: "a", SourceID: "another"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo := &testRepo{source: Source{ID: "s", Type: "ckan"}}
+			worker := Worker{Catalog: repo, Adapters: map[string]Adapter{"ckan": resources}, Publisher: &testPublisher{}}
+			if err := worker.Sync(context.Background(), "sync", "s", "ckan"); err == nil {
+				t.Fatal("invalid tree accepted")
+			}
+			if repo.observeCalls != 0 || repo.complete != 0 {
+				t.Fatal("invalid tree reached persistence")
+			}
+		})
 	}
 }
 

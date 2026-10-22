@@ -17,6 +17,8 @@ Para conectar ao R2, execute também `pnpm run preview` em outro terminal (Worke
 
 A busca usa nome, descrição e fonte dos metadados CKAN quando disponíveis. Tabela, resumo e gráfico usam filtros parametrizados. O editor SQL aceita consultas relacionais, tem destaque de sintaxe, autocomplete de tabelas/colunas e execução por Ctrl/Cmd+Enter, e guarda favoritos neste navegador. A exportação inclui o resultado exibido (100 linhas por página visual ou até 10.000 linhas no SQL).
 
+O [catálogo genérico de fontes e recursos](../docs/source-catalog.md) fornece nomes, descrições e hierarquia para CKAN, SICOM e outros adaptadores. A navegação oferece busca global, seleção de fonte e coleção, filtro de disponibilidade e áreas de metadados e legado.
+
 ## Verificação reproduzível
 
 Na raiz:
@@ -50,14 +52,15 @@ O exportador recebe:
 
 | Variável | Uso |
 | --- | --- |
-| `DUCKLAKE_CATALOG_URI` | URI PostgreSQL com usuário de leitura do schema DuckLake |
+| `DUCKLAKE_CATALOG_URI` | URI PostgreSQL usada para copiar o catálogo em leitura |
+| `DUCKLAKE_INGEST_CATALOG_URI` | URI com escrita para importar metadados; usa `DUCKLAKE_CATALOG_URI` quando omitida |
 | `DUCKLAKE_METADATA_SCHEMA` | Schema do catálogo, normalmente `public` |
 | `DUCKLAKE_DATA_PATH__ENDPOINT` | Endpoint R2 |
 | `DUCKLAKE_DATA_PATH__BUCKET` | Bucket, padrão `public-datasets` |
 | `DUCKLAKE_DATA_PATH__ACCESS_KEY_ID` | Leitura dos arquivos e publicação em `explorer/` |
 | `DUCKLAKE_DATA_PATH__SECRET_ACCESS_KEY` | Secret correspondente |
 
-O job copia as tabelas `ducklake_*` em uma transação de leitura, expira o histórico **na cópia** e regrava o catálogo para recuperar espaço. Preserva inline rows, deletes, schemas e arquivos originais. Valida contagens, publica o catálogo com checksum SHA-256, manifesto e índice de proteção; atualiza `explorer/latest.json` por último.
+O job primeiro importa as descobertas concluídas e seus resultados para as tabelas de catálogo no lake. Essa etapa usa credenciais com escrita no catálogo e nos Parquet de metadados. Em seguida copia as tabelas `ducklake_*` em uma transação de leitura, expira o histórico **na cópia** e regrava o catálogo para recuperar espaço. Preserva inline rows, deletes, schemas e arquivos originais. Valida contagens, publica o catálogo com checksum SHA-256, manifesto e índice de proteção; atualiza `explorer/latest.json` por último.
 
 Habilite o componente pelo repositório GitOps, usando a versão do chart e da imagem que contêm esta implementação:
 
