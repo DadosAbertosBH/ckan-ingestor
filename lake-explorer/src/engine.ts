@@ -3,6 +3,7 @@ import workerURL from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url'
 import { AwsClient } from 'aws4fetch';
 import { Table, type RecordBatch } from 'apache-arrow';
 import type { QueryResult, Session } from '../shared/types';
+import { readCatalogResponse, type DownloadProgress } from './catalog-download';
 
 const string = (value: string) => "'" + value.replaceAll("'", "''") + "'";
 
@@ -15,7 +16,7 @@ export class LakeEngine {
   private scopedTables: string[] = [];
   private queryNumber = 0;
   private cancelled = false;
-  onProgress: (message: string) => void = () => {};
+  onProgress: (message: string, fraction?: number) => void = () => {};
 
   async connect() {
     this.onProgress('Preparando sua sessão de leitura…');
@@ -37,8 +38,8 @@ export class LakeEngine {
     const client = new AwsClient({ ...credentials, service: 's3', region: 'auto' });
     const object = await client.fetch(`${endpoint}/${publication.bucket}/${publication.catalogKey}`);
     if (!object.ok) throw new Error('Falha ao carregar o catálogo');
-    const bytes = new Uint8Array(await object.arrayBuffer());
-    const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
+    const bytes = await readCatalogResponse(object, progress => this.reportCatalogProgress(progress));
+    const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(bytes))), b => b.toString(16).padStart(2, '0')).join('');
     if (digest !== publication.sha256 || bytes.byteLength !== publication.size) throw new Error('O catálogo recebido falhou na verificação de integridade');
     await this.db.registerFileBuffer('catalog.duckdb', bytes);
     this.onProgress('Abrindo o catálogo DuckLake…');
@@ -46,6 +47,12 @@ export class LakeEngine {
     const dataPath = publication.dataPath ? `, DATA_PATH ${string(publication.dataPath)}, OVERRIDE_DATA_PATH true` : '';
     await this.conn.query(`ATTACH 'ducklake:catalog.duckdb' AS lake (READ_ONLY${dataPath})`);
     return publication;
+  }
+
+  private reportCatalogProgress({ received, total }: DownloadProgress) {
+    const megabytes = (bytes: number) => (bytes / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    const detail = total ? `${megabytes(received)} de ${megabytes(total)} MB` : `${megabytes(received)} MB`;
+    this.onProgress(`Baixando catálogo do lake… ${detail}`, total ? received / total : undefined);
   }
 
   private async setCredentials() {

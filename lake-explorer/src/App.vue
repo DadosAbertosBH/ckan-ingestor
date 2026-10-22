@@ -4,6 +4,7 @@ import { LakeEngine } from './engine';
 import { buildQuery, quoteIdentifier, type Filter } from './queries';
 import type { LakeTable, Publication, QueryResult } from '../shared/types';
 import './style.css';
+import './progress.css';
 
 const Chart = defineAsyncComponent(() => import('./Chart.vue'));
 const SqlEditor = defineAsyncComponent(() => import('./SqlEditor.vue'));
@@ -13,7 +14,7 @@ const search = ref('');
 const tableLimit = ref(60);
 const selected = ref<LakeTable>();
 const result = ref<QueryResult>();
-const busy = ref(false), connecting = ref(false), error = ref(''), progress = ref(''), updated = ref(false);
+const busy = ref(false), connecting = ref(false), error = ref(''), progress = ref(''), progressFraction = ref<number>(), updated = ref(false);
 const tab = ref('Tabela');
 const sql = ref('');
 const offset = ref(0), order = ref(''), descending = ref(false), visibleColumns = ref<string[]>([]);
@@ -33,9 +34,9 @@ function cell(value: unknown): string {
   if (value instanceof Date) return value.toLocaleString('pt-BR');
   return typeof value === 'object' ? JSON.stringify(value, (_, v) => typeof v === 'bigint' ? String(v) : v) : String(value);
 }
-engine.onProgress = message => { progress.value = message; };
+engine.onProgress = (message, fraction) => { progress.value = message; progressFraction.value = fraction; };
 async function connect() {
-  connecting.value = true; error.value = '';
+  connecting.value = true; error.value = ''; progressFraction.value = undefined;
   try { publication.value = await engine.connect(); } catch (e) { error.value = String(e instanceof Error ? e.message : e); await engine.close(); }
   finally { connecting.value = false; }
 }
@@ -94,7 +95,10 @@ onBeforeUnmount(() => { clearInterval(timer); void engine.close(); });
       <h1>Dados públicos,<br><em>novas perspectivas.</em></h1>
       <p class="intro">Encontre respostas nos dados. Explore tabelas, faça comparações e transforme números em histórias — direto do seu navegador.</p>
       <button class="primary start" :disabled="connecting" @click="connect">{{ connecting ? 'Abrindo o observatório…' : 'Explorar dados' }} <span>↗</span></button>
-      <p v-if="connecting" class="progress" role="status">{{ progress }}</p>
+      <div v-if="connecting" class="progress" role="status">
+        <span>{{ progress }}</span>
+        <div v-if="progressFraction != null" class="progress-track" role="progressbar" aria-label="Download do catálogo" :aria-valuenow="Math.round(progressFraction * 100)" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: `${Math.max(1, progressFraction * 100)}%` }"></span></div>
+      </div>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <div class="welcome-grid"><article><span>01 / ENCONTRE</span><h2>Comece por uma pergunta</h2><p>Procure um conjunto por tema, nome ou fonte.</p></article><article><span>02 / EXPLORE</span><h2>Deixe os dados falarem</h2><p>Filtre, organize e resuma com poucos cliques.</p></article><article><span>03 / COMPARTILHE</span><h2>Leve sua descoberta</h2><p>Baixe os resultados e os gráficos da sua análise.</p></article></div>
       <div class="welcome-foot"><span>CONSULTAS NO SEU NAVEGADOR</span><span>DuckLake + DuckDB</span><span>Atualização diária</span></div>

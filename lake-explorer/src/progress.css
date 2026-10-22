@@ -1,0 +1,20 @@
+.progress {
+  display: grid;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.progress-track {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2eadb;
+}
+
+.progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #668853;
+  transition: width .15s ease;
+}
