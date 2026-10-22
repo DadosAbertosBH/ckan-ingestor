@@ -15,7 +15,7 @@ use base64::Engine;
 use ckan_ingestor_lib::{config::S3Settings, parquet_output::ParquetOutput};
 use ckan_ingestor_worker_lib::{ParquetArtifact, ParquetColumnStatistics};
 use object_store::{
-    parse_url_opts, Error as ObjectStoreError, ObjectStore, ObjectStoreExt, WriteMultipart,
+    Error as ObjectStoreError, ObjectStore, ObjectStoreExt, WriteMultipart, parse_url_opts,
 };
 use tokio::io::AsyncReadExt;
 use url::Url;
@@ -144,7 +144,7 @@ mod tests {
         record_batch::RecordBatch,
     };
 
-    use super::{artifact_from_parquet, ParquetUploader};
+    use super::{ParquetUploader, artifact_from_parquet};
     use ckan_ingestor_lib::config::S3Settings;
     use ckan_ingestor_lib::parquet_output::ParquetOutput;
 
@@ -201,7 +201,7 @@ mod tests {
 
     #[tokio::test]
     async fn head_distinguishes_present_and_missing_artifacts() {
-        use object_store::{memory::InMemory, path::Path, ObjectStoreExt, PutPayload};
+        use object_store::{ObjectStoreExt, PutPayload, memory::InMemory, path::Path};
 
         let store = InMemory::new();
         let present = Path::from("resource/ducklake_v1.parquet");

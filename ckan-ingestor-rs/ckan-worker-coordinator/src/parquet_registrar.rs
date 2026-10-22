@@ -324,8 +324,8 @@ fn statistics(artifact: &ParquetArtifact) -> Result<DataFileStatistics> {
 
 #[cfg(test)]
 mod tests {
-    use super::statistics;
     use super::ParquetRegistrar;
+    use super::statistics;
     use arrow::datatypes::{DataType, Field, Schema};
     use arrow_ipc::convert::IpcSchemaEncoder;
     use base64::Engine;
@@ -365,10 +365,12 @@ mod tests {
         let registrar = ParquetRegistrar::new(factory);
         registrar.initialize().await.unwrap();
         let client = registrar.factory.client().await.unwrap();
-        assert!(client
-            .table_exists(crate::ducklake_data_writer::LAST_UPDATE_TABLE)
-            .await
-            .unwrap());
+        assert!(
+            client
+                .table_exists(crate::ducklake_data_writer::LAST_UPDATE_TABLE)
+                .await
+                .unwrap()
+        );
         let schema = Schema::new(vec![Field::new("id", DataType::Int32, true)]);
         let schema_ipc_base64 = base64::engine::general_purpose::STANDARD.encode(
             IpcSchemaEncoder::new()
@@ -413,12 +415,14 @@ mod tests {
                 "missing resource table {name}"
             );
             let tags = client.table(table).await.unwrap().tags().await.unwrap();
-            assert!(tags
-                .iter()
-                .any(|tag| tag.key == "source_id" && tag.value == source));
-            assert!(tags
-                .iter()
-                .any(|tag| tag.key == "resource_id" && tag.value == name));
+            assert!(
+                tags.iter()
+                    .any(|tag| tag.key == "source_id" && tag.value == source)
+            );
+            assert!(
+                tags.iter()
+                    .any(|tag| tag.key == "resource_id" && tag.value == name)
+            );
         }
     }
 }

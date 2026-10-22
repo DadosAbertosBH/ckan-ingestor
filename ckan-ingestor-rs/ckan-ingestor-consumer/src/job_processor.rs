@@ -37,7 +37,7 @@ use std::{env, sync::Arc, time::Duration};
 use tokio::runtime::Runtime;
 
 use crate::messages::{JobMessage, JobResultMessage, JobStatus};
-use crate::parquet_uploader::{storage_resource_id, ParquetUploader};
+use crate::parquet_uploader::{ParquetUploader, storage_resource_id};
 use message_processor::{MessageProcessor, OutgoingMessage};
 
 pub(crate) fn http_client() -> Result<Client, reqwest::Error> {
