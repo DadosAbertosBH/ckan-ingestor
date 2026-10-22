@@ -47,7 +47,11 @@ def literal(value: str) -> str:
 
 
 def connect():
-    config = {"temp_directory": os.environ.get("TMPDIR", "/tmp")}
+    config = {
+        "temp_directory": os.environ.get("TMPDIR", "/tmp"),
+        "threads": "1",
+        "preserve_insertion_order": "false",
+    }
     if directory := os.environ.get("DUCKDB_EXTENSION_DIRECTORY"):
         config["extension_directory"] = directory
     return duckdb.connect(config=config)

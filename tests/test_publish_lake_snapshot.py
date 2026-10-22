@@ -46,6 +46,8 @@ def test_connect_uses_writable_temp_directory(monkeypatch, tmp_path):
     module.connect()
 
     assert captured["config"]["temp_directory"] == str(tmp_path)
+    assert captured["config"]["threads"] == "1"
+    assert captured["config"]["preserve_insertion_order"] == "false"
 
 
 def storage_client():
