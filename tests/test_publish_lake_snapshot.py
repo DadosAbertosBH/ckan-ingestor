@@ -34,6 +34,20 @@ export_catalog = module.export_catalog
 publish_snapshot = module.publish_snapshot
 
 
+def test_connect_uses_writable_temp_directory(monkeypatch, tmp_path):
+    captured = {}
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setattr(
+        module.duckdb,
+        "connect",
+        lambda **kwargs: captured.update(kwargs) or Mock(),
+    )
+
+    module.connect()
+
+    assert captured["config"]["temp_directory"] == str(tmp_path)
+
+
 def storage_client():
     client = Mock()
     client.get_object.side_effect = ClientError(
