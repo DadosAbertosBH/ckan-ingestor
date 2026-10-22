@@ -147,7 +147,7 @@ fn postgres_url(uri: &str) -> Result<String> {
 mod tests {
     use tempfile::tempdir;
 
-    use super::{DucklakeFactory, postgres_url};
+    use super::{postgres_url, DucklakeFactory};
 
     #[test]
     fn converts_the_existing_libpq_catalog_setting_to_a_postgresql_url() {
