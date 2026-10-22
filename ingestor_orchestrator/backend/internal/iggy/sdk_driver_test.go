@@ -87,8 +87,8 @@ func TestEnsureStreamPropagatesRetentionFailure(t *testing.T) {
 }
 
 func TestEnsureTopicAppliesRetentionToNewAndExistingTopics(t *testing.T) {
-	wantExpiry := iggycontracts.Duration(30 * 24 * iggycontracts.Hour)
-	const wantSize = uint64(2 * 1024 * 1024 * 1024)
+	wantExpiry := iggycontracts.Duration(15 * 24 * iggycontracts.Hour)
+	const wantSize = uint64(1024 * 1024 * 1024)
 
 	for _, item := range []struct {
 		name   string
