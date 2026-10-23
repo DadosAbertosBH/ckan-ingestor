@@ -7,7 +7,7 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Instant};
 
 use anyhow::{Context, Result};
 use arrow::datatypes::Schema;
@@ -19,6 +19,7 @@ use ducklake::{
     Column, DataFileStatistics, FileColumnStats, IfExistsStrategy, TableName, Tag, Value,
     WriteDataFile,
 };
+use log::info;
 
 use crate::ducklake_data_writer::{append_last_update, initialize_last_update_table};
 use crate::{child_jobs::ChildRecord, child_merge::normalize_children};
@@ -100,9 +101,22 @@ impl ParquetRegistrar {
                     .iter()
                     .any(|tag| tag.key == "source_job_id" && tag.value == job_id)
             {
+                info!(
+                    "ducklake_registration_skipped resource_id={} job_id={} source_version={}",
+                    resource_id, job_id, source_version,
+                );
                 return Ok(());
             }
         }
+        let started = Instant::now();
+        info!(
+            "ducklake_registration_started resource_id={} job_id={} source_version={} rows={} columns={}",
+            resource_id,
+            job_id,
+            source_version,
+            artifact.num_rows,
+            columns.len(),
+        );
         let mut transaction = client.transaction().await?;
         if client.table_exists(table_name.clone()).await? {
             transaction.table(table_name.clone())?.delete()?;
@@ -139,6 +153,13 @@ impl ParquetRegistrar {
             .commit()
             .await
             .context("committing parquet registration")?;
+        info!(
+            "ducklake_registration_completed resource_id={} job_id={} rows={} elapsed_ms={}",
+            resource_id,
+            job_id,
+            artifact.num_rows,
+            started.elapsed().as_millis(),
+        );
         Ok(())
     }
 
@@ -202,6 +223,10 @@ impl ParquetRegistrar {
                     .iter()
                     .any(|tag| tag.key == "source_job_id" && tag.value == parent_job_id)
             {
+                info!(
+                    "ducklake_registration_skipped resource_id={} job_id={} source_version={}",
+                    parent_resource_id, parent_job_id, source_version,
+                );
                 return Ok(children.iter().map(|child| child.rows as u64).sum());
             }
         }
@@ -217,6 +242,15 @@ impl ParquetRegistrar {
             .iter()
             .map(|field| Column::try_from(field.as_ref()))
             .collect::<std::result::Result<Vec<_>, _>>()?;
+        let started = Instant::now();
+        info!(
+            "ducklake_registration_started resource_id={} job_id={} source_version={} children={} columns={}",
+            parent_resource_id,
+            parent_job_id,
+            source_version,
+            children.len(),
+            columns.len(),
+        );
         let mut transaction = client.transaction().await?;
         if client.table_exists(name.clone()).await? {
             transaction.table(name.clone())?.delete()?;
@@ -254,6 +288,13 @@ impl ParquetRegistrar {
         drop(table);
         append_last_update(&mut transaction, parent_resource_id, source_version)?;
         transaction.commit().await?;
+        info!(
+            "ducklake_registration_completed resource_id={} job_id={} rows={} elapsed_ms={}",
+            parent_resource_id,
+            parent_job_id,
+            rows,
+            started.elapsed().as_millis(),
+        );
         Ok(rows)
     }
 }

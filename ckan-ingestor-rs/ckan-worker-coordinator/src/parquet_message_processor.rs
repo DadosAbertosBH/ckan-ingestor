@@ -7,11 +7,12 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_stream::stream;
 use ckan_ingestor_worker_lib::{JobResultMessage, JobStatus};
 use futures::Stream;
+use log::{error, info, warn};
 use message_processor::{MessageProcessor, OutgoingMessage};
 use serde::Serialize;
 
@@ -46,6 +47,17 @@ impl MessageProcessor for ParquetProcessor {
         mut result: JobResultMessage,
     ) -> impl Stream<Item = OutgoingMessage<impl Serialize>> {
         stream! {
+            info!(
+                "coordinator_result_received job_id={} resource_id={} instance_id={} status={} parent_job_id={} child_index={} total_child_count={} has_artifact={}",
+                result.job_id,
+                result.resource_id,
+                result.instance_id.as_deref().unwrap_or(""),
+                result.status,
+                result.parent_job_id.as_deref().unwrap_or(""),
+                result.child_index.map(|index| index.to_string()).as_deref().unwrap_or(""),
+                result.total_child_count.map(|count| count.to_string()).as_deref().unwrap_or(""),
+                result.artifact.is_some(),
+            );
             if let (Some(parent_job_id), Some(parent_resource_id)) =
                 (result.parent_job_id.clone(), result.parent_resource_id.clone())
                 && matches!(result.status, JobStatus::Success | JobStatus::Failed | JobStatus::Deleted)
@@ -67,6 +79,13 @@ impl MessageProcessor for ParquetProcessor {
                             yield OutgoingMessage::new(self.job_result_destination.clone(), parent_resource_id, parent);
                         }
                         Ok(group) if group.records.len() == group.total as usize => {
+                            let started = Instant::now();
+                            info!(
+                                "coordinator_child_merge_started parent_job_id={} parent_resource_id={} children={}",
+                                parent_job_id,
+                                parent_resource_id,
+                                group.records.len(),
+                            );
                             let children = group.records.into_values().collect::<Vec<_>>();
                             let outcome = self.registrar.register_children_for_source(
                                 result.instance_id.as_deref().unwrap_or(""),
@@ -74,10 +93,27 @@ impl MessageProcessor for ParquetProcessor {
                                 result.source_version.as_deref().unwrap_or(&parent_job_id), &children,
                             ).await;
                             let parent = match outcome {
-                                Ok(rows) => parent_result(&result, &parent_job_id, &parent_resource_id,
-                                    JobStatus::Success, None, Some(rows as i64)),
-                                Err(error) => parent_result(&result, &parent_job_id, &parent_resource_id,
-                                    JobStatus::Failed, Some(format!("child merge failed: {error:#}")), None),
+                                Ok(rows) => {
+                                    info!(
+                                        "coordinator_child_merge_completed parent_job_id={} parent_resource_id={} rows={} elapsed_ms={}",
+                                        parent_job_id,
+                                        parent_resource_id,
+                                        rows,
+                                        started.elapsed().as_millis(),
+                                    );
+                                    parent_result(&result, &parent_job_id, &parent_resource_id,
+                                        JobStatus::Success, None, Some(rows as i64))
+                                }
+                                Err(error) => {
+                                    error!(
+                                        "coordinator_child_merge_failed parent_job_id={} parent_resource_id={} elapsed_ms={} error={error:#}",
+                                        parent_job_id,
+                                        parent_resource_id,
+                                        started.elapsed().as_millis(),
+                                    );
+                                    parent_result(&result, &parent_job_id, &parent_resource_id,
+                                        JobStatus::Failed, Some(format!("child merge failed: {error:#}")), None)
+                                }
                             };
                             yield OutgoingMessage::new(self.job_result_destination.clone(), parent_resource_id, parent);
                         }
@@ -114,7 +150,18 @@ impl MessageProcessor for ParquetProcessor {
                             Ok(()) => return Ok(()),
                             Err(error) => {
                                 failure = Some(error);
-                                tokio::time::sleep(Duration::from_millis(100 * (1 << attempt))).await;
+                                if attempt < 2 {
+                                    let delay = Duration::from_millis(100 * (1 << attempt));
+                                    warn!(
+                                        "ducklake_registration_retry job_id={} resource_id={} attempt={} delay_ms={} error={:#}",
+                                        result.job_id,
+                                        result.resource_id,
+                                        attempt + 1,
+                                        delay.as_millis(),
+                                        failure.as_ref().expect("registration failure is set"),
+                                    );
+                                    tokio::time::sleep(delay).await;
+                                }
                             }
                         }
                     }
@@ -122,6 +169,11 @@ impl MessageProcessor for ParquetProcessor {
                 }
                 .await;
                 if let Err(error) = registration {
+                    error!(
+                        "ducklake_registration_failed job_id={} resource_id={} error={error:#}",
+                        result.job_id,
+                        result.resource_id,
+                    );
                     result.status = JobStatus::Failed;
                     result.error_message = Some(format!("DuckLake registration failed: {error:#}"));
                     result.preview = Some(vec![]);
