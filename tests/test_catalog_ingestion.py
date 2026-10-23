@@ -30,6 +30,7 @@ spec = importlib.util.spec_from_file_location(
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 ingest_snapshot = module.ingest_snapshot
+import_inbox = module.import_inbox
 replace_collection = module.replace_collection
 
 
@@ -72,6 +73,33 @@ def snapshot(source="a", sync="one", at="2026-10-22T10:00:00Z"):
             },
         ],
     }
+
+
+def test_inbox_reports_scan_and_refresh_progress(catalog):
+    class EmptyPaginator:
+        def paginate(self, **kwargs):
+            assert kwargs == {"Bucket": "public-datasets", "Prefix": "catalog-inbox/"}
+            return [{"Contents": []}]
+
+    class EmptyClient:
+        def get_paginator(self, name):
+            assert name == "list_objects_v2"
+            return EmptyPaginator()
+
+    events = []
+    import_inbox(
+        catalog,
+        EmptyClient(),
+        "public-datasets",
+        emit=lambda event, **details: events.append((event, details)),
+    )
+
+    assert [event for event, _ in events] == [
+        "catalog_inbox_scan_started",
+        "catalog_inbox_scan_completed",
+        "catalog_table_links_refresh_started",
+        "catalog_table_links_refresh_completed",
+    ]
 
 
 def test_snapshots_preserve_raw_json_and_scope_current_state_by_source(catalog):

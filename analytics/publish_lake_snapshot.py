@@ -522,17 +522,34 @@ def ingest_catalog(source, client, bucket, schema=None):
     if postgres and not source.startswith("postgres:"):
         source = "postgres:" + source
     options = f" (METADATA_SCHEMA {literal(schema)})" if schema and postgres else ""
-    with connect() as conn:
-        conn.execute("LOAD ducklake")
-        configure_storage(conn)
-        conn.execute(f"ATTACH {literal('ducklake:' + source)} AS lake{options}")
-        import_inbox(
-            conn,
-            client,
-            bucket,
-            metadata_schema=schema or ("public" if postgres else "main"),
+    started = time.monotonic()
+    log_event(
+        "source_catalog_import_started",
+        schema=schema or ("public" if postgres else "main"),
+    )
+    try:
+        with connect() as conn:
+            conn.execute("LOAD ducklake")
+            configure_storage(conn)
+            conn.execute(f"ATTACH {literal('ducklake:' + source)} AS lake{options}")
+            import_inbox(
+                conn,
+                client,
+                bucket,
+                metadata_schema=schema or ("public" if postgres else "main"),
+                emit=log_event,
+            )
+    except Exception as error:
+        log_event(
+            "source_catalog_import_failed",
+            errorType=type(error).__name__,
+            durationSeconds=round(time.monotonic() - started, 3),
         )
-    log_event("source_catalog_import_completed")
+        raise
+    log_event(
+        "source_catalog_import_completed",
+        durationSeconds=round(time.monotonic() - started, 3),
+    )
 
 
 def main():

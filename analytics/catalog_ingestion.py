@@ -18,6 +18,7 @@
 import json
 import re
 from datetime import datetime
+from time import monotonic
 
 
 RESOURCE_COLUMNS = {
@@ -338,10 +339,12 @@ def refresh_table_links(conn, metadata_schema="main"):
         raise
 
 
-def import_inbox(conn, client, bucket, metadata_schema="main"):
+def import_inbox(conn, client, bucket, metadata_schema="main", emit=None):
     """S3 PUT is atomic: only complete JSONL discoveries become visible here."""
     from urllib.parse import unquote
 
+    emit = emit or (lambda _event, **_details: None)
+    emit("catalog_inbox_scan_started", bucket=bucket)
     has_imports = conn.sql(
         "SELECT count(*) FROM information_schema.tables WHERE table_catalog='lake' AND table_schema='main' AND table_name='catalog_imports'"
     ).fetchone()[0]
@@ -359,6 +362,11 @@ def import_inbox(conn, client, bucket, metadata_schema="main"):
             for item in page.get("Contents", [])
             if item["Key"].endswith(".jsonl")
         )
+    emit(
+        "catalog_inbox_scan_completed",
+        artifacts=len(keys),
+        importedSnapshots=len(imported),
+    )
     snapshots = []
     for key in keys:
         parts = key.split("/")
@@ -366,6 +374,11 @@ def import_inbox(conn, client, bucket, metadata_schema="main"):
             raise ValueError("invalid catalog artifact path")
         identity = (unquote(parts[1]), unquote(parts[2].removesuffix(".jsonl")))
         if identity in imported:
+            emit(
+                "catalog_inbox_snapshot_skipped",
+                sourceId=identity[0],
+                syncId=identity[1],
+            )
             continue
         response = client.get_object(Bucket=bucket, Key=key)
         try:
@@ -376,6 +389,11 @@ def import_inbox(conn, client, bucket, metadata_schema="main"):
             if (header["source"]["id"], header["sync_id"]) != identity:
                 raise ValueError("catalog artifact identity mismatch")
             snapshots.append((key, header))
+            emit(
+                "catalog_inbox_snapshot_discovered",
+                sourceId=identity[0],
+                syncId=identity[1],
+            )
         finally:
             response["Body"].close()
     # Read one pending discovery at a time, rather than retaining its full history in memory.
@@ -385,19 +403,35 @@ def import_inbox(conn, client, bucket, metadata_schema="main"):
             value[1]["collected_at"].replace("Z", "+00:00")
         ),
     ):
+        started = monotonic()
+        source_id, sync_id = header["source"]["id"], header["sync_id"]
+        emit(
+            "catalog_inbox_snapshot_import_started",
+            sourceId=source_id,
+            syncId=sync_id,
+        )
         response = client.get_object(Bucket=bucket, Key=key)
         try:
             lines = iter(response["Body"].iter_lines())
             next(lines)
-            ingest_snapshot(
+            changed = ingest_snapshot(
                 conn,
                 dict(
                     header,
                     resources=[json.loads(line) for line in lines if line.strip()],
                 ),
             )
+            emit(
+                "catalog_inbox_snapshot_import_completed",
+                sourceId=source_id,
+                syncId=sync_id,
+                imported=changed,
+                durationSeconds=round(monotonic() - started, 3),
+            )
         finally:
             response["Body"].close()
     conn.execute("DROP TABLE IF EXISTS lake.catalog_results")
     conn.execute("DROP TABLE IF EXISTS lake.catalog_artifacts")
+    emit("catalog_table_links_refresh_started")
     refresh_table_links(conn, metadata_schema=metadata_schema)
+    emit("catalog_table_links_refresh_completed")
