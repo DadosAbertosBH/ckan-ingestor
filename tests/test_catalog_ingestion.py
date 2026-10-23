@@ -241,47 +241,6 @@ def test_links_recover_tables_by_their_globally_unique_resource_id(catalog):
     ).fetchall() == [("a", "r", "r"), ("b", "other-resource", "other-resource")]
 
 
-def test_result_updates_status_without_hiding_last_successful_table(catalog):
-    document = snapshot()
-    document["resources"][1]["source_version"] = "v2"
-    ingest_snapshot(catalog, document)
-    for version, state, at in [
-        ("v1", "FAILED", 1),
-        ("v2", "SUCCESS", 2),
-        ("v2", "FAILED", 3),
-    ]:
-        module.ingest_result(
-            catalog,
-            {
-                "job_id": str(at),
-                "instance_id": "a",
-                "resource_id": "r",
-                "source_version": version,
-                "status": state,
-                "recorded_at": at,
-            },
-        )
-    assert (
-        catalog.sql(
-            "SELECT status FROM lake.catalog_resources WHERE id='r'"
-        ).fetchone()[0]
-        == "failed"
-    )
-    assert catalog.sql("SELECT count(*) FROM lake.catalog_results").fetchone()[0] == 3
-    module.ingest_result(
-        catalog,
-        {
-            "job_id": "3",
-            "instance_id": "a",
-            "resource_id": "r",
-            "source_version": "v2",
-            "status": "FAILED",
-            "recorded_at": 3,
-        },
-    )
-    assert catalog.sql("SELECT count(*) FROM lake.catalog_results").fetchone()[0] == 3
-
-
 class Inbox:
     def __init__(self, documents):
         self.documents = documents
@@ -322,9 +281,7 @@ def test_inbox_imports_in_collection_order_and_skips_committed_artifacts(catalog
     assert inbox.reads == []
 
 
-def test_inbox_skips_committed_outcomes_and_applies_them_when_discovery_arrives(
-    catalog,
-):
+def test_inbox_ignores_legacy_job_outcomes(catalog):
     event_key = "catalog-results/event.json"
     inbox = Inbox(
         {
@@ -340,20 +297,19 @@ def test_inbox_skips_committed_outcomes_and_applies_them_when_discovery_arrives(
             ).encode()
         }
     )
-    module.import_inbox(catalog, inbox, "lake")
-    document = snapshot()
-    document["resources"][1]["source_version"] = "v2"
-    header = {key: value for key, value in document.items() if key != "resources"}
-    inbox.documents["catalog-inbox/a/one.jsonl"] = "\n".join(
-        json.dumps(record)
-        for record in [dict(header, version=1), *document["resources"]]
-    ).encode()
-    inbox.reads.clear()
+    catalog.execute("CREATE TABLE lake.catalog_results(id VARCHAR)")
+    catalog.execute("CREATE TABLE lake.catalog_artifacts(id VARCHAR)")
     module.import_inbox(catalog, inbox, "lake")
     assert event_key not in inbox.reads
     assert (
         catalog.sql(
-            "SELECT status FROM lake.catalog_resources WHERE id='r'"
+            "SELECT count(*) FROM information_schema.tables WHERE table_catalog='lake' AND table_name='catalog_results'"
         ).fetchone()[0]
-        == "failed"
+        == 0
+    )
+    assert (
+        catalog.sql(
+            "SELECT count(*) FROM information_schema.tables WHERE table_catalog='lake' AND table_name='catalog_artifacts'"
+        ).fetchone()[0]
+        == 0
     )

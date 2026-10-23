@@ -64,7 +64,6 @@ impl MessageProcessor for ParquetProcessor {
                         Ok(group) if group.failed => {
                             let parent = parent_result(&result, &parent_job_id, &parent_resource_id,
                                 JobStatus::Failed, Some("one or more child jobs failed".into()), None);
-                            self.registrar.record_outcome(&parent).await.expect("persist parent catalog outcome before acknowledging message");
                             yield OutgoingMessage::new(self.job_result_destination.clone(), parent_resource_id, parent);
                         }
                         Ok(group) if group.records.len() == group.total as usize => {
@@ -80,14 +79,12 @@ impl MessageProcessor for ParquetProcessor {
                                 Err(error) => parent_result(&result, &parent_job_id, &parent_resource_id,
                                     JobStatus::Failed, Some(format!("child merge failed: {error:#}")), None),
                             };
-                            self.registrar.record_outcome(&parent).await.expect("persist parent catalog outcome before acknowledging message");
                             yield OutgoingMessage::new(self.job_result_destination.clone(), parent_resource_id, parent);
                         }
                         Ok(_) => {}
                         Err(error) => {
                             let parent = parent_result(&result, &parent_job_id, &parent_resource_id,
                                 JobStatus::Failed, Some(format!("child state failed: {error:#}")), None);
-                            self.registrar.record_outcome(&parent).await.expect("persist parent catalog outcome before acknowledging message");
                             yield OutgoingMessage::new(self.job_result_destination.clone(), parent_resource_id, parent);
                         }
                     }
@@ -131,9 +128,6 @@ impl MessageProcessor for ParquetProcessor {
                 }
             }
             result.artifact = None;
-            if matches!(result.status, JobStatus::Success | JobStatus::Failed | JobStatus::Deleted) {
-                self.registrar.record_outcome(&result).await.expect("persist catalog outcome before acknowledging message");
-            }
             yield OutgoingMessage::new(self.job_result_destination.clone(), result.resource_id.clone(), result)
         }
     }

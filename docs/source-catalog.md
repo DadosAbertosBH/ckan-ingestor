@@ -32,8 +32,6 @@ As tabelas consultáveis são:
 | `catalog_history` | Registros alterados, com coleta e data; remoções têm `record.deleted=true` |
 | `catalog_imports` | Coletas consolidadas |
 | `catalog_collections` | Coleções de metadados declaradas pelos adaptadores |
-| `catalog_artifacts` | Resultados já importados do R2 |
-| `catalog_results` | Resultados de ingestão por fonte, recurso e job |
 | `ckan_packages`, `ckan_resources` | Listagens compartilhadas entre instâncias, com JSON original, coleta e data |
 
 ```sql
@@ -46,15 +44,15 @@ WHERE collection_name = 'catalog_resources'
 ORDER BY source_id, id, collected_at;
 ```
 
-O coordenador grava resultados terminais imutáveis em `catalog-results/`, sem previews ou mensagens de erro. O importador aplica o resultado mais recente correspondente à versão atual do recurso. Tabelas bem-sucedidas permanecem disponíveis quando uma atualização falha.
-
 Cada resource possui UUID global e esse próprio `resource_id` é o nome da tabela física e o prefixo dos seus Parquets. As tags `source_id`/`resource_id` registram o vínculo de catálogo e permitem associar várias tabelas a um resource. Tabelas existentes são preservadas e vinculadas diretamente pelo identificador. As demais ficam na área **Legado**, disponíveis também pelo SQL.
+
+O status de disponibilidade é derivado dessas tabelas e tags: uma tabela cuja `source_version` coincide com o resource atual é apresentada como concluída. Os detalhes de tentativas e falhas de jobs continuam no banco operacional e no monitoramento.
 
 ## Publicação e implantação
 
 O manifesto inclui fontes, recursos, caminhos e vínculos obtidos do mesmo catálogo copiado. O Lake Explorer usa esses campos para busca global, navegação por fonte/coleção e filtros de disponibilidade; as tabelas de catálogo aparecem em **Metadados**. Publicações anteriores continuam abrindo.
 
-Publicar as imagens de source-sync-worker, coordenador e lake-snapshot e o frontend, seguindo o fluxo GitOps do projeto. O worker usa `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID` e `S3_SECRET_ACCESS_KEY` existentes. Seu acesso deve permitir PUT condicional em `catalog-inbox/`; o coordenador precisa dessa capacidade em `catalog-results/`.
+Publicar as imagens de source-sync-worker, coordenador e lake-snapshot e o frontend, seguindo o fluxo GitOps do projeto. O worker usa `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID` e `S3_SECRET_ACCESS_KEY` existentes. Seu acesso deve permitir PUT condicional em `catalog-inbox/`.
 
 O job lake-snapshot precisa listar/ler esses prefixos e escrever as tabelas de catálogo no DuckLake. Configure `DUCKLAKE_INGEST_CATALOG_URI` com um usuário de escrita se `DUCKLAKE_CATALOG_URI` usa um usuário de leitura. A cópia para publicação continua usando `DUCKLAKE_CATALOG_URI` em leitura. As credenciais R2 do job também devem permitir gravar os Parquet de metadados, além das publicações em `explorer/`.
 

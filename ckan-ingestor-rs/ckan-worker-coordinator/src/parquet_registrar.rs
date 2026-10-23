@@ -33,18 +33,6 @@ impl ParquetRegistrar {
         Self { factory }
     }
 
-    pub async fn record_outcome(
-        &self,
-        result: &ckan_ingestor_worker_lib::JobResultMessage,
-    ) -> Result<()> {
-        crate::catalog_outcomes::persist_outcome(
-            self.factory.data_path(),
-            self.factory.storage_options(),
-            result,
-        )
-        .await
-    }
-
     pub async fn initialize(&self) -> Result<()> {
         let client = self.factory.client().await?;
         initialize_last_update_table(&client).await

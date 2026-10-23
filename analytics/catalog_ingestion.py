@@ -338,88 +338,6 @@ def refresh_table_links(conn, metadata_schema="main"):
         raise
 
 
-def ingest_result(conn, result, artifact_key=None):
-    source_id, resource_id = result.get("instance_id"), result.get("resource_id")
-    if not source_id or not resource_id or not result.get("job_id"):
-        raise ValueError("result identity is required")
-    conn.execute("BEGIN")
-    try:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS lake.catalog_results(source_id VARCHAR, resource_id VARCHAR, job_id VARCHAR, recorded_at BIGINT, record JSON)"
-        )
-        count = conn.execute(
-            "SELECT count(*) FROM lake.catalog_results WHERE source_id=? AND resource_id=? AND job_id=? AND (record->>'status')=?",
-            [source_id, resource_id, result["job_id"], result["status"]],
-        ).fetchone()[0]
-        if not count:
-            conn.execute(
-                "INSERT INTO lake.catalog_results VALUES (?,?,?,?,?)",
-                [
-                    source_id,
-                    resource_id,
-                    result["job_id"],
-                    result["recorded_at"],
-                    _json(result),
-                ],
-            )
-        exists = conn.sql(
-            "SELECT count(*) FROM information_schema.tables WHERE table_catalog='lake' AND table_name='catalog_resources'"
-        ).fetchone()[0]
-        if exists:
-            latest = conn.execute(
-                "SELECT e.record FROM lake.catalog_results e JOIN lake.catalog_resources r ON r.source_id=e.source_id AND r.id=e.resource_id WHERE e.source_id=? AND e.resource_id=? AND NOT r.deleted AND COALESCE(e.record->>'source_version','')=COALESCE(r.source_version,'') ORDER BY e.recorded_at DESC,e.job_id DESC LIMIT 1",
-                [source_id, resource_id],
-            ).fetchone()
-            if latest:
-                state = json.loads(latest[0])["status"].lower()
-                state = {"success": "completed", "pending": "processing"}.get(
-                    state, state
-                )
-                conn.execute(
-                    "UPDATE lake.catalog_resources SET status=? WHERE source_id=? AND id=?",
-                    [state, source_id, resource_id],
-                )
-        if artifact_key:
-            conn.execute(
-                "CREATE TABLE IF NOT EXISTS lake.catalog_artifacts(artifact_key VARCHAR)"
-            )
-            conn.execute(
-                "INSERT INTO lake.catalog_artifacts VALUES (?)", [artifact_key]
-            )
-        conn.execute("COMMIT")
-    except Exception:
-        conn.execute("ROLLBACK")
-        raise
-
-
-def materialize_result_states(conn):
-    names = {
-        row[0]
-        for row in conn.sql(
-            "SELECT table_name FROM information_schema.tables WHERE table_catalog='lake' AND table_schema='main'"
-        ).fetchall()
-    }
-    if not {"catalog_results", "catalog_resources"}.issubset(names):
-        return
-    conn.execute("""
-        UPDATE lake.catalog_resources AS r
-        SET status = CASE lower(latest.record->>'status')
-            WHEN 'success' THEN 'completed' WHEN 'pending' THEN 'processing'
-            ELSE lower(latest.record->>'status') END
-        FROM (
-            SELECT e.source_id,e.resource_id,e.record
-            FROM lake.catalog_results e JOIN lake.catalog_resources current
-                ON current.source_id=e.source_id AND current.id=e.resource_id
-            WHERE NOT current.deleted
-                AND COALESCE(e.record->>'source_version','')=COALESCE(current.source_version,'')
-            QUALIFY row_number() OVER (
-                PARTITION BY e.source_id,e.resource_id ORDER BY e.recorded_at DESC,e.job_id DESC
-            )=1
-        ) latest
-        WHERE r.source_id=latest.source_id AND r.id=latest.resource_id AND NOT r.deleted
-    """)
-
-
 def import_inbox(conn, client, bucket, metadata_schema="main"):
     """S3 PUT is atomic: only complete JSONL discoveries become visible here."""
     from urllib.parse import unquote
@@ -430,19 +348,6 @@ def import_inbox(conn, client, bucket, metadata_schema="main"):
     imported = (
         set(conn.sql("SELECT source_id,sync_id FROM lake.catalog_imports").fetchall())
         if has_imports
-        else set()
-    )
-    has_artifacts = conn.sql(
-        "SELECT count(*) FROM information_schema.tables WHERE table_catalog='lake' AND table_schema='main' AND table_name='catalog_artifacts'"
-    ).fetchone()[0]
-    seen_artifacts = (
-        {
-            row[0]
-            for row in conn.sql(
-                "SELECT artifact_key FROM lake.catalog_artifacts"
-            ).fetchall()
-        }
-        if has_artifacts
         else set()
     )
     keys = []
@@ -493,17 +398,6 @@ def import_inbox(conn, client, bucket, metadata_schema="main"):
             )
         finally:
             response["Body"].close()
-    for page in client.get_paginator("list_objects_v2").paginate(
-        Bucket=bucket, Prefix="catalog-results/"
-    ):
-        for item in page.get("Contents", []):
-            if item["Key"].endswith(".json") and item["Key"] not in seen_artifacts:
-                response = client.get_object(Bucket=bucket, Key=item["Key"])
-                try:
-                    ingest_result(
-                        conn, json.load(response["Body"]), artifact_key=item["Key"]
-                    )
-                finally:
-                    response["Body"].close()
-    materialize_result_states(conn)
+    conn.execute("DROP TABLE IF EXISTS lake.catalog_results")
+    conn.execute("DROP TABLE IF EXISTS lake.catalog_artifacts")
     refresh_table_links(conn, metadata_schema=metadata_schema)
