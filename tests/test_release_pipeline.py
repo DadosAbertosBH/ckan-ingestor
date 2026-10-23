@@ -37,3 +37,14 @@ def test_release_images_are_built_only_by_a_release_tag():
 
     for job in RELEASE_BUILD_JOBS:
         assert pipeline[job]["rules"] == [{"if": "$CI_COMMIT_TAG"}]
+
+
+def test_lake_snapshot_release_builds_natively_for_arm64():
+    pipeline = yaml.safe_load(PIPELINE_PATH.read_text())
+    job = pipeline["build-lake-snapshot"]
+    script = "\n".join(job["script"])
+
+    assert job["tags"] == ["saas-linux-small-arm64"]
+    assert "docker buildx" not in script
+    assert "docker build " in script
+    assert "docker push \"$CI_REGISTRY_IMAGE/lake-snapshot:${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}\"" in script

@@ -182,15 +182,15 @@ build-lake-snapshot:
   stage: build
   image: docker
   tags:
-    - noctcloud-k8s
+    - saas-linux-small-arm64
   script:
     - printf '%s' "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
-    - docker buildx create --use
     - >-
-      docker buildx build --platform linux/amd64,linux/arm64
+      docker build
       --file analytics/Dockerfile.snapshot
       --tag "$CI_REGISTRY_IMAGE/lake-snapshot:${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}"
-      --push .
+      .
+    - docker push "$CI_REGISTRY_IMAGE/lake-snapshot:${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}"
   rules: *release-tag-rules
 
 test-sicom-crawler:
