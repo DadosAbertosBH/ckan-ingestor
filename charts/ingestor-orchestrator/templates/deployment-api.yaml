@@ -31,7 +31,7 @@ spec:
       initContainers:
         - name: go-migrate
           image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "api") }}
-          imagePullPolicy: {{ .Values.api.image.pullPolicy | default .Values.global.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
           command: ["/usr/local/bin/orchestrator-go"]
           args: ["migrate"]
           {{- if .Values.oracle.walletSecretName }}
@@ -53,7 +53,7 @@ spec:
       containers:
         - name: api
           image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "api") }}
-          imagePullPolicy: {{ .Values.api.image.pullPolicy | default .Values.global.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
           ports:
             - name: http
               containerPort: 8000

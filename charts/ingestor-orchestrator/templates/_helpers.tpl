@@ -56,10 +56,9 @@ Usage: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "api"
 {{- $root := .root }}
 {{- $comp := .component }}
 {{- $compValues := index $root.Values $comp }}
-{{- $registry := $compValues.image.registry | default $root.Values.global.image.registry }}
+{{- $registry := $compValues.image.registry }}
 {{- $repository := $compValues.image.repository }}
-{{- $tag := $compValues.image.tag | default $root.Values.global.image.tag }}
-{{- $pullPolicy := $compValues.image.pullPolicy | default $root.Values.global.image.pullPolicy }}
+{{- $tag := $compValues.image.tag }}
 {{- printf "%s/%s:%s" $registry $repository $tag }}
 {{- end }}
 

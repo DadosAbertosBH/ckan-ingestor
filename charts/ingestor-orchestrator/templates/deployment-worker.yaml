@@ -27,7 +27,7 @@ spec:
       containers:
         - name: worker
           image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "worker") }}
-          imagePullPolicy: {{ .Values.worker.image.pullPolicy | default .Values.global.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
           env:
             - name: IGGY_ADDRESS
               value: {{ .Values.iggy.address | quote }}

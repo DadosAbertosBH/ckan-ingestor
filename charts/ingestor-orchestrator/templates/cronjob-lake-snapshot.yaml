@@ -35,7 +35,7 @@ spec:
           containers:
             - name: snapshot
               image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "lakeSnapshot") }}
-              imagePullPolicy: {{ .Values.lakeSnapshot.image.pullPolicy | default .Values.global.image.pullPolicy }}
+              imagePullPolicy: {{ .Values.lakeSnapshot.image.pullPolicy }}
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true

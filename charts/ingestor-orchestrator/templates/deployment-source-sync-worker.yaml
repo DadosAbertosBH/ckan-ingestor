@@ -31,7 +31,7 @@ spec:
       containers:
         - name: source-sync-worker
           image: {{ include "ingestor-orchestrator.image" (dict "root" . "component" "sourceSyncWorker") }}
-          imagePullPolicy: {{ .Values.sourceSyncWorker.image.pullPolicy | default .Values.global.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.sourceSyncWorker.image.pullPolicy }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

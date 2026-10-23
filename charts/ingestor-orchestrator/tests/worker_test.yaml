@@ -8,15 +8,18 @@ tests:
           path: spec.template.spec.containers[0].image
           pattern: "/worker:"
 
-  - it: uses an explicit worker image tag instead of the global release tag
+  - it: resolves the worker image only from its own image settings
     set:
-      global.image.registry: registry.example.test/ingestor
-      global.image.tag: api-release
+      worker.image.registry: registry.example.test/ingestor
       worker.image.tag: worker-release
+      worker.image.pullPolicy: Always
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
           value: registry.example.test/ingestor/worker:worker-release
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Always
 
   - it: injects Apache Iggy configuration
     asserts:

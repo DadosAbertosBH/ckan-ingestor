@@ -1,9 +1,5 @@
 # -- Global settings applied to all components
 global:
-  image:
-    registry: registry.gitlab.com/pedalin/ckan-ingestor
-    tag: latest
-    pullPolicy: IfNotPresent
   imagePullSecrets: []
   security:
     allowInsecureImages: true
@@ -13,10 +9,10 @@ api:
   enabled: true
   replicaCount: 1
   image:
-    registry: ""
+    registry: registry.gitlab.com/pedalin/ckan-ingestor
     repository: ingestor-orchestrator
-    tag: ""
-    pullPolicy: ""
+    tag: latest
+    pullPolicy: IfNotPresent
   resources:
     requests:
       cpu: 500m
@@ -45,10 +41,10 @@ worker:
   enabled: true
   replicaCount: 2
   image:
-    registry: ""
+    registry: registry.gitlab.com/pedalin/ckan-ingestor
     repository: worker
-    tag: ""
-    pullPolicy: ""
+    tag: latest
+    pullPolicy: IfNotPresent
   extraEnv: []
   resources:
     requests:
@@ -62,10 +58,10 @@ workerCoordinator:
   enabled: true
   replicaCount: 1
   image:
-    registry: ""
+    registry: registry.gitlab.com/pedalin/ckan-ingestor
     repository: worker-coordinator
-    tag: ""
-    pullPolicy: ""
+    tag: latest
+    pullPolicy: IfNotPresent
   resources:
     requests:
       cpu: 500m
@@ -82,10 +78,10 @@ sourceSyncWorker:
   enabled: true
   replicaCount: 1
   image:
-    registry: ""
+    registry: registry.gitlab.com/pedalin/ckan-ingestor
     repository: source-sync-worker
-    tag: ""
-    pullPolicy: ""
+    tag: latest
+    pullPolicy: IfNotPresent
   groupId: source-sync-worker
   publicURL: ""
   formats: "CSV,JSON,GEOJSON"
@@ -276,10 +272,10 @@ lakeSnapshot:
   schedule: "0 4 * * *"
   timeZone: America/Sao_Paulo
   image:
-    registry: ""
+    registry: registry.gitlab.com/pedalin/ckan-ingestor
     repository: lake-snapshot
-    tag: ""
-    pullPolicy: ""
+    tag: latest
+    pullPolicy: IfNotPresent
   # Dedicated secret containing a read-only catalog URI and R2 source/read + explorer/write keys.
   existingSecret: ""
   metadataSchema: public

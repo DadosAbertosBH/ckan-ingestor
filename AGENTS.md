@@ -39,6 +39,13 @@ ArgoCD-managed resources must only be changed via Git, never with `kubectl patch
 1. Edit the manifest in the appropriate repo (`argocd-applications` or `ckan-ingestor`)
 2. Commit and push
 
+## Releases and image versions
+
+- Releases are scoped to an OCI image, never to the repository as a whole.
+- Each deployable component (`api`, `worker`, `workerCoordinator`, `sourceSyncWorker`, and `lakeSnapshot`) owns an explicit image registry, repository, tag, and pull policy.
+- GitOps pins the image tag for every component independently. A change deploys only the component images that it intends to update.
+- The Helm chart tracks `main`; repository Git tags do not represent a shared application release and are not used as a global image version.
+
 ## Lint before committing
 
 Before making any commit or suggesting a commit with Python file changes, run:
