@@ -151,8 +151,20 @@ test-lake-snapshot:
         - "charts/ingestor-orchestrator/**/*"
         - ".gitlab-ci.yml"
 
-.release-tag-rules: &release-tag-rules
-  - if: $CI_COMMIT_TAG
+.lake-snapshot-release-rules: &lake-snapshot-release-rules
+  - if: '$CI_COMMIT_TAG =~ /^lake-snapshot-\d+\.\d+\.\d+$/'
+
+.source-sync-worker-release-rules: &source-sync-worker-release-rules
+  - if: '$CI_COMMIT_TAG =~ /^source-sync-worker-\d+\.\d+\.\d+$/'
+
+.orchestrator-release-rules: &orchestrator-release-rules
+  - if: '$CI_COMMIT_TAG =~ /^orchestrator-\d+\.\d+\.\d+$/'
+
+.worker-release-rules: &worker-release-rules
+  - if: '$CI_COMMIT_TAG =~ /^worker-\d+\.\d+\.\d+$/'
+
+.worker-coordinator-release-rules: &worker-coordinator-release-rules
+  - if: '$CI_COMMIT_TAG =~ /^worker-coordinator-\d+\.\d+\.\d+$/'
 
 test-lake-explorer:
   stage: test
@@ -185,13 +197,14 @@ build-lake-snapshot:
     - saas-linux-small-arm64
   script:
     - printf '%s' "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - IMAGE_TAG="${CI_COMMIT_TAG#lake-snapshot-}"
     - >-
       docker build
       --file analytics/Dockerfile.snapshot
-      --tag "$CI_REGISTRY_IMAGE/lake-snapshot:${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}"
+      --tag "$CI_REGISTRY_IMAGE/lake-snapshot:$IMAGE_TAG"
       .
-    - docker push "$CI_REGISTRY_IMAGE/lake-snapshot:${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}"
-  rules: *release-tag-rules
+    - docker push "$CI_REGISTRY_IMAGE/lake-snapshot:$IMAGE_TAG"
+  rules: *lake-snapshot-release-rules
 
 test-sicom-crawler:
   stage: test
@@ -272,17 +285,17 @@ build-source-sync-worker:
   script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" "$CI_REGISTRY" --password-stdin
     - docker buildx create --use
+    - IMAGE_TAG="${CI_COMMIT_TAG#source-sync-worker-}"
     - |
       docker buildx build \
         --platform linux/arm64 \
         --pull \
         --cache-from type=registry,ref=$CI_REGISTRY_IMAGE/source-sync-worker-cache:arm64 \
         --cache-to type=registry,ref=$CI_REGISTRY_IMAGE/source-sync-worker-cache:arm64,mode=max \
-        --tag "$CI_REGISTRY_IMAGE/source-sync-worker:${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}" \
-        --tag "$CI_REGISTRY_IMAGE/source-sync-worker:latest" \
+        --tag "$CI_REGISTRY_IMAGE/source-sync-worker:$IMAGE_TAG" \
         --file ingestor_orchestrator/source-sync-worker/Dockerfile \
         --push .
-  rules: *release-tag-rules
+  rules: *source-sync-worker-release-rules
 
 .rust-ci-base:
   image: $CKAN_BUILDER_IMAGE
@@ -381,9 +394,6 @@ test-rust:
         --tag "$ARCH_TAG" \
         --file ingestor_orchestrator/Dockerfile \
         --push .
-  rules:
-    - if: $CI_COMMIT_TAG
-
 build-orchestrator-amd64:
   extends: .build-orchestrator-base
   variables:
@@ -400,8 +410,7 @@ build-orchestrator-arm64:
     TARGET_ARCH: arm64
   tags:
     - saas-linux-small-arm64
-  rules:
-    - if: $CI_COMMIT_TAG
+  rules: *orchestrator-release-rules
 
 build-orchestrator:
   stage: build
@@ -413,20 +422,13 @@ build-orchestrator:
     - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
     - docker context create builder
     - docker buildx create builder --use
+    - IMAGE_TAG="${CI_COMMIT_TAG#orchestrator-}"
     - |
       ARM64="$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA-arm64"
       docker buildx imagetools create \
-        --tag "$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA" \
-        --tag "$CI_REGISTRY_IMAGE/orchestrator:latest" \
+        --tag "$CI_REGISTRY_IMAGE/orchestrator:$IMAGE_TAG" \
         "$ARM64"
-    - |
-      if [ -n "$CI_COMMIT_TAG" ]; then
-        docker buildx imagetools create \
-          --tag "$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_TAG" \
-          "$CI_REGISTRY_IMAGE/orchestrator:$CI_COMMIT_SHORT_SHA-arm64"
-      fi
-  rules:
-    - if: $CI_COMMIT_TAG
+  rules: *orchestrator-release-rules
 
 .build-worker-base:
   image: docker
@@ -455,7 +457,6 @@ build-orchestrator:
         --tag "$ARCH_TAG" \
         --file $WORKER_DOCKERFILE \
         --push $WORKER_CONTEXT
-  rules: *release-tag-rules
 
 # build-worker-amd64:
 #   extends: .build-worker-base
@@ -470,6 +471,7 @@ build-worker-arm64:
     TARGET_ARCH: arm64
   tags:
     - saas-linux-small-arm64
+  rules: *worker-release-rules
 
 build-worker:
   stage: build
@@ -481,21 +483,14 @@ build-worker:
     - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
     - docker context create builder
     - docker buildx create builder --use
+    - IMAGE_TAG="${CI_COMMIT_TAG#worker-}"
     - |
       # AMD64="$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA-amd64"
       ARM64="$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA-arm64"
       docker buildx imagetools create \
-        --tag "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA" \
-        --tag "$CI_REGISTRY_IMAGE/worker:latest" \
+        --tag "$CI_REGISTRY_IMAGE/worker:$IMAGE_TAG" \
         "$ARM64"
-    - |
-      if [ -n "$CI_COMMIT_TAG" ]; then
-        # amd64 (paused): "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA-amd64"
-        docker buildx imagetools create \
-          --tag "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_TAG" \
-          "$CI_REGISTRY_IMAGE/worker:$CI_COMMIT_SHORT_SHA-arm64"
-      fi
-  rules: *release-tag-rules
+  rules: *worker-release-rules
 
 # build-worker-coordinator-amd64:
 #   extends: .build-worker-base
@@ -516,6 +511,7 @@ build-worker-coordinator-arm64:
     WORKER_BINARY: ckan-worker-coordinator
   tags:
     - saas-linux-small-arm64
+  rules: *worker-coordinator-release-rules
 
 build-worker-coordinator:
   stage: build
@@ -527,18 +523,11 @@ build-worker-coordinator:
     - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
     - docker context create builder
     - docker buildx create builder --use
+    - IMAGE_TAG="${CI_COMMIT_TAG#worker-coordinator-}"
     - |
       # AMD64="$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-amd64"
       ARM64="$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-arm64"
       docker buildx imagetools create \
-        --tag "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA" \
-        --tag "$CI_REGISTRY_IMAGE/worker-coordinator:latest" \
+        --tag "$CI_REGISTRY_IMAGE/worker-coordinator:$IMAGE_TAG" \
         "$ARM64"
-    - |
-      if [ -n "$CI_COMMIT_TAG" ]; then
-        # amd64 (paused): "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-amd64"
-        docker buildx imagetools create \
-          --tag "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_TAG" \
-          "$CI_REGISTRY_IMAGE/worker-coordinator:$CI_COMMIT_SHORT_SHA-arm64"
-      fi
-  rules: *release-tag-rules
+  rules: *worker-coordinator-release-rules
