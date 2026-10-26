@@ -39,7 +39,7 @@ type topicClient interface {
 	Ping(context.Context) error
 }
 
-const maxTopicSize = uint64(500 * 1024 * 1024)
+const maxTopicSize = uint64(1024 * 1024 * 1024)
 
 const messageExpiry = iggcon.Duration(7 * 24 * iggcon.Hour)
 
