@@ -127,16 +127,10 @@ def test_snapshots_preserve_raw_json_and_scope_current_state_by_source(catalog):
     assert row.get("sync_id") == "one"
 
 
-def test_history_tracks_changes_removals_and_restoration_idempotently(catalog):
+def test_snapshot_replaces_current_resources_and_preserves_idempotency(catalog):
     initial = snapshot()
     ingest_snapshot(catalog, initial)
     ingest_snapshot(catalog, initial)
-    assert (
-        catalog.sql(
-            "SELECT count(*) FROM lake.catalog_history WHERE collection_name='catalog_resources'"
-        ).fetchone()[0]
-        == 2
-    )
     changed = snapshot(sync="two", at="2026-10-23T10:00:00Z")
     changed["resources"][0]["title"] = "Despesas públicas"
     changed["resources"].pop()
@@ -145,12 +139,6 @@ def test_history_tracks_changes_removals_and_restoration_idempotently(catalog):
         "SELECT deleted FROM lake.catalog_resources WHERE id='r'"
     ).fetchone()[0]
     assert catalog.sql("SELECT count(*) FROM lake.ckan_resources").fetchone()[0] == 0
-    assert (
-        catalog.sql(
-            "SELECT count(*) FROM lake.catalog_history WHERE collection_name='catalog_resources'"
-        ).fetchone()[0]
-        == 4
-    )
     restored = snapshot(sync="three", at="2026-10-24T10:00:00Z")
     ingest_snapshot(catalog, restored)
     assert not catalog.sql(
@@ -163,6 +151,16 @@ def test_history_tracks_changes_removals_and_restoration_idempotently(catalog):
         ).fetchone()[0]
         == "three"
     )
+
+
+def test_ingestion_removes_legacy_catalog_history(catalog):
+    catalog.execute("CREATE TABLE lake.catalog_history(id VARCHAR)")
+
+    ingest_snapshot(catalog, snapshot())
+
+    assert not catalog.sql(
+        "SELECT count(*) FROM information_schema.tables WHERE table_catalog='lake' AND table_schema='main' AND table_name='catalog_history'"
+    ).fetchone()[0]
 
 
 @pytest.mark.parametrize("mutation", ["cycle", "missing", "duplicate", "foreign"])
@@ -307,6 +305,62 @@ def test_inbox_imports_in_collection_order_and_skips_committed_artifacts(catalog
     inbox.reads.clear()
     module.import_inbox(catalog, inbox, "lake")
     assert inbox.reads == []
+
+
+def test_inbox_reports_discovered_resource_total(catalog):
+    document = snapshot(sync="discovery-total")
+    document["resources"].append(
+        {"id": "another-resource", "kind": "file", "title": "Another resource"}
+    )
+    header = {key: value for key, value in document.items() if key != "resources"}
+    payload = "\n".join(
+        json.dumps(record) for record in [dict(header, version=1), *document["resources"]]
+    )
+    events = []
+
+    module.import_inbox(
+        catalog,
+        Inbox({"catalog-inbox/a/discovery-total.jsonl": payload.encode()}),
+        "lake",
+        emit=lambda event, **details: events.append((event, details)),
+    )
+
+    assert ("catalog_inbox_snapshot_discovered", {
+        "sourceId": "a",
+        "syncId": "discovery-total",
+        "resourcesTotal": 3,
+    }) in events
+
+
+def test_inbox_reports_resource_read_progress_every_hundred_resources(catalog):
+    document = snapshot(sync="progress")
+    document["resources"] = [
+        {"id": f"resource-{index}", "kind": "file", "title": f"Resource {index}"}
+        for index in range(201)
+    ]
+    header = {key: value for key, value in document.items() if key != "resources"}
+    payload = "\n".join(
+        json.dumps(record) for record in [dict(header, version=1), *document["resources"]]
+    )
+    events = []
+
+    module.import_inbox(
+        catalog,
+        Inbox({"catalog-inbox/a/progress.jsonl": payload.encode()}),
+        "lake",
+        emit=lambda event, **details: events.append((event, details)),
+    )
+
+    assert [event for event in events if event[0] == "catalog_inbox_snapshot_import_progress"] == [
+        (
+            "catalog_inbox_snapshot_import_progress",
+            {"sourceId": "a", "syncId": "progress", "resourcesRead": 100},
+        ),
+        (
+            "catalog_inbox_snapshot_import_progress",
+            {"sourceId": "a", "syncId": "progress", "resourcesRead": 200},
+        ),
+    ]
 
 
 def test_inbox_ignores_legacy_job_outcomes(catalog):

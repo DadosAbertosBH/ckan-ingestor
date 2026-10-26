@@ -13,7 +13,6 @@ const publication = {
   ],
   tables: [
     { schema: 'main', name: 'uuid', title: 'Pagamentos', rows: '2', columns: [], source: 'Prefeitura', sourceId: 'a', resourceId: 'r', path: ['Despesas', 'Pagamentos'], category: 'data', status: 'failed' },
-    { schema: 'main', name: 'catalog_history', title: 'Histórico dos metadados', rows: '2', columns: [], category: 'metadata' },
     { schema: 'main', name: 'old-uuid', title: 'old-uuid', rows: '2', columns: [], category: 'legacy' },
   ],
 } as unknown as Publication;
@@ -21,14 +20,11 @@ const publication = {
 it('searches human names and context while keeping metadata and legacy in their areas', async () => {
   const wrapper = mount(CatalogBrowser, { props: { publication } });
   expect(wrapper.text()).toContain('Pagamentos');
-  expect(wrapper.text()).not.toContain('Histórico dos metadados');
   expect(wrapper.text()).not.toContain('old-uuid');
   expect(wrapper.text()).not.toContain('Empenhos');
   await wrapper.get('input[aria-label="Buscar conjuntos"]').setValue('despesas');
   await wrapper.get('button[data-table="main.uuid"]').trigger('click');
   expect(wrapper.emitted('choose')?.[0]).toEqual([publication.tables[0]]);
-  await wrapper.get('select[aria-label="Área do catálogo"]').setValue('metadata');
-  expect(wrapper.text()).toContain('Histórico dos metadados');
 });
 
 it('browses source and collection and includes unavailable resources through the filter', async () => {

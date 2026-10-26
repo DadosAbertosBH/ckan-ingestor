@@ -133,9 +133,7 @@ def ingest_snapshot(conn, snapshot):
         if replay or newer:
             conn.execute("ROLLBACK")
             return False
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS lake.catalog_history(source_id VARCHAR, sync_id VARCHAR, collected_at TIMESTAMPTZ, collection_name VARCHAR, id VARCHAR, record JSON)"
-        )
+        conn.execute("DROP TABLE IF EXISTS lake.catalog_history")
         current = []
         _ensure_collection(conn, "catalog_resources", RESOURCE_COLUMNS)
         previous = {
@@ -157,15 +155,11 @@ def ingest_snapshot(conn, snapshot):
         for key, old in previous.items():
             if key not in parents:
                 current.append(dict(old, deleted=True, status="deleted"))
-        _replace_with_history(
-            conn, "catalog_resources", source_id, sync_id, at, current, RESOURCE_COLUMNS
-        )
-        _replace_with_history(
+        replace_collection(conn, "catalog_resources", source_id, current, RESOURCE_COLUMNS)
+        replace_collection(
             conn,
             "catalog_sources",
             source_id,
-            sync_id,
-            at,
             [dict(source, source_id=source_id)],
             SOURCE_COLUMNS,
         )
@@ -223,20 +217,6 @@ def _resource_title(row):
         or unquote(urlparse(row.get("content_url") or "").path.rsplit("/", 1)[-1])
         or "Recurso sem título"
     )
-
-
-def _replace_with_history(conn, name, source_id, sync_id, at, rows, columns):
-    _ensure_collection(conn, name, columns)
-    previous = {row["id"]: row for row in _rows(conn, name, source_id)}
-    for row in rows:
-        normalized = {key: row.get(key) for key in columns}
-        normalized["source_id"] = source_id
-        if _json(previous.get(row["id"])) != _json(normalized):
-            conn.execute(
-                "INSERT INTO lake.catalog_history VALUES (?,?,?,?,?,?)",
-                [source_id, sync_id, at, name, row["id"], _json(normalized)],
-            )
-    replace_collection(conn, name, source_id, rows, columns)
 
 
 def replace_collection(conn, name, source_id, rows, columns):
@@ -388,11 +368,13 @@ def import_inbox(conn, client, bucket, metadata_schema="main", emit=None):
                 raise ValueError("unsupported source snapshot version")
             if (header["source"]["id"], header["sync_id"]) != identity:
                 raise ValueError("catalog artifact identity mismatch")
+            resources_total = sum(1 for line in lines if line.strip())
             snapshots.append((key, header))
             emit(
                 "catalog_inbox_snapshot_discovered",
                 sourceId=identity[0],
                 syncId=identity[1],
+                resourcesTotal=resources_total,
             )
         finally:
             response["Body"].close()
@@ -414,11 +396,23 @@ def import_inbox(conn, client, bucket, metadata_schema="main", emit=None):
         try:
             lines = iter(response["Body"].iter_lines())
             next(lines)
+            resources = []
+            for line in lines:
+                if not line.strip():
+                    continue
+                resources.append(json.loads(line))
+                if len(resources) % 100 == 0:
+                    emit(
+                        "catalog_inbox_snapshot_import_progress",
+                        sourceId=source_id,
+                        syncId=sync_id,
+                        resourcesRead=len(resources),
+                    )
             changed = ingest_snapshot(
                 conn,
                 dict(
                     header,
-                    resources=[json.loads(line) for line in lines if line.strip()],
+                    resources=resources,
                 ),
             )
             emit(

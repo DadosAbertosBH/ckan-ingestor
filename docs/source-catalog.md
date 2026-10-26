@@ -20,7 +20,7 @@ O PUT condicional preserva a primeira publicação de uma coleta. Uma descoberta
 
 ## Ingestão e consulta
 
-Antes da publicação diária, `analytics.catalog_ingestion` importa os artefatos pendentes. `replace_collection` é o mecanismo genérico para substituir os registros de uma fonte em uma coleção de JSON; a transação da coleta inclui o estado atual, o histórico e sua identificação. Reprocessamentos e coletas antigas preservam o estado consolidado.
+Antes da publicação diária, `analytics.catalog_ingestion` importa os artefatos pendentes. `replace_collection` é o mecanismo genérico para substituir os registros de uma fonte em uma coleção de JSON; a transação da coleta inclui o estado atual e sua identificação. Reprocessamentos e coletas antigas preservam o estado consolidado. Os artefatos imutáveis em `catalog-inbox/` mantêm a trilha de auditoria completa.
 
 As tabelas consultáveis são:
 
@@ -29,7 +29,6 @@ As tabelas consultáveis são:
 | `catalog_sources` | Fontes e nomes de apresentação |
 | `catalog_resources` | Árvore, campos comuns, JSON original, estado e tombstones |
 | `catalog_tables` | Relação entre fonte/recurso e tabelas físicas |
-| `catalog_history` | Registros alterados, com coleta e data; remoções têm `record.deleted=true` |
 | `catalog_imports` | Coletas consolidadas |
 | `catalog_collections` | Coleções de metadados declaradas pelos adaptadores |
 | `ckan_packages`, `ckan_resources` | Listagens compartilhadas entre instâncias, com JSON original, coleta e data |
@@ -37,11 +36,6 @@ As tabelas consultáveis são:
 ```sql
 SELECT source_id, id, metadata->>'license_id' AS license
 FROM lake.main.ckan_packages;
-
-SELECT source_id, id, collected_at, record
-FROM lake.main.catalog_history
-WHERE collection_name = 'catalog_resources'
-ORDER BY source_id, id, collected_at;
 ```
 
 Cada resource possui UUID global e esse próprio `resource_id` é o nome da tabela física e o prefixo dos seus Parquets. As tags `source_id`/`resource_id` registram o vínculo de catálogo e permitem associar várias tabelas a um resource. Tabelas existentes são preservadas e vinculadas diretamente pelo identificador. As demais ficam na área **Legado**, disponíveis também pelo SQL.
@@ -56,4 +50,4 @@ Publicar as imagens de source-sync-worker, coordenador e lake-snapshot e o front
 
 O job lake-snapshot precisa listar/ler esses prefixos e escrever as tabelas de catálogo no DuckLake. Configure `DUCKLAKE_INGEST_CATALOG_URI` com um usuário de escrita se `DUCKLAKE_CATALOG_URI` usa um usuário de leitura. A cópia para publicação continua usando `DUCKLAKE_CATALOG_URI` em leitura. As credenciais R2 do job também devem permitir gravar os Parquet de metadados, além das publicações em `explorer/`.
 
-As próximas sincronizações completam o JSON original e a hierarquia das fontes existentes. O histórico começa nas coletas importadas. Os artefatos e o histórico são preservados; sua retenção exige uma política posterior. Falhas de importação interrompem a publicação e preservam `explorer/latest.json`; o monitor de 36 horas existente continua detectando publicações atrasadas.
+As próximas sincronizações completam o JSON original e a hierarquia das fontes existentes. Os artefatos são preservados; sua retenção exige uma política posterior. Falhas de importação interrompem a publicação e preservam `explorer/latest.json`; o monitor de 36 horas existente continua detectando publicações atrasadas.

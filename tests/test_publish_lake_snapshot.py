@@ -201,6 +201,7 @@ def test_generic_catalog_links_tables_to_a_source_resource_tree(lake, tmp_path):
         conn.execute(
             "INSERT INTO lake.catalog_tables VALUES ('s', 'r', 'main', 'people')"
         )
+        conn.execute("CREATE TABLE lake.catalog_history(id VARCHAR)")
     result = export_catalog(str(source), tmp_path / "published.duckdb")
     table = next(t for t in result["tables"] if t["name"] == "people")
     assert table["title"] == "Pessoas"
@@ -212,6 +213,7 @@ def test_generic_catalog_links_tables_to_a_source_resource_tree(lake, tmp_path):
     assert len(result["resources"]) == 2
     metadata = next(t for t in result["tables"] if t["name"] == "catalog_resources")
     assert metadata["category"] == "metadata"
+    assert not any(table["name"] == "catalog_history" for table in result["tables"])
 
 
 def test_main_imports_completed_discoveries_before_export(monkeypatch):

@@ -110,6 +110,12 @@ def enrich_tables(conn, tables):
 
 
 def enrich_generic_catalog(conn, tables, available):
+    tables[:] = [
+        table
+        for table in tables
+        if table["schema"] != "main" or table["name"] != "catalog_history"
+    ]
+
     def records(name):
         if name not in available:
             return []
@@ -178,7 +184,6 @@ def enrich_generic_catalog(conn, tables, available):
                 "catalog_sources": "Fontes",
                 "catalog_resources": "Catálogo de recursos",
                 "catalog_tables": "Tabelas por recurso",
-                "catalog_history": "Histórico dos metadados",
                 "catalog_imports": "Coletas importadas",
                 "ckan_packages": "Packages CKAN",
                 "ckan_resources": "Resources CKAN",
