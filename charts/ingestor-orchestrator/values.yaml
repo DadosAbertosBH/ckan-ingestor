@@ -110,6 +110,11 @@ iggy:
     # A single broker owns this PVC; replace it after the old process exits.
     strategy:
       type: Recreate
+    # Allow Iggy to rebuild on-disk indexes after a recovery without Kubernetes
+    # interrupting the startup sequence. 180 x 10 seconds = 30 minutes.
+    startupProbe:
+      periodSeconds: 10
+      failureThreshold: 180
     image:
       repository: registry.gitlab.com/pedalin/ckan-ingestor/iggy
       tag: "session-recovery-d2f97066@sha256:1ca2a60db33b3d75cb0200d02b711fc252c2bb2856bf49a33896b8e9f169bedd"

@@ -16,6 +16,12 @@ tests:
       - equal:
           path: spec.strategy.type
           value: Recreate
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.periodSeconds
+          value: 10
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.failureThreshold
+          value: 180
       - contains:
           path: spec.template.spec.imagePullSecrets
           content:
