@@ -276,6 +276,7 @@ lakeSnapshot:
   suspend: false
   schedule: "0 4 * * *"
   timeZone: America/Sao_Paulo
+  activeDeadlineSeconds: 21600
   image:
     registry: registry.gitlab.com/pedalin/ckan-ingestor
     repository: lake-snapshot

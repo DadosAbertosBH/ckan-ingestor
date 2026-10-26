@@ -16,7 +16,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 2
-      activeDeadlineSeconds: 10800
+      activeDeadlineSeconds: {{ .Values.lakeSnapshot.activeDeadlineSeconds }}
       template:
         metadata:
           labels:

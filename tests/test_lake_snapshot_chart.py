@@ -65,6 +65,7 @@ def test_snapshot_job_is_opt_in_and_uses_existing_credentials():
     assert job["timeZone"] == "America/Sao_Paulo"
     assert job["concurrencyPolicy"] == "Forbid"
     assert job["suspend"] is False
+    assert job["jobTemplate"]["spec"]["activeDeadlineSeconds"] == 21600
     pod = job["jobTemplate"]["spec"]["template"]["spec"]
     assert pod["securityContext"]["runAsNonRoot"] is True
     container = pod["containers"][0]
