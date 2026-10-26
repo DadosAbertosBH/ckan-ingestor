@@ -39,9 +39,9 @@ type topicClient interface {
 	Ping(context.Context) error
 }
 
-const maxTopicSize = uint64(1024 * 1024 * 1024)
+const maxTopicSize = uint64(500 * 1024 * 1024)
 
-const messageExpiry = iggcon.Duration(15 * 24 * iggcon.Hour)
+const messageExpiry = iggcon.Duration(7 * 24 * iggcon.Hour)
 
 func NewSDKDriver(ctx context.Context, cfg config.Config) (*SDKDriver, error) {
 	transport, err := iggytransport.Connect(ctx, iggytransport.ConnectionConfig{Address: cfg.IggyAddress, Username: cfg.IggyUsername, Password: cfg.IggyPassword, Stream: cfg.Stream})
