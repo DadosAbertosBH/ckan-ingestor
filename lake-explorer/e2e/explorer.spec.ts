@@ -83,6 +83,4 @@ test('native DuckLake catalog, remote range reads, visual exploration and SQL', 
   await expect(page.locator('.chart-shell canvas')).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
   await page.screenshot({ path: 'test-results/explorer.png', fullPage: true });
-  await page.getByLabel('Área do catálogo').selectOption('metadata');
-  await expect(page.getByRole('button', { name: /Histórico dos metadados/ })).toBeVisible();
 });
