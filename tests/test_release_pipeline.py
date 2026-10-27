@@ -51,6 +51,12 @@ def test_lake_snapshot_release_builds_natively_for_arm64():
     assert 'docker push "$CI_REGISTRY_IMAGE/lake-snapshot:$IMAGE_TAG"' in script
 
 
+def test_pipeline_jobs_run_on_the_cluster_runner_by_default():
+    pipeline = yaml.safe_load(PIPELINE_PATH.read_text())
+
+    assert pipeline["default"]["tags"] == ["noctcloud-k8s"]
+
+
 def test_component_release_tags_publish_the_semantic_version_without_prefix():
     pipeline = yaml.safe_load(PIPELINE_PATH.read_text())
 

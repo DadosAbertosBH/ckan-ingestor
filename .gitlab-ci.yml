@@ -1,5 +1,9 @@
 image: docker
 
+default:
+  tags:
+    - noctcloud-k8s
+
 stages:
   - prepare
   - lint
