@@ -26,7 +26,6 @@ Na raiz:
 ```sh
 uv run python -c "import duckdb; duckdb.connect().execute('INSTALL ducklake')"
 uv run pytest tests/ -q
-uv run lake-explorer/e2e/create_fixture.py
 ```
 
 No diretório `lake-explorer`:
@@ -36,11 +35,9 @@ pnpm test
 pnpm run types
 pnpm run check:worker
 pnpm run check:deploy
-pnpm exec playwright install chromium
-pnpm run test:e2e
 ```
 
-O teste Chromium usa um catálogo DuckLake real e uma origem S3 simulada: verifica session token, requisições `Range`, exclusões, filtros, SQL, dados inline, gráficos e downloads CSV/Parquet. A origem PostgreSQL já está desconectada quando o navegador abre o catálogo. O backend atual tem testes Go (`go test ./...`); o caminho legado `ingestor_orchestrator/backend/tests/` está ausente.
+Os testes de interface usam Vitest, Vue Test Utils e happy-dom. Eles validam a navegação do catálogo, os estados de recursos e os controles de exploração sem baixar ou executar um navegador. O backend atual tem testes Go (`go test ./...`); o caminho legado `ingestor_orchestrator/backend/tests/` está ausente.
 
 O Wasm fica no Web Worker. O build publica o engine comprimido (aproximadamente 8 MB), servido pelo Worker com `Content-Encoding: gzip`, dentro do limite de tamanho de assets. Flint/ECharts são carregados ao abrir o gráfico.
 

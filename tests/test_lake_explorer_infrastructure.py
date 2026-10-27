@@ -36,21 +36,6 @@ def test_lake_storage_is_private_and_browser_access_is_read_only():
     assert "Content-Range" in rule["expose_headers"]
 
 
-def test_ci_builds_snapshot_and_tests_native_browser_flow():
-    root = Path(__file__).resolve().parents[1]
-    pipeline = yaml.safe_load((root / ".gitlab-ci.yml").read_text())
-    assert (
-        "uv run lake-explorer/e2e/create_fixture.py"
-        in pipeline["test-lake-snapshot"]["script"]
-    )
-    assert "pnpm run test:e2e" in pipeline["test-lake-explorer"]["script"]
-    assert "corepack enable" in pipeline["test-lake-explorer"]["before_script"]
-    assert any(
-        "analytics/Dockerfile.snapshot" in line
-        for line in pipeline["build-lake-snapshot"]["script"]
-    )
-
-
 def test_lake_explorer_pins_pnpm_and_approves_required_builds():
     root = Path(__file__).resolve().parents[1]
     package = json.loads((root / "lake-explorer/package.json").read_text())
@@ -59,7 +44,9 @@ def test_lake_explorer_pins_pnpm_and_approves_required_builds():
     assert workspace["allowBuilds"] == {"esbuild": True, "workerd": True}
 
 
-def test_playwright_starts_vite_on_its_configured_port():
+def test_lake_explorer_uses_happy_dom_without_browser_test_files():
     root = Path(__file__).resolve().parents[1]
-    config = (root / "lake-explorer/playwright.config.ts").read_text()
-    assert "pnpm exec vite --host 127.0.0.1 --port 5179" in config
+    package = json.loads((root / "lake-explorer/package.json").read_text())
+    assert "happy-dom" in package["devDependencies"]
+    assert "@playwright/test" not in package["devDependencies"]
+    assert not (root / "lake-explorer/playwright.config.ts").exists()
