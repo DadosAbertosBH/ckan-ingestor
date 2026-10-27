@@ -27,7 +27,7 @@ type snapshotRecorder struct {
 	fail  bool
 }
 
-func (s *snapshotRecorder) Publish(_ context.Context, _ string, _ Source, _ time.Time, stream io.ReadSeeker) error {
+func (s *snapshotRecorder) Publish(_ context.Context, _ string, _ Source, _ time.Time, _ int, stream io.ReadSeeker) error {
 	s.calls++
 	s.data, _ = io.ReadAll(stream)
 	if s.fail {

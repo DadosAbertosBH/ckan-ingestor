@@ -11,7 +11,7 @@ catalog-inbox/<source_id>/<sync_id>.jsonl
 A primeira linha identifica a coleta; as seguintes representam recursos:
 
 ```json
-{"version":1,"sync_id":"coleta-1","collected_at":"2026-10-22T12:00:00Z","source":{"id":"portal-1","title":"Portal municipal","type":"ckan","url":"https://dados.example"}}
+{"version":1,"sync_id":"coleta-1","collected_at":"2026-10-22T12:00:00Z","resources_total":2,"source":{"id":"portal-1","title":"Portal municipal","type":"ckan","url":"https://dados.example"}}
 {"source_id":"portal-1","id":"package-1","kind":"collection","title":"Despesas","metadata_collection":"ckan_packages","metadata":{"license_id":"cc-by"}}
 {"source_id":"portal-1","id":"resource-1","parent_resource_id":"package-1","kind":"file","title":"Despesas 2026","content_url":"https://dados.example/2026.csv","format":"CSV","metadata_collection":"ckan_resources","metadata":{"campo_especifico":"valor"}}
 ```

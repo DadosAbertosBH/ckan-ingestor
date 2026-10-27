@@ -29,7 +29,7 @@ type Publisher interface {
 
 // SnapshotSink persists an immutable, complete JSONL discovery for lake ingestion.
 type SnapshotSink interface {
-	Publish(context.Context, string, Source, time.Time, io.ReadSeeker) error
+	Publish(context.Context, string, Source, time.Time, int, io.ReadSeeker) error
 }
 type Worker struct {
 	Catalog          SourceResourceCatalogRepository
@@ -147,7 +147,7 @@ func (w *Worker) Sync(ctx context.Context, syncID, sourceID, sourceType string) 
 		if _, err = spool.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
-		if err = w.Snapshots.Publish(ctx, syncID, source, collectedAt, spool); err != nil {
+		if err = w.Snapshots.Publish(ctx, syncID, source, collectedAt, len(parents), spool); err != nil {
 			return err
 		}
 	}

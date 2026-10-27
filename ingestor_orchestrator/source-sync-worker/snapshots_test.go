@@ -30,7 +30,7 @@ func (u *snapshotUpload) PutObject(_ context.Context, input *s3.PutObjectInput, 
 func TestSnapshotUploadIsAnImmutableAtomicJSONLArtifact(t *testing.T) {
 	upload := &snapshotUpload{}
 	store := SnapshotStore{Client: upload, Bucket: "lake"}
-	err := store.Publish(context.Background(), "sync", catalog.Source{ID: "source", Name: "Portal", Type: "ckan"}, time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC), strings.NewReader("{\"id\":\"r\"}\n"))
+	err := store.Publish(context.Background(), "sync", catalog.Source{ID: "source", Name: "Portal", Type: "ckan"}, time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC), 1, strings.NewReader("{\"id\":\"r\"}\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,11 +42,11 @@ func TestSnapshotUploadIsAnImmutableAtomicJSONLArtifact(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[0]), &header); err != nil {
 		t.Fatal(err)
 	}
-	if header["sync_id"] != "sync" || header["version"] != float64(1) {
+	if header["sync_id"] != "sync" || header["version"] != float64(1) || header["resources_total"] != float64(1) {
 		t.Fatalf("header=%s", lines[0])
 	}
 	upload.err = &smithy.GenericAPIError{Code: "PreconditionFailed"}
-	if err := store.Publish(context.Background(), "sync", catalog.Source{ID: "source"}, time.Now(), strings.NewReader("")); err != nil {
+	if err := store.Publish(context.Background(), "sync", catalog.Source{ID: "source"}, time.Now(), 0, strings.NewReader("")); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -47,14 +47,14 @@ func newSnapshotStore() *SnapshotStore {
 	return &SnapshotStore{Client: client, Bucket: env("S3_BUCKET", "public-datasets")}
 }
 
-func (s *SnapshotStore) Publish(ctx context.Context, syncID string, source catalog.Source, at time.Time, records io.ReadSeeker) error {
+func (s *SnapshotStore) Publish(ctx context.Context, syncID string, source catalog.Source, at time.Time, resourcesTotal int, records io.ReadSeeker) error {
 	file, err := os.CreateTemp("", "catalog-upload-*.jsonl")
 	if err != nil {
 		return err
 	}
 	defer os.Remove(file.Name())
 	defer file.Close()
-	header := map[string]any{"version": 1, "source": source, "sync_id": syncID, "collected_at": at.Format(time.RFC3339Nano)}
+	header := map[string]any{"version": 1, "source": source, "sync_id": syncID, "collected_at": at.Format(time.RFC3339Nano), "resources_total": resourcesTotal}
 	if err = json.NewEncoder(file).Encode(header); err != nil {
 		return err
 	}

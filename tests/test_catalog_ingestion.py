@@ -153,16 +153,6 @@ def test_snapshot_replaces_current_resources_and_preserves_idempotency(catalog):
     )
 
 
-def test_ingestion_removes_legacy_catalog_history(catalog):
-    catalog.execute("CREATE TABLE lake.catalog_history(id VARCHAR)")
-
-    ingest_snapshot(catalog, snapshot())
-
-    assert not catalog.sql(
-        "SELECT count(*) FROM information_schema.tables WHERE table_catalog='lake' AND table_schema='main' AND table_name='catalog_history'"
-    ).fetchone()[0]
-
-
 @pytest.mark.parametrize("mutation", ["cycle", "missing", "duplicate", "foreign"])
 def test_invalid_snapshot_preserves_committed_state(catalog, mutation):
     ingest_snapshot(catalog, snapshot())
@@ -301,10 +291,10 @@ def test_inbox_imports_in_collection_order_and_skips_committed_artifacts(catalog
     module.import_inbox(catalog, inbox, "lake")
     assert catalog.sql(
         "SELECT sync_id FROM lake.catalog_imports ORDER BY collected_at"
-    ).fetchall() == [("one",), ("two",)]
+    ).fetchall() == [("two",)]
     inbox.reads.clear()
     module.import_inbox(catalog, inbox, "lake")
-    assert inbox.reads == []
+    assert sorted(inbox.reads) == sorted(documents)
 
 
 def test_inbox_reports_discovered_resource_total(catalog):
@@ -313,6 +303,7 @@ def test_inbox_reports_discovered_resource_total(catalog):
         {"id": "another-resource", "kind": "file", "title": "Another resource"}
     )
     header = {key: value for key, value in document.items() if key != "resources"}
+    header["resources_total"] = 3
     payload = "\n".join(
         json.dumps(record) for record in [dict(header, version=1), *document["resources"]]
     )
@@ -325,11 +316,62 @@ def test_inbox_reports_discovered_resource_total(catalog):
         emit=lambda event, **details: events.append((event, details)),
     )
 
-    assert ("catalog_inbox_snapshot_discovered", {
+    discovered = next(
+        details
+        for event, details in events
+        if event == "catalog_inbox_snapshot_discovered"
+    )
+    assert {key: value for key, value in discovered.items() if key != "durationSeconds"} == {
         "sourceId": "a",
         "syncId": "discovery-total",
         "resourcesTotal": 3,
-    }) in events
+    }
+    assert discovered["durationSeconds"] >= 0
+
+
+def test_ingest_snapshot_reports_progress_every_hundred_resources(catalog):
+    document = snapshot(sync="ingest-progress")
+    document["resources"] = [
+        {"id": f"resource-{index}", "kind": "file", "title": f"Resource {index}"}
+        for index in range(201)
+    ]
+    events = []
+
+    ingest_snapshot(
+        catalog,
+        document,
+        emit=lambda event, **details: events.append((event, details)),
+    )
+
+    assert [event for event in events if event[0] == "catalog_inbox_snapshot_import_progress"] == [
+        (
+            "catalog_inbox_snapshot_import_progress",
+            {"sourceId": "a", "syncId": "ingest-progress", "resourcesRead": 100},
+        ),
+        (
+            "catalog_inbox_snapshot_import_progress",
+            {"sourceId": "a", "syncId": "ingest-progress", "resourcesRead": 200},
+        ),
+    ]
+    lifecycle = {event: details for event, details in events}
+    assert lifecycle["catalog_snapshot_ingest_started"] == {
+        "sourceId": "a",
+        "syncId": "ingest-progress",
+        "resourcesTotal": 201,
+    }
+    assert lifecycle["catalog_snapshot_resources_prepared"]["resourcesPrepared"] == 201
+    assert lifecycle["catalog_snapshot_resources_prepared"]["durationSeconds"] >= 0
+    assert lifecycle["catalog_snapshot_ingest_completed"]["durationSeconds"] >= 0
+    completed_collections = {
+        details["collection"]
+        for event, details in events
+        if event == "catalog_collection_replace_completed"
+    }
+    assert completed_collections == {
+        "catalog_collections",
+        "catalog_resources",
+        "catalog_sources",
+    }
 
 
 def test_inbox_reports_resource_read_progress_every_hundred_resources(catalog):

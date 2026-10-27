@@ -94,9 +94,10 @@ def _ensure_collection(conn, name, columns):
     )
 
 
-def ingest_snapshot(conn, snapshot):
+def ingest_snapshot(conn, snapshot, emit=None):
     source = snapshot["source"]
     source_id, sync_id = source["id"], snapshot["sync_id"]
+    emit = emit or (lambda _event, **_details: None)
     at = datetime.fromisoformat(snapshot["collected_at"].replace("Z", "+00:00"))
     if not source_id or not sync_id or at.tzinfo is None:
         raise ValueError("source, sync identity and timezone are required")
@@ -117,6 +118,13 @@ def ingest_snapshot(conn, snapshot):
             key = parents[key]
         visited.update(path)
 
+    started = monotonic()
+    emit(
+        "catalog_snapshot_ingest_started",
+        sourceId=source_id,
+        syncId=sync_id,
+        resourcesTotal=len(records),
+    )
     conn.execute("BEGIN")
     try:
         conn.execute(
@@ -133,13 +141,13 @@ def ingest_snapshot(conn, snapshot):
         if replay or newer:
             conn.execute("ROLLBACK")
             return False
-        conn.execute("DROP TABLE IF EXISTS lake.catalog_history")
+        preparation_started = monotonic()
         current = []
         _ensure_collection(conn, "catalog_resources", RESOURCE_COLUMNS)
         previous = {
             row["id"]: row for row in _rows(conn, "catalog_resources", source_id)
         }
-        for resource in records:
+        for position, resource in enumerate(records, start=1):
             row = {key: resource.get(key) for key in RESOURCE_COLUMNS}
             row.update(source_id=source_id, deleted=False)
             old = previous.get(row["id"], {})
@@ -152,16 +160,40 @@ def ingest_snapshot(conn, snapshot):
             row["status"] = row["status"] or "discovered"
             row["title"] = row["title"] or _resource_title(row)
             current.append(row)
+            if position % 100 == 0:
+                emit(
+                    "catalog_inbox_snapshot_import_progress",
+                    sourceId=source_id,
+                    syncId=sync_id,
+                    resourcesRead=position,
+                )
         for key, old in previous.items():
             if key not in parents:
                 current.append(dict(old, deleted=True, status="deleted"))
-        replace_collection(conn, "catalog_resources", source_id, current, RESOURCE_COLUMNS)
-        replace_collection(
+        emit(
+            "catalog_snapshot_resources_prepared",
+            sourceId=source_id,
+            syncId=sync_id,
+            resourcesPrepared=len(current),
+            durationSeconds=round(monotonic() - preparation_started, 3),
+        )
+        _replace_collection_with_progress(
+            conn,
+            "catalog_resources",
+            source_id,
+            sync_id,
+            current,
+            RESOURCE_COLUMNS,
+            emit,
+        )
+        _replace_collection_with_progress(
             conn,
             "catalog_sources",
             source_id,
+            sync_id,
             [dict(source, source_id=source_id)],
             SOURCE_COLUMNS,
+            emit,
         )
         conn.execute(
             "CREATE TABLE IF NOT EXISTS lake.catalog_collections(source_id VARCHAR, name VARCHAR)"
@@ -190,18 +222,28 @@ def ingest_snapshot(conn, snapshot):
                 for resource in records
                 if resource.get("metadata_collection") == name
             ]
-            replace_collection(conn, name, source_id, raw, RAW_COLUMNS)
-        replace_collection(
+            _replace_collection_with_progress(
+                conn, name, source_id, sync_id, raw, RAW_COLUMNS, emit
+            )
+        _replace_collection_with_progress(
             conn,
             "catalog_collections",
             source_id,
+            sync_id,
             [{"name": name} for name in sorted(declared)],
             {"source_id": "VARCHAR", "name": "VARCHAR"},
+            emit,
         )
         conn.execute(
             "INSERT INTO lake.catalog_imports VALUES (?,?,?)", [source_id, sync_id, at]
         )
         conn.execute("COMMIT")
+        emit(
+            "catalog_snapshot_ingest_completed",
+            sourceId=source_id,
+            syncId=sync_id,
+            durationSeconds=round(monotonic() - started, 3),
+        )
         return True
     except Exception:
         conn.execute("ROLLBACK")
@@ -243,6 +285,28 @@ def replace_collection(conn, name, source_id, rows, columns):
             f"INSERT INTO lake.main.{identifier(name)} ({names}) VALUES ({placeholders})",
             values,
         )
+
+
+def _replace_collection_with_progress(
+    conn, name, source_id, sync_id, rows, columns, emit
+):
+    started = monotonic()
+    emit(
+        "catalog_collection_replace_started",
+        sourceId=source_id,
+        syncId=sync_id,
+        collection=name,
+        rows=len(rows),
+    )
+    replace_collection(conn, name, source_id, rows, columns)
+    emit(
+        "catalog_collection_replace_completed",
+        sourceId=source_id,
+        syncId=sync_id,
+        collection=name,
+        rows=len(rows),
+        durationSeconds=round(monotonic() - started, 3),
+    )
 
 
 def physical_resource_id(resource_id):
@@ -347,19 +411,18 @@ def import_inbox(conn, client, bucket, metadata_schema="main", emit=None):
         artifacts=len(keys),
         importedSnapshots=len(imported),
     )
-    snapshots = []
+    discoveries = []
     for key in keys:
         parts = key.split("/")
         if len(parts) != 3:
             raise ValueError("invalid catalog artifact path")
         identity = (unquote(parts[1]), unquote(parts[2].removesuffix(".jsonl")))
-        if identity in imported:
-            emit(
-                "catalog_inbox_snapshot_skipped",
-                sourceId=identity[0],
-                syncId=identity[1],
-            )
-            continue
+        discovery_started = monotonic()
+        emit(
+            "catalog_inbox_snapshot_discovery_started",
+            sourceId=identity[0],
+            syncId=identity[1],
+        )
         response = client.get_object(Bucket=bucket, Key=key)
         try:
             lines = iter(response["Body"].iter_lines())
@@ -368,16 +431,60 @@ def import_inbox(conn, client, bucket, metadata_schema="main", emit=None):
                 raise ValueError("unsupported source snapshot version")
             if (header["source"]["id"], header["sync_id"]) != identity:
                 raise ValueError("catalog artifact identity mismatch")
-            resources_total = sum(1 for line in lines if line.strip())
-            snapshots.append((key, header))
-            emit(
-                "catalog_inbox_snapshot_discovered",
-                sourceId=identity[0],
-                syncId=identity[1],
-                resourcesTotal=resources_total,
+            resources_total = header.get("resources_total")
+            if resources_total is not None and (
+                isinstance(resources_total, bool)
+                or not isinstance(resources_total, int)
+                or resources_total < 0
+            ):
+                raise ValueError("catalog resource total must be a non-negative integer")
+            discoveries.append(
+                (key, header, resources_total, monotonic() - discovery_started)
             )
         finally:
             response["Body"].close()
+
+    latest = {}
+    for discovery in discoveries:
+        key, header, _, _ = discovery
+        source_id = header["source"]["id"]
+        collected_at = datetime.fromisoformat(
+            header["collected_at"].replace("Z", "+00:00")
+        )
+        previous = latest.get(source_id)
+        if previous is None or (collected_at, key) > (
+            datetime.fromisoformat(previous[1]["collected_at"].replace("Z", "+00:00")),
+            previous[0],
+        ):
+            latest[source_id] = discovery
+    snapshots = []
+    for key, header, resources_total, duration in discoveries:
+        source_id, sync_id = header["source"]["id"], header["sync_id"]
+        selected = latest[source_id]
+        if key != selected[0]:
+            emit(
+                "catalog_inbox_snapshot_superseded",
+                sourceId=source_id,
+                syncId=sync_id,
+                latestSyncId=selected[1]["sync_id"],
+            )
+            continue
+        if (source_id, sync_id) in imported:
+            emit(
+                "catalog_inbox_snapshot_skipped",
+                sourceId=source_id,
+                syncId=sync_id,
+            )
+            continue
+        details = {
+            "sourceId": source_id,
+            "syncId": sync_id,
+            "durationSeconds": round(duration, 3),
+        }
+        if resources_total is not None:
+            details["resourcesTotal"] = resources_total
+        emit("catalog_inbox_snapshot_discovered", **details)
+        snapshots.append((key, header))
     # Read one pending discovery at a time, rather than retaining its full history in memory.
     for key, header in sorted(
         snapshots,
@@ -392,6 +499,12 @@ def import_inbox(conn, client, bucket, metadata_schema="main", emit=None):
             sourceId=source_id,
             syncId=sync_id,
         )
+        read_started = monotonic()
+        emit(
+            "catalog_inbox_snapshot_read_started",
+            sourceId=source_id,
+            syncId=sync_id,
+        )
         response = client.get_object(Bucket=bucket, Key=key)
         try:
             lines = iter(response["Body"].iter_lines())
@@ -401,19 +514,20 @@ def import_inbox(conn, client, bucket, metadata_schema="main", emit=None):
                 if not line.strip():
                     continue
                 resources.append(json.loads(line))
-                if len(resources) % 100 == 0:
-                    emit(
-                        "catalog_inbox_snapshot_import_progress",
-                        sourceId=source_id,
-                        syncId=sync_id,
-                        resourcesRead=len(resources),
-                    )
+            emit(
+                "catalog_inbox_snapshot_read_completed",
+                sourceId=source_id,
+                syncId=sync_id,
+                resourcesRead=len(resources),
+                durationSeconds=round(monotonic() - read_started, 3),
+            )
             changed = ingest_snapshot(
                 conn,
                 dict(
                     header,
                     resources=resources,
                 ),
+                emit=emit,
             )
             emit(
                 "catalog_inbox_snapshot_import_completed",
