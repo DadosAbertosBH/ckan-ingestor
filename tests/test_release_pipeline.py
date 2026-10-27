@@ -44,7 +44,7 @@ def test_lake_snapshot_release_builds_natively_for_arm64():
     job = pipeline["build-lake-snapshot"]
     script = "\n".join(job["script"])
 
-    assert job["tags"] == ["saas-linux-small-arm64"]
+    assert job["tags"] == ["noctcloud-k8s"]
     assert "docker buildx" not in script
     assert "docker build " in script
     assert 'IMAGE_TAG="${CI_COMMIT_TAG#lake-snapshot-}"' in script
