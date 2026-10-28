@@ -47,6 +47,8 @@ O GitLab publica o Worker `noctcloud-lake-explorer` em produção após os teste
 
 Configure `CLOUDFLARE_API_TOKEN`, `R2_ACCESS_KEY_ID` e `R2_SECRET_ACCESS_KEY` nas variáveis protegidas e mascaradas do GitLab, com escopo para o ambiente `production`. Use um token da conta Cloudflare com permissão de editar o Worker e credenciais R2 de leitura limitadas ao bucket. O deploy envia as credenciais R2 como secrets do Worker por um arquivo temporário privado, removido ao final.
 
+A política CORS do bucket `public-datasets` é versionada em `r2-cors.json` e aplicada pela CI quando o arquivo muda na branch padrão. O token `CLOUDFLARE_API_TOKEN` também precisa de permissão para alterar a configuração do bucket R2. O arquivo representa a política completa: preserve as regras necessárias aos demais consumidores ao editá-lo.
+
 ## Publicação diária
 
 Imagem: `analytics/Dockerfile.snapshot`. O pipeline cria `lake-snapshot:<tag-ou-sha>` para amd64/arm64 e testa o frontend e o exportador.
@@ -93,18 +95,7 @@ O código atual preserva os arquivos de dados. Para introduzir compaction/cleanu
 
 `GET /api/health` retorna 503 quando a publicação passa de 36 horas; configure o monitor externo para alertar nesse endpoint. O exportador também registra ID, tamanho e duração. `GET /api/latest` permite avisar o visitante sobre novas publicações.
 
-## Cloudflare e fechamento do acesso direto
-
-1. Autentique Wrangler com `wrangler login` ou disponibilize `CLOUDFLARE_API_TOKEN` no ambiente de deploy.
-2. Cadastre o token R2 pai de leitura com `npx wrangler secret put R2_ACCESS_KEY_ID` e `npx wrangler secret put R2_SECRET_ACCESS_KEY`.
-3. Publique com `pnpm run deploy`; use o endereço HTTPS resultante como `portal_origin`.
-4. Audite os domínios públicos existentes (`r2.dev` e custom domains) e os consumidores que os utilizam. A autenticação local estava expirada na implementação; o estado público atual segue pendente de confirmação.
-5. Aplique `infra/main.tf.json` com `portal_origin` e o mapa `public_domains` (domínio → zone ID) encontrados na auditoria. A configuração desabilita `r2.dev` e cada domínio público listado e permite CORS de leitura apenas para a origem do portal.
-6. Verifique objetos conhecidos sem assinatura (403), leitura com session token (200/206), rejeição de escrita e expiração após 15 minutos.
-
-A infraestrutura pressupõe bucket existente. O plano Terraform deve ser revisado contra a configuração atual, preservando regras CORS necessárias aos consumidores autorizados. O provider consulta a Cloudflare; `terraform init -backend=false` e `terraform validate` verificam o schema localmente.
-
-Visitantes anônimos continuam acessando os dados através do portal. Credenciais temporárias permitem leitura/download durante a sessão. CORS controla acesso entre origens no navegador; a autorização dos objetos vem da assinatura S3.
+O acesso aos objetos usa credenciais temporárias de leitura durante a sessão. CORS controla o acesso entre origens no navegador; a autorização dos objetos vem da assinatura S3.
 
 ## Limites iniciais
 

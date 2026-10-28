@@ -4,7 +4,11 @@
       "id": "lake-explorer-read",
       "allowed": {
         "methods": ["GET", "HEAD"],
-        "origins": ["http://127.0.0.1:5173", "http://localhost:5173"],
+        "origins": [
+          "https://noctcloud-lake-explorer.guilherme-castro.workers.dev",
+          "http://127.0.0.1:5173",
+          "http://localhost:5173"
+        ],
         "headers": ["authorization", "range", "x-amz-date", "x-amz-content-sha256", "x-amz-security-token", "content-type"]
       },
       "exposeHeaders": ["Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"],

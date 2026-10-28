@@ -202,6 +202,27 @@ deploy-lake-explorer:
       changes:
         - "lake-explorer/**/*"
 
+deploy-lake-explorer-cors:
+  stage: deploy
+  image: node:22-bookworm-slim
+  services: []
+  resource_group: lake-explorer-production
+  environment:
+    name: production
+  variables:
+    CLOUDFLARE_ACCOUNT_ID: "d8915a6c9b1e24b2ded7d9cd72318cdd"
+  before_script:
+    - cd lake-explorer
+    - corepack enable
+  script:
+    - test -n "$CLOUDFLARE_API_TOKEN"
+    - pnpm install --frozen-lockfile
+    - pnpm exec wrangler r2 bucket cors set public-datasets --file r2-cors.json --force
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes:
+        - "lake-explorer/r2-cors.json"
+
 build-lake-snapshot:
   stage: build
   image: docker

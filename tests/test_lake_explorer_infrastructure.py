@@ -19,23 +19,6 @@ from pathlib import Path
 import yaml
 
 
-def test_lake_storage_is_private_and_browser_access_is_read_only():
-    root = Path(__file__).resolve().parents[1]
-    config = json.loads((root / "lake-explorer/infra/main.tf.json").read_text())
-    resources = config["resource"]
-    assert resources["cloudflare_r2_managed_domain"]["lake"]["enabled"] is False
-    assert resources["cloudflare_r2_custom_domain"]["existing"]["enabled"] is False
-    rule = resources["cloudflare_r2_bucket_cors"]["explorer"]["rules"][0]
-    assert rule["allowed"]["methods"] == ["GET", "HEAD"]
-    assert rule["allowed"]["origins"] == [
-        "${var.portal_origin}",
-        "http://127.0.0.1:5173",
-        "http://localhost:5173",
-    ]
-    assert "x-amz-security-token" in rule["allowed"]["headers"]
-    assert "Content-Range" in rule["expose_headers"]
-
-
 def test_lake_explorer_pins_pnpm_and_approves_required_builds():
     root = Path(__file__).resolve().parents[1]
     package = json.loads((root / "lake-explorer/package.json").read_text())

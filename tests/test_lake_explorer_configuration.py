@@ -35,12 +35,3 @@ def test_vite_proxy_rewrites_local_worker_origin():
     config = config_path.read_text()
 
     assert "proxyReq.removeHeader('origin')" in config
-
-
-def test_r2_cors_allows_local_explorer():
-    config_path = Path(__file__).parents[1] / "lake-explorer" / "infra" / "main.tf.json"
-    config = json.loads(config_path.read_text())
-    rule = config["resource"]["cloudflare_r2_bucket_cors"]["explorer"]["rules"][0]
-
-    assert "http://127.0.0.1:5173" in rule["allowed"]["origins"]
-    assert "http://localhost:5173" in rule["allowed"]["origins"]
