@@ -51,7 +51,8 @@ watch(source, () => { parent.value = ''; });
 <template>
   <label class="search"><span>⌕</span><input v-model="search" aria-label="Buscar conjuntos" placeholder="Buscar por nome, tema ou fonte…"></label>
   <div v-if="source" class="catalog-location"><button class="text-button" aria-label="Voltar" @click="back">← Voltar</button><span>{{ sourceName(source) }}<template v-if="current"> / {{ current.path.join(' / ') }}</template></span></div>
-  <p class="list-caption">{{ visibleTables.length }} tabelas disponíveis</p>
+  <p class="list-caption" v-if="sourceFolders.length">{{ sourceFolders.length }} {{ sourceFolders.length === 1 ? 'fonte' : 'fontes' }}</p>
+  <p class="list-caption" v-else>{{ visibleTables.length }} {{ visibleTables.length === 1 ? 'tabela disponível' : 'tabelas disponíveis' }}</p>
   <nav class="table-list" aria-label="Conjuntos de dados">
     <button v-for="item in sourceFolders" :key="item.id" :data-source="item.id" class="table-card" :disabled="busy" @click="source = item.id"><span class="table-icon">▱</span><span><strong>{{ item.title }}</strong><small>Fonte</small></span><span>→</span></button>
     <button v-for="folder in folders" :key="folder.id" :data-resource="folder.id" class="table-card" :disabled="busy" @click="open(folder)"><span class="table-icon">▱</span><span><strong>{{ folder.title }}</strong><small>Coleção{{ folder.deleted ? ' · Removida na origem' : '' }}</small></span><span>→</span></button>

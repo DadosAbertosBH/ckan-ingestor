@@ -25,6 +25,7 @@ it('searches data across sources without showing metadata or legacy', async () =
   const wrapper = mount(CatalogBrowser, { props: { publication } });
   expect(wrapper.text()).toContain('Prefeitura');
   expect(wrapper.text()).toContain('Minas Gerais');
+  expect(wrapper.get('.list-caption').text()).toBe('2 fontes');
   expect(wrapper.text()).not.toContain('Pagamentos');
   expect(wrapper.text()).not.toContain('old-uuid');
   expect(wrapper.text()).not.toContain('Metadados secretos');
@@ -41,6 +42,7 @@ it('browses source and collection and shows available data', async () => {
   const wrapper = mount(CatalogBrowser, { props: { publication } });
   await wrapper.get('button[data-source="a"]').trigger('click');
   await wrapper.get('button[data-resource="p"]').trigger('click');
+  expect(wrapper.get('.list-caption').text()).toBe('1 tabela disponível');
   expect(wrapper.text()).toContain('Despesas');
   expect(wrapper.text()).toContain('Pagamentos');
   expect(wrapper.text()).not.toContain('Empenhos');
