@@ -200,6 +200,14 @@ test-go-modules:
   stage: test
   image: golang:1.26-bookworm
   services: []
+  variables:
+    GOCACHE: "$CI_PROJECT_DIR/.go-modules-build-cache"
+    GOMODCACHE: "$CI_PROJECT_DIR/.go-modules-download-cache"
+  cache:
+    key: go-modules-arm64-go1.26-v1
+    paths:
+      - .go-modules-build-cache/
+      - .go-modules-download-cache/
   script:
     - |
       for module in \
