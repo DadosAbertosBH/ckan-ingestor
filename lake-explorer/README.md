@@ -45,7 +45,7 @@ O Wasm fica no Web Worker. O build publica o engine comprimido (aproximadamente 
 
 O GitLab publica o Worker `noctcloud-lake-explorer` em produção após os testes da pipeline para alterações em `lake-explorer/` enviadas à branch padrão. O job usa o runner `noctcloud-k8s` e serializa os deploys de produção.
 
-Configure `CLOUDFLARE_API_TOKEN` nas variáveis protegidas e mascaradas do projeto no GitLab, com escopo para o ambiente `production`. Use um token da conta Cloudflare com permissão de editar o Worker. As credenciais R2 continuam configuradas como secrets do Worker.
+Configure `CLOUDFLARE_API_TOKEN`, `R2_ACCESS_KEY_ID` e `R2_SECRET_ACCESS_KEY` nas variáveis protegidas e mascaradas do GitLab, com escopo para o ambiente `production`. Use um token da conta Cloudflare com permissão de editar o Worker e credenciais R2 de leitura limitadas ao bucket. O deploy envia as credenciais R2 como secrets do Worker por um arquivo temporário privado, removido ao final.
 
 ## Publicação diária
 

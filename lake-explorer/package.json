@@ -10,7 +10,7 @@
     "types": "wrangler types --include-runtime=false",
     "check:worker": "tsc -p tsconfig.worker.json --noEmit",
     "preview": "wrangler dev",
-    "deploy": "pnpm run build && wrangler deploy",
+    "deploy": "pnpm run build && node deploy-secrets.mjs",
     "check:deploy": "pnpm run build && wrangler deploy --dry-run"
   },
   "dependencies": {
