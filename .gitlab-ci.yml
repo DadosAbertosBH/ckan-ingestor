@@ -9,6 +9,7 @@ stages:
   - lint
   - test
   - build
+  - deploy
 
 services:
   - name: docker:dind
@@ -179,6 +180,27 @@ test-lake-explorer:
     - pnpm run check:worker
     - pnpm run check:deploy
   rules: *lake-rules
+
+deploy-lake-explorer:
+  stage: deploy
+  image: node:22-bookworm-slim
+  services: []
+  resource_group: lake-explorer-production
+  environment:
+    name: production
+  variables:
+    CLOUDFLARE_ACCOUNT_ID: "d8915a6c9b1e24b2ded7d9cd72318cdd"
+  before_script:
+    - cd lake-explorer
+    - corepack enable
+  script:
+    - test -n "$CLOUDFLARE_API_TOKEN"
+    - pnpm install --frozen-lockfile
+    - pnpm run deploy
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes:
+        - "lake-explorer/**/*"
 
 build-lake-snapshot:
   stage: build

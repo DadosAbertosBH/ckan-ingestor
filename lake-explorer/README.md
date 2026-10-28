@@ -17,7 +17,7 @@ Para conectar ao R2, execute também `pnpm run preview` em outro terminal (Worke
 
 A busca usa nome, descrição e fonte dos metadados CKAN quando disponíveis. Tabela, resumo e gráfico usam filtros parametrizados. O editor SQL aceita consultas relacionais, tem destaque de sintaxe, autocomplete de tabelas/colunas e execução por Ctrl/Cmd+Enter, e guarda favoritos neste navegador. A exportação inclui o resultado exibido (100 linhas por página visual ou até 10.000 linhas no SQL).
 
-O [catálogo genérico de fontes e recursos](../docs/source-catalog.md) fornece nomes, descrições e hierarquia para CKAN, SICOM e outros adaptadores. A navegação oferece busca global, seleção de fonte e coleção, filtro de disponibilidade e áreas de metadados e legado.
+O [catálogo genérico de fontes e recursos](../docs/source-catalog.md) fornece nomes, descrições e hierarquia para CKAN, SICOM e outros adaptadores. A navegação oferece busca e pastas por fonte e coleção para explorar tabelas disponíveis.
 
 ## Verificação reproduzível
 
@@ -40,6 +40,12 @@ pnpm run check:deploy
 Os testes de interface usam Vitest, Vue Test Utils e happy-dom. Eles validam a navegação do catálogo, os estados de recursos e os controles de exploração sem baixar ou executar um navegador. O backend atual tem testes Go (`go test ./...`); o caminho legado `ingestor_orchestrator/backend/tests/` está ausente.
 
 O Wasm fica no Web Worker. O build publica o engine comprimido (aproximadamente 8 MB), servido pelo Worker com `Content-Encoding: gzip`, dentro do limite de tamanho de assets. Flint/ECharts são carregados ao abrir o gráfico.
+
+## Deploy do Explorer
+
+O GitLab publica o Worker `noctcloud-lake-explorer` em produção após os testes da pipeline para alterações em `lake-explorer/` enviadas à branch padrão. O job usa o runner `noctcloud-k8s` e serializa os deploys de produção.
+
+Configure `CLOUDFLARE_API_TOKEN` nas variáveis protegidas e mascaradas do projeto no GitLab, com escopo para o ambiente `production`. Use um token da conta Cloudflare com permissão de editar o Worker. As credenciais R2 continuam configuradas como secrets do Worker.
 
 ## Publicação diária
 

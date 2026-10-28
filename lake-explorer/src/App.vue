@@ -111,7 +111,7 @@ onBeforeUnmount(() => { clearInterval(timer); void engine.close(); });
 
     <div v-else class="workspace">
       <aside class="sidebar">
-        <div class="sidebar-title"><span class="eyebrow">SEU PONTO DE PARTIDA</span><h2>Catálogo <small>{{ count(publication.tables.length) }}</small></h2></div>
+        <div class="sidebar-title"><span class="eyebrow">SEU PONTO DE PARTIDA</span><h2>Catálogo <small>{{ count(publication.tables.filter(t => (t.category ?? 'data') === 'data').length) }}</small></h2></div>
         <CatalogBrowser :publication="publication" :busy="busy" @choose="choose" @resource="showResource" />
         <div class="snapshot"><span class="status-dot"></span><div>Atualização dos dados<strong>{{ date(publication.createdAt) }}</strong><small>Snapshot {{ publication.snapshotId }}</small></div></div>
       </aside>
